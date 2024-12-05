@@ -12,3 +12,6 @@ mlruns/
 outputs/
 scripts/
 *~
+
+*.png
+*.pt
