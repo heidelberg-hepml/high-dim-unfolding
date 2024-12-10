@@ -15,3 +15,5 @@ scripts/
 
 *.png
 *.pt
+*.npz
+*.npy
