@@ -1,12 +1,28 @@
 import torch
 import numpy as np
+import h5py
 from torch_geometric.data import Data
-from experiments.tagging import TaggingDataset
 
 EPS = 1e-5
 
 
-class MultiplicityDataset(TaggingDataset):
+class BaseDataset(torch.utils.data.Dataset):
+
+    def __init__(self, rescale_data):
+        super().__init__()
+        self.rescale_data = rescale_data
+
+    def load_data(self, filename, mode):
+        raise NotImplementedError
+
+    def __len__(self):
+        return len(self.data_list)
+
+    def __getitem__(self, idx):
+        return self.data_list[idx]
+
+
+class MultiplicityDataset(BaseDataset):
     def load_data(
         self,
         filename,
@@ -20,32 +36,31 @@ class MultiplicityDataset(TaggingDataset):
             Path to file in npz format where the dataset in stored
         mode : {"train", "test", "val"}
             Purpose of the dataset
-            Train, test and validation datasets are already seperated in the specified file
+            Train, test and validation datasets are already separated in the specified file
         """
-        data = np.load(filename)
-        kinematics = data[f"kinematics_{mode}"]
-        labels = data[f"labels_{mode}"]
+        data = h5py.File(filename, "r")
+        particles = np.array(data[mode]["sim_particles"])
+        sim_mults = np.array(data[mode]["sim_mults"], dtype=int)
+        gen_mults = np.array(data[mode]["gen_mults"], dtype=int)
 
-        kinematics = torch.tensor(kinematics, dtype=dtype)
-        labels = torch.tensor(labels, dtype=torch.int)
+        kinematics = torch.tensor(particles, dtype=dtype)
+        labels = torch.tensor(gen_mults, dtype=int)
 
         # create list of torch_geometric.data.Data objects
         self.data_list = []
         for i in range(kinematics.shape[0]):
-            # drop zero-padded components
-            mask = (kinematics[i, ...].abs() > EPS).all(dim=-1)
-            fourmomenta = kinematics[i, ...][mask]
+            threemomenta = kinematics[i, : sim_mults[i], :-1]
             label = labels[i, ...]
             scalars = torch.zeros(
-                fourmomenta.shape[0],
+                threemomenta.shape[0],
                 0,
                 dtype=dtype,
             )  # no scalar information
-            data = Data(x=fourmomenta, scalars=scalars, label=label)
+            data = Data(x=threemomenta, scalars=scalars, label=label)
             self.data_list.append(data)
 
 
-class QGMultiplicityDataset(MultiplicityDataset):
+class QGMultiplicityDataset(BaseDataset):
     def load_data(
         self,
         filename,
@@ -59,24 +74,21 @@ class QGMultiplicityDataset(MultiplicityDataset):
             Path to file in npz format where the dataset in stored
         mode : {"train", "test", "val"}
             Purpose of the dataset
-            Train, test and validation datasets are already seperated in the specified file
+            Train, test and validation datasets are already separated in the specified file
         """
-        data = np.load(filename)
-        kinematics = data[f"kinematics_{mode}"]
-        pids = data[f"pid_{mode}"]
-        labels = data[f"labels_{mode}"]
+        data = h5py.File(filename, "r")
+        particles = np.array(data[mode]["sim_particles"])
+        sim_mults = np.array(data[mode]["sim_mults"], dtype=int)
+        gen_mults = np.array(data[mode]["gen_mults"], dtype=int)
 
-        kinematics = torch.tensor(kinematics, dtype=dtype)
-        pids = torch.tensor(pids, dtype=dtype)
-        labels = torch.tensor(labels, dtype=torch.bool)
+        kinematics = torch.tensor(particles, dtype=dtype)
+        labels = torch.tensor(gen_mults, dtype=dtype)
 
         # create list of torch_geometric.data.Data objects
         self.data_list = []
         for i in range(kinematics.shape[0]):
-            # drop zero-padded components
-            mask = (kinematics[i, ...].abs() > EPS).all(dim=-1)
-            fourmomenta = kinematics[i, ...][mask]
-            scalars = pids[i, ...][mask]  # PID scalar information
+            threemomenta = kinematics[i, : sim_mults[i], :-1]
             label = labels[i, ...]
-            data = Data(x=fourmomenta, scalars=scalars, label=label)
+            scalars = kinematics[i, : sim_mults[i], -1]
+            data = Data(x=threemomenta, scalars=scalars, label=label)
             self.data_list.append(data)
