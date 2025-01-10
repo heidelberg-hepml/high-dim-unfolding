@@ -3,6 +3,9 @@ exp_name: mult_debug
 
 data:
  data_dir: data/
+ dataset: zplusjets
+ split: [0.8, 0.1, 0.1]
+ rescale_data: false
 
 train: true
 training:
@@ -21,3 +24,4 @@ plot: false
 defaults:
  - model: tr_multiplicity
  - default
+ - _self_

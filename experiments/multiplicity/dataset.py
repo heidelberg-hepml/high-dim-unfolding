@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-import h5py
+import energyflow
 from torch_geometric.data import Data
 
 EPS = 1e-5
@@ -27,6 +27,7 @@ class MultiplicityDataset(BaseDataset):
         self,
         filename,
         mode,
+        split=[0.8, 0.1, 0.1],
         mass=0.1,
         dtype=torch.float32,
     ):
@@ -37,12 +38,28 @@ class MultiplicityDataset(BaseDataset):
             Path to file in npz format where the dataset in stored
         mode : {"train", "test", "val"}
             Purpose of the dataset
-            Train, test and validation datasets are already separated in the specified file
+        split : list of float
+            Fraction of data to use for training, testing and validation
+        mass : float
+            Mass of the particle to reconstruct
+        dtype : torch.dtype
+            Data type of the tensors
         """
-        data = h5py.File(filename, "r")
-        particles = np.array(data[mode]["sim_particles"])
-        sim_mults = np.array(data[mode]["sim_mults"], dtype=int)
-        gen_mults = np.array(data[mode]["gen_mults"], dtype=int)
+        data = energyflow.zjets_delphes.load('Herwig', num_data=-1, pad=True, cache_dir=filename,
+                                       include_keys=['particles', 'mults'])
+        size = len(data["sim_particles"])
+        if mode == "train":
+            particles = np.array(data["sim_particles"])[:int(split[0] * size)]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[:int(split[0] * size)]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[:int(split[0] * size)]
+        elif mode == "test":
+            particles = np.array(data["sim_particles"])[int(split[0] * size):int(split[0] * size) + int(split[1] * size)]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[int(split[0] * size):int(split[0] * size) + int(split[1] * size)]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[int(split[0] * size):int((split[0] + split[1]) * size)]
+        else:
+            particles = np.array(data["gen_particles"])[int((split[0] + split[1]) * size):]
+            sim_mults = np.array(data["gen_mults"], dtype=int)[int((split[0] + split[1]) * size):]
+            gen_mults = np.array(data["sim_mults"], dtype=int)[int((split[0] + split[1]) * size):]
 
         kinematics = torch.tensor(particles, dtype=dtype)
         labels = torch.tensor(gen_mults, dtype=dtype)

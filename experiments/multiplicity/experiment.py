@@ -24,7 +24,7 @@ class MultiplicityExperiment(BaseExperiment):
         pass
 
     def init_data(self):
-        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}.h5")
+        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         self._init_data(MultiplicityDataset, data_path)
 
     def _init_data(self, Dataset, data_path):
@@ -34,9 +34,9 @@ class MultiplicityExperiment(BaseExperiment):
         self.data_train = Dataset(**kwargs)
         self.data_test = Dataset(**kwargs)
         self.data_val = Dataset(**kwargs)
-        self.data_train.load_data(data_path, "train")
-        self.data_test.load_data(data_path, "test")
-        self.data_val.load_data(data_path, "val")
+        self.data_train.load_data(data_path, "train", split=self.cfg.data.split)
+        self.data_test.load_data(data_path, "test", split=self.cfg.data.split)
+        self.data_val.load_data(data_path, "val", split=self.cfg.data.split)
         dt = time.time() - t0
         LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt/60:.2f} min")
 
