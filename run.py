@@ -7,6 +7,7 @@ from experiments.eventgen.processes import (
 )
 from experiments.tagging.jetclassexperiment import JetClassTaggingExperiment
 from experiments.tagging.finetuneexperiment import TopTaggingFineTuneExperiment
+from experiments.multiplicity.experiment import MultiplicityExperiment
 
 
 @hydra.main(config_path="config", config_name="amplitudes", version_base=None)
@@ -25,6 +26,8 @@ def main(cfg):
         exp = ttbarExperiment(cfg)
     elif cfg.exp_type == "zmumu":
         exp = zmumuExperiment(cfg)
+    elif cfg.exp_type == "multiplicity":
+        exp = MultiplicityExperiment(cfg)
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 
