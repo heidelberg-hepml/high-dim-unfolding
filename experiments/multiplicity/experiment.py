@@ -18,7 +18,7 @@ MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
-        self.loss = smoothCELoss()
+        self.loss = smoothCELoss(self.cfg.data.max_num_particles)
 
     def init_physics(self):
         pass
@@ -34,9 +34,24 @@ class MultiplicityExperiment(BaseExperiment):
         self.data_train = Dataset(**kwargs)
         self.data_test = Dataset(**kwargs)
         self.data_val = Dataset(**kwargs)
-        self.data_train.load_data(data_path, "train", split=self.cfg.data.split)
-        self.data_test.load_data(data_path, "test", split=self.cfg.data.split)
-        self.data_val.load_data(data_path, "val", split=self.cfg.data.split)
+        self.data_train.load_data(
+            data_path,
+            n_elements=self.cfg.data.length,
+            mode="train",
+            split=self.cfg.data.split,
+        )
+        self.data_test.load_data(
+            data_path,
+            n_elements=self.cfg.data.length,
+            mode="test",
+            split=self.cfg.data.split,
+        )
+        self.data_val.load_data(
+            data_path,
+            n_elements=self.cfg.data.length,
+            mode="val",
+            split=self.cfg.data.split,
+        )
         dt = time.time() - t0
         LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt/60:.2f} min")
 
@@ -116,7 +131,7 @@ class MultiplicityExperiment(BaseExperiment):
         return loss, metrics
 
     def _get_predicted_dist_and_label(self, batch):
-        dist_params = self.model(batch.x)
+        dist_params = torch.nn.functional.softplus(self.model(batch.x, batch.batch))
         dist_params = einops.rearrange(
             dist_params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
         )

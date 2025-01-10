@@ -26,6 +26,7 @@ class MultiplicityDataset(BaseDataset):
     def load_data(
         self,
         filename,
+        n_elements,
         mode,
         split=[0.8, 0.1, 0.1],
         mass=0.1,
@@ -45,21 +46,38 @@ class MultiplicityDataset(BaseDataset):
         dtype : torch.dtype
             Data type of the tensors
         """
-        data = energyflow.zjets_delphes.load('Herwig', num_data=-1, pad=True, cache_dir=filename,
-                                       include_keys=['particles', 'mults'])
+        data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=n_elements,
+            pad=True,
+            cache_dir=filename,
+            include_keys=["particles", "mults"],
+        )
         size = len(data["sim_particles"])
         if mode == "train":
-            particles = np.array(data["sim_particles"])[:int(split[0] * size)]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[:int(split[0] * size)]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[:int(split[0] * size)]
+            particles = np.array(data["sim_particles"])[: int(split[0] * size)]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[: int(split[0] * size)]
         elif mode == "test":
-            particles = np.array(data["sim_particles"])[int(split[0] * size):int(split[0] * size) + int(split[1] * size)]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[int(split[0] * size):int(split[0] * size) + int(split[1] * size)]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[int(split[0] * size):int((split[0] + split[1]) * size)]
+            particles = np.array(data["sim_particles"])[
+                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+            ]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[
+                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+            ]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[
+                int(split[0] * size) : int((split[0] + split[1]) * size)
+            ]
         else:
-            particles = np.array(data["gen_particles"])[int((split[0] + split[1]) * size):]
-            sim_mults = np.array(data["gen_mults"], dtype=int)[int((split[0] + split[1]) * size):]
-            gen_mults = np.array(data["sim_mults"], dtype=int)[int((split[0] + split[1]) * size):]
+            particles = np.array(data["gen_particles"])[
+                int((split[0] + split[1]) * size) :
+            ]
+            sim_mults = np.array(data["gen_mults"], dtype=int)[
+                int((split[0] + split[1]) * size) :
+            ]
+            gen_mults = np.array(data["sim_mults"], dtype=int)[
+                int((split[0] + split[1]) * size) :
+            ]
 
         kinematics = torch.tensor(particles, dtype=dtype)
         labels = torch.tensor(gen_mults, dtype=dtype)
