@@ -98,7 +98,7 @@ class MultiplicityExperiment(BaseExperiment):
                 self.results_val = self._evaluate_single(self.val_loader, "val")
                 self.results_test = self._evaluate_single(self.test_loader, "test")
 
-    def _evaluate_single(self, loader, title):
+    def _evaluate_single(self, loader, title, step=None):
         LOGGER.info(
             f"### Starting to evaluate model on {title} dataset with "
             f"{len(loader.dataset)} elements, batchsize {loader.batch_size} ###"
@@ -110,7 +110,7 @@ class MultiplicityExperiment(BaseExperiment):
         loss = 0.0
         with torch.no_grad():
             for batch in loader:
-                loss += self._batch_loss(batch).sum()
+                loss += self._batch_loss(batch)[0]
         metrics["loss"] = loss / len(loader.dataset)
 
         if self.cfg.use_mlflow:
@@ -138,7 +138,7 @@ class MultiplicityExperiment(BaseExperiment):
         gammas = torch.distributions.Gamma(dist_params[:, :, 0], dist_params[:, :, 1])
         mix = torch.distributions.Categorical(dist_params[:, :, 2])
         predicted_dist = torch.distributions.MixtureSameFamily(mix, gammas)
-        return predicted_dist, batch.label.to(self.dtype)
+        return predicted_dist, batch.label
 
     def _init_metrics(self):
         return {}

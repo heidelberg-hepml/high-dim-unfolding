@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torch_geometric.utils import dense_to_sparse
+from torch_geometric.nn.aggr import MeanAggregation
 
 from xformers.ops.fmha import BlockDiagonalMask
 from gatr.interface import embed_vector, extract_scalar
@@ -39,8 +40,10 @@ class MultiplicityTransformerWrapper(nn.Module):
         super().__init__()
         self.net = net
         self.force_xformers = force_xformers
+        self.aggregation = MeanAggregation()
 
     def forward(self, batch, ptr):
         mask = xformers_sa_mask(ptr, materialize=not self.force_xformers)
-        outputs = self.net(batch, attention_mask=mask)
+        outputs = self.net(batch.unsqueeze(0), attention_mask=mask)
+        outputs = self.aggregation(outputs, ptr).squeeze(0)
         return outputs

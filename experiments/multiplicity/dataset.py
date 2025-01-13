@@ -80,7 +80,7 @@ class MultiplicityDataset(BaseDataset):
             ]
 
         kinematics = torch.tensor(particles, dtype=dtype)
-        labels = torch.tensor(gen_mults, dtype=dtype)
+        labels = torch.tensor(gen_mults, dtype=torch.int)
 
         # create list of torch_geometric.data.Data objects
         self.data_list = []
