@@ -8,7 +8,7 @@ from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
 from experiments.multiplicity.dataset import MultiplicityDataset
-from experiments.multiplicity.utils import smoothCELoss
+from experiments.multiplicity.distributions import GammaMixture
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -105,14 +105,18 @@ class MultiplicityExperiment(BaseExperiment):
         )
         metrics = {}
         self.model.eval()
-        if self.cfg.training.optimizer == "ScheduleFree":
-            self.optimizer.eval()
         loss = 0.0
+        params = []
+        samples = []
         with torch.no_grad():
             for batch in loader:
-                loss += self._batch_loss(batch)[0]
+                batch_loss, batch_metrics = self._batch_loss(batch)
+                loss += batch_loss
+                params.append(batch_metrics["params"])
+                samples.append(batch_metrics["sample"])
         metrics["loss"] = loss / len(loader.dataset)
-
+        metrics["params"] = torch.cat(params)
+        metrics["samples"] = torch.cat(samples)
         if self.cfg.use_mlflow:
             for key, value in metrics.items():
                 name = f"{title}"
@@ -120,14 +124,29 @@ class MultiplicityExperiment(BaseExperiment):
         return metrics
 
     def plot(self):
-        raise NotImplementedError
+        plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
+        os.makedirs(plot_path, exist_ok=True)
+        model_title = MODEL_TITLE_DICT[type(self.model.net).__name__]
+        title = model_title
+        LOGGER.info(f"Creating plots in {plot_path}")
+
+        plot_dict = {}
+        if self.cfg.evaluate:
+            plot_dict["results_train"] = self.results_train
+            plot_dict["results_test"] = self.results_test
+            plot_dict["results_val"] = self.results_val
+        if self.cfg.train:
+            plot_dict["train_loss"] = self.train_loss
+        plot_mixer(self.cfg, plot_path, title, plot_dict)
 
     def _batch_loss(self, batch):
         predicted_dist, label = self._get_predicted_dist_and_label(batch)
-        loss = self.loss(predicted_dist, label)
+        loss = predicted_dist.cross_entropy(label).sum()
         assert torch.isfinite(loss).all()
-        print(loss)
-        metrics = {}
+        LOGGER.debug(f"loss: {loss.item()}")
+        params = predicted_dist.params
+        sample = predicted_dist.sample()
+        metrics = {"params": params, "sample": sample}
         return loss, metrics
 
     def _get_predicted_dist_and_label(self, batch, min_sigmaarg=-10, max_sigmaarg=5.0):
@@ -140,9 +159,7 @@ class MultiplicityExperiment(BaseExperiment):
         dist_params = einops.rearrange(
             dist_params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
         )
-        gammas = torch.distributions.Gamma(dist_params[:, :, 0], dist_params[:, :, 1])
-        mix = torch.distributions.Categorical(dist_params[:, :, 2])
-        predicted_dist = torch.distributions.MixtureSameFamily(mix, gammas)
+        predicted_dist = GammaMixture(dist_params)
         return predicted_dist, batch.label
 
     def _init_metrics(self):

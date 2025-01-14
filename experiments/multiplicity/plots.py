@@ -6,7 +6,7 @@ from experiments.base_plots import plot_loss
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
-plt.rcParams["text.usetex"] = False
+plt.rcParams["text.usetex"] = True
 plt.rcParams["text.latex.preamble"] = (
     r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath} \usepackage{siunitx}"
 )
@@ -29,133 +29,17 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
             logy=True,
         )
 
-    if cfg.plotting.histograms and cfg.evaluate:
-        out = f"{plot_path}/histograms.pdf"
-        with PdfPages(out) as file:
-            labels = ["Test", "Train", "Prediction"]
-
-            for idataset, dataset in enumerate(cfg.data.dataset):
-                data = [
-                    np.log(plot_dict["results_test"][dataset]["raw"]["truth"]),
-                    np.log(plot_dict["results_test"][dataset]["raw"]["truth"]),
-                    np.log(plot_dict["results_test"][dataset]["raw"]["prediction"]),
-                ]
-                plot_histograms(
-                    file,
-                    data,
-                    labels,
-                    title=title[idataset],
-                    xlabel=r"$\log A$",
-                    logx=False,
-                )
-
-    if cfg.plotting.delta and cfg.evaluate:
-        out = f"{plot_path}/delta.pdf"
-        with PdfPages(out) as file:
-            for idataset, dataset in enumerate(cfg.data.dataset):
-                delta_test = (
-                    plot_dict["results_test"][dataset]["raw"]["prediction"]
-                    - plot_dict["results_test"][dataset]["raw"]["truth"]
-                ) / plot_dict["results_test"][dataset]["raw"]["truth"]
-                delta_train = (
-                    plot_dict["results_train"][dataset]["raw"]["prediction"]
-                    - plot_dict["results_train"][dataset]["raw"]["truth"]
-                ) / plot_dict["results_train"][dataset]["raw"]["truth"]
-
-                # determine 1% largest amplitudes
-                scale = plot_dict["results_test"][dataset]["raw"]["truth"]
-                largest_idx = round(0.01 * len(scale))
-                sort_idx = np.argsort(scale)
-                largest_min = scale[sort_idx][-largest_idx - 1]
-                largest_mask = scale > largest_min
-
-                xranges = [(-10.0, 10.0), (-30.0, 30.0), (-100.0, 100.0)]  # in %
-                binss = [100, 50, 50]
-                for xrange, bins in zip(xranges, binss):
-                    plot_delta_histogram(
-                        file,
-                        [delta_test * 100, delta_train * 100],
-                        labels=["Test", "Train"],
-                        title=title[idataset],
-                        xlabel=r"$\Delta = \frac{A_\mathrm{pred} - A_\mathrm{true}}{A_\mathrm{true}}$ [\%]",
-                        xrange=xrange,
-                        bins=bins,
-                        logy=False,
-                    )
-                    plot_delta_histogram(
-                        file,
-                        [delta_test * 100, delta_test[largest_mask] * 100],
-                        labels=["Test", "Largest 1\%"],
-                        title=title[idataset],
-                        xlabel=r"$\Delta = \frac{A_\mathrm{pred} - A_\mathrm{true}}{A_\mathrm{true}}$ [\%]",
-                        xrange=xrange,
-                        bins=bins,
-                        logy=False,
-                    )
-                    plot_delta_histogram(
-                        file,
-                        [delta_test * 100, delta_test[largest_mask] * 100],
-                        labels=["Test", "Largest 1\%"],
-                        title=title[idataset],
-                        xlabel=r"$\Delta = \frac{A_\mathrm{pred} - A_\mathrm{true}}{A_\mathrm{true}}$ [\%]",
-                        xrange=xrange,
-                        bins=bins,
-                        logy=True,
-                    )
-
-    if cfg.plotting.delta_prepd and cfg.evaluate:
-        out = f"{plot_path}/delta_prepd.pdf"
-        with PdfPages(out) as file:
-            for idataset, dataset in enumerate(cfg.data.dataset):
-                delta_test = (
-                    plot_dict["results_test"][dataset]["preprocessed"]["prediction"]
-                    - plot_dict["results_test"][dataset]["preprocessed"]["truth"]
-                ) / plot_dict["results_test"][dataset]["preprocessed"]["truth"]
-                delta_train = (
-                    plot_dict["results_train"][dataset]["preprocessed"]["prediction"]
-                    - plot_dict["results_train"][dataset]["preprocessed"]["truth"]
-                ) / plot_dict["results_train"][dataset]["preprocessed"]["truth"]
-
-                # determine 1% largest amplitudes
-                scale = plot_dict["results_test"][dataset]["preprocessed"]["truth"]
-                largest_idx = round(0.01 * len(scale))
-                sort_idx = np.argsort(scale)
-                largest_min = scale[sort_idx][-largest_idx - 1]
-                largest_mask = scale > largest_min
-
-                xranges = [(-10.0, 10.0), (-30.0, 30.0), (-100.0, 100.0)]  # in %
-                binss = [100, 50, 50]
-                for xrange, bins in zip(xranges, binss):
-                    plot_delta_histogram(
-                        file,
-                        [delta_test * 100, delta_train * 100],
-                        labels=["Test", "Train"],
-                        title=title[idataset],
-                        xlabel=r"$\tilde\Delta = \frac{\tilde A_\mathrm{pred} - \tilde A_\mathrm{true}}{\tilde A_\mathrm{true}}$ [\%]",
-                        xrange=xrange,
-                        bins=bins,
-                        logy=False,
-                    )
-                    plot_delta_histogram(
-                        file,
-                        [delta_test * 100, delta_test[largest_mask] * 100],
-                        labels=["Test", "Largest 1\%"],
-                        title=title[idataset],
-                        xlabel=r"$\tilde\Delta = \frac{\tilde A_\mathrm{pred} - \tilde A_\mathrm{true}}{\tilde A_\mathrm{true}}$ [\%]",
-                        xrange=xrange,
-                        bins=bins,
-                        logy=False,
-                    )
-                    plot_delta_histogram(
-                        file,
-                        [delta_test * 100, delta_test[largest_mask] * 100],
-                        labels=["Test", "Largest 1\%"],
-                        title=title[idataset],
-                        xlabel=r"$\tilde\Delta = \frac{\tilde A_\mathrm{pred} - \tilde A_\mathrm{true}}{\tilde A_\mathrm{true}}$ [\%]",
-                        xrange=xrange,
-                        bins=bins,
-                        logy=True,
-                    )
+    if cfg.evaluate:
+        file = f"{plot_path}/params_histograms.pdf"
+        plot_param_histograms(
+            file,
+            [
+                plot_dict["results_train"],
+                plot_dict["results_test"],
+                plot_dict["results_val"],
+            ],
+            ["train", "test", "val"],
+        )
 
 
 def plot_histograms(
@@ -244,64 +128,42 @@ def plot_histograms(
     plt.close()
 
 
-def plot_delta_histogram(
-    file, datas, labels, title, xrange, bins=60, xlabel=None, logy=False
+def plot_param_histograms(
+    file,
+    data,
+    labels,
+    bins=60,
+    xlabel=None,
+    title=None,
+    logx=False,
+    logy=False,
+    xrange=None,
 ):
-    assert len(datas) == 2
-    dup_last = lambda a: np.append(a, a[-1])
-    _, bins = np.histogram(datas[0], bins=bins - 1, range=xrange)
-    hists, scales, mses = [], [], []
-    for data in datas:
-        mse = np.mean(data**2)
+    params_labels = ["k", "theta", "coeff"]
+    hists = []
+    for params in data:
+        hists_mix = []
+        for mixture_component in range(params.shape[1]):
+            hist_k, _ = np.histogram(
+                params[:, mixture_component, 0], bins=bins, range=xrange
+            )
+            hist_theta, _ = np.histogram(
+                params[:, mixture_component, 1], bins=bins, range=xrange
+            )
+            hist_coeff, _ = np.histogram(
+                params[:, mixture_component, 2], bins=bins, range=xrange
+            )
+            hists_mix.append([hist_k, hist_theta, hist_coeff])
+        hists.append(hists_mix)
 
-        data = np.clip(data, xrange[0], xrange[1])
-        hist, _ = np.histogram(data, bins=bins, range=xrange)
-        scale = 1 / np.sum((bins[1:] - bins[:-1]) * hist)
-        mses.append(mse)
-        hists.append(hist)
-        scales.append(scale)
-
-    fig, axs = plt.subplots(figsize=(6, 4))
-    for hist, scale, mse, label, color in zip(
-        hists, scales, mses, labels, colors[1:3][::-1]
-    ):
-        axs.step(
-            bins,
-            dup_last(hist) * scale,
-            color,
-            where="post",
-            label=label + r" ($\overline{\Delta^2} = {%.2g})$" % (mse * 1e-4),
-        )  # need 1e-4 to compensate for initial *100
-        axs.fill_between(
-            bins,
-            dup_last(hist) * scale,
-            0.0 * dup_last(hist) * scale,
-            facecolor=color,
-            alpha=0.1,
-            step="post",
-        )
-
-    if logy:
-        axs.set_yscale("log")
-    ymin, ymax = axs.get_ylim()
-    if not logy:
-        ymin = 0.0
-    axs.vlines(0.0, ymin, ymax, color="k", linestyle="--", lw=0.5)
-    axs.set_ylim(ymin, ymax)
-    axs.set_xlim(xrange)
-
-    axs.set_xlabel(xlabel, fontsize=FONTSIZE)
-    axs.tick_params(axis="both", labelsize=FONTSIZE_TICK)
-    axs.legend(frameon=False, loc="upper left", fontsize=FONTSIZE * 0.7)
-    axs.text(
-        0.95,
-        0.95,
-        s=title,
-        horizontalalignment="right",
-        verticalalignment="top",
-        transform=axs.transAxes,
-        fontsize=FONTSIZE,
-    )
+    fig, axs = plt.subplots(3, 3, figsize=(18, 12))
+    for i, hists_mix in enumerate(hists):
+        for i_mix, hists_param in enumerate(hists_mix):
+            for j, hist in enumerate(hists_param):
+                axs[j, i].step(
+                    bins, hist, linewidth=1.0, where="post", color=colors[i_mix]
+                )
+            axs[j, i].set_xlabel(f"dataset {labels[i]}, component {params_labels[j]}")
 
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
