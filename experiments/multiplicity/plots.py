@@ -1,8 +1,10 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import torch
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.base_plots import plot_loss
+from experiments.multiplicity.distributions import GammaMixture
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -34,11 +36,36 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
         plot_param_histograms(
             file,
             [
-                plot_dict["results_train"],
-                plot_dict["results_test"],
-                plot_dict["results_val"],
+                plot_dict["results_train"]["params"].numpy(),
+                plot_dict["results_val"]["params"].numpy(),
+                plot_dict["results_test"]["params"].numpy(),
             ],
-            ["train", "test", "val"],
+            ["train", "val", "test"],
+        )
+
+        file = f"{plot_path}/multiplicity_histograms.pdf"
+        plot_mult_histograms(
+            file,
+            [
+                plot_dict["results_train"]["samples"].numpy(),
+                plot_dict["results_val"]["samples"].numpy(),
+                plot_dict["results_test"]["samples"].numpy(),
+            ],
+            ["train", "val", "test"],
+            bins=cfg.data.max_num_particles
+        )
+
+        file = f"{plot_path}/distributions.pdf"
+        plot_distributions(
+            file,
+            [
+                (plot_dict["results_train"]["params"][:5],plot_dict["results_train"]["samples"][:5,1].numpy()),
+                (plot_dict["results_val"]["params"][:5],plot_dict["results_val"]["samples"][:5,1].numpy()),
+                (plot_dict["results_test"]["params"][:5],plot_dict["results_test"]["samples"][:5,1].numpy()),
+            ],
+            ["train", "val", "test"],
+            title=title,
+            x_max=cfg.data.max_num_particles,
         )
 
 
@@ -141,29 +168,87 @@ def plot_param_histograms(
 ):
     params_labels = ["k", "theta", "coeff"]
     hists = []
+    bins_list = []
+    fill = True
     for params in data:
         hists_mix = []
         for mixture_component in range(params.shape[1]):
-            hist_k, _ = np.histogram(
+            hist_k, bins_k = np.histogram(
                 params[:, mixture_component, 0], bins=bins, range=xrange
             )
-            hist_theta, _ = np.histogram(
+            hist_theta, bins_theta = np.histogram(
                 params[:, mixture_component, 1], bins=bins, range=xrange
             )
-            hist_coeff, _ = np.histogram(
+            hist_coeff, bins_coeff = np.histogram(
                 params[:, mixture_component, 2], bins=bins, range=xrange
             )
             hists_mix.append([hist_k, hist_theta, hist_coeff])
+            if fill:
+                bins_list.append(bins_k)
+                bins_list.append(bins_theta)
+                bins_list.append(bins_coeff)
+                fill = False
         hists.append(hists_mix)
 
     fig, axs = plt.subplots(3, 3, figsize=(18, 12))
+    dup_last = lambda a: np.append(a, a[-1])
+
     for i, hists_mix in enumerate(hists):
         for i_mix, hists_param in enumerate(hists_mix):
             for j, hist in enumerate(hists_param):
                 axs[j, i].step(
-                    bins, hist, linewidth=1.0, where="post", color=colors[i_mix]
+                    bins_list[j], dup_last(hist), label=f"{i_mix+1}", linewidth=1.0, where="post", color=colors[i_mix]
                 )
-            axs[j, i].set_xlabel(f"dataset {labels[i]}, component {params_labels[j]}")
+                axs[j, i].legend(
+                    loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND
+                )
+                axs[j, i].set_title(f"dataset {labels[i]}, component {params_labels[j]}", fontsize=FONTSIZE)
 
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
+
+def plot_mult_histograms(
+    file,
+    data,
+    labels,
+    bins=200,
+):
+    bins = int(max([np.max(dat).item() for dat in data]))
+    hists = []
+    for dat in data:
+        hist_sample, bins = np.histogram(dat[:, 0], bins=bins)
+        hist_target, _ = np.histogram(dat[:, 1], bins=bins)
+        hists.append([hist_sample, hist_target])
+
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    dup_last = lambda a: np.append(a, a[-1])
+    for i, label in enumerate(labels):
+        for hist, label_hist, color in zip(hists[i], ['sample', 'target'], colors[:2]):
+            axs[i].step(bins, dup_last(hist), label=label_hist, linewidth=1.0, where="post", color=color)
+        axs[i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+        axs[i].set_title(f'dataset {label}', fontsize=FONTSIZE)
+
+    fig.savefig(file, format="pdf", bbox_inches="tight")
+    plt.close()
+
+def plot_distributions(
+    file, data, labels, title, x_max
+):
+    x = torch.linspace(0, x_max, 1000).reshape(-1, 1).repeat(1, len(data[0][0]))
+
+    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+
+    for i, dat, label in zip(range(3), data, labels):
+        params, target = dat
+        dist = GammaMixture(params)
+        pdf = dist.log_prob(x).exp().detach().numpy()
+        for j in range(len(params)):
+            axs[i].plot(x[:,j], pdf[:,j], label=f'{j+1}')
+        axs[i].set_title(f'dataset {label}', fontsize=FONTSIZE)
+        axs[i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    
+    fig.savefig(file, format="pdf", bbox_inches="tight")
+    plt.close()
+
+
+

@@ -54,6 +54,10 @@ class MultiplicityDataset(BaseDataset):
             include_keys=["particles", "mults"],
         )
         size = len(data["sim_particles"])
+        shuffle_indices = torch.randperm(size)
+        data["sim_particles"] = data["sim_particles"][shuffle_indices]
+        data["sim_mults"] = data["sim_mults"][shuffle_indices]
+        data["gen_particles"] = data["gen_particles"][shuffle_indices]
         if mode == "train":
             particles = np.array(data["sim_particles"])[: int(split[0] * size)]
             sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]

@@ -646,13 +646,14 @@ class BaseExperiment:
                 for key, value in metric.items():
                     metrics[key].append(value)
         val_loss = np.mean(losses)
+        LOGGER.info(f"Validation loss: {val_loss:.4f}")
         self.val_loss.append(val_loss)
-        for key, values in metrics.items():
-            self.val_metrics[key].append(np.mean(values))
-        if self.cfg.use_mlflow:
-            log_mlflow("val.loss", val_loss, step=step)
-            for key, values in self.val_metrics.items():
-                log_mlflow(f"val.{key}", values[-1], step=step)
+        # for key, values in metrics.items():
+        #     self.val_metrics[key].append(np.mean(values))
+        # if self.cfg.use_mlflow:
+        #     log_mlflow("val.loss", val_loss, step=step)
+        #     for key, values in self.val_metrics.items():
+        #         log_mlflow(f"val.{key}", values[-1], step=step)
         return val_loss
 
     def _save_config(self, filename, to_mlflow=False):

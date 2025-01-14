@@ -1,7 +1,6 @@
 import torch
 import torch.distributions as D
 
-
 class GammaMixture(D.MixtureSameFamily):
     def __init__(self, params):
         assert len(params.shape) == 3 and params.shape[-1] == 3

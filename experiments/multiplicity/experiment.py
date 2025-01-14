@@ -18,7 +18,7 @@ MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
-        self.loss = smoothCELoss(self.cfg.data.max_num_particles)
+        self.loss = lambda dist, target: dist.cross_entropy(target).sum()
 
     def init_physics(self):
         pass
@@ -113,8 +113,8 @@ class MultiplicityExperiment(BaseExperiment):
                 batch_loss, batch_metrics = self._batch_loss(batch)
                 loss += batch_loss
                 params.append(batch_metrics["params"])
-                samples.append(batch_metrics["sample"])
-        metrics["loss"] = loss / len(loader.dataset)
+                samples.append(batch_metrics["samples"])
+        metrics["loss"] = (loss / len(loader.dataset)).cpu().item()
         metrics["params"] = torch.cat(params)
         metrics["samples"] = torch.cat(samples)
         if self.cfg.use_mlflow:
@@ -137,16 +137,20 @@ class MultiplicityExperiment(BaseExperiment):
             plot_dict["results_val"] = self.results_val
         if self.cfg.train:
             plot_dict["train_loss"] = self.train_loss
+            plot_dict["val_loss"] = self.val_loss
+            plot_dict["train_lr"] = self.train_lr
         plot_mixer(self.cfg, plot_path, title, plot_dict)
 
     def _batch_loss(self, batch):
         predicted_dist, label = self._get_predicted_dist_and_label(batch)
-        loss = predicted_dist.cross_entropy(label).sum()
+        loss = predicted_dist.cross_entropy(label).mean()
         assert torch.isfinite(loss).all()
-        LOGGER.debug(f"loss: {loss.item()}")
-        params = predicted_dist.params
-        sample = predicted_dist.sample()
-        metrics = {"params": params, "sample": sample}
+        params = predicted_dist.params.cpu().detach()
+        sample = predicted_dist.sample().cpu().detach()
+        metrics = {
+            "params": params,
+            "samples": torch.cat([sample.unsqueeze(-1), label.unsqueeze(-1).cpu()], dim=-1),
+        }
         return loss, metrics
 
     def _get_predicted_dist_and_label(self, batch, min_sigmaarg=-10, max_sigmaarg=5.0):
@@ -163,4 +167,4 @@ class MultiplicityExperiment(BaseExperiment):
         return predicted_dist, batch.label
 
     def _init_metrics(self):
-        return {}
+        return {"params": [], "samples": []}
