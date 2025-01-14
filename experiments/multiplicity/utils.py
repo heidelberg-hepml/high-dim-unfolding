@@ -14,13 +14,13 @@ class smoothCELoss(nn.Module):
     def forward(self, dist, targets):
         # plot_dists(dist, len(targets))
         logprobs = dist.log_prob(
-            torch.arange(1, self.max_num_particles + 1.1, device=targets.device)
+            torch.arange(1, self.max_num_particles + 1, device=targets.device)
             .unsqueeze(1)
             .repeat(1, len(targets))
         ).transpose(0, 1)
         weights = torch.zeros_like(logprobs, device=targets.device)
         for i in range(len(targets)):
-            weights[i, targets[i]] = 1.0
+            weights[i, targets[i] - 1] = 1.0
         kernel = (
             torch.distributions.Normal(0, self.spread)
             .log_prob(torch.arange(-2, 2 + 1e-5, device=targets.device))
