@@ -12,6 +12,7 @@ runs/
 mlruns/
 outputs/
 scripts/
+logs/
 *~
 
 *.png

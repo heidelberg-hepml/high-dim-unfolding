@@ -126,12 +126,17 @@ class MultiplicityExperiment(BaseExperiment):
         predicted_dist, label = self._get_predicted_dist_and_label(batch)
         loss = self.loss(predicted_dist, label)
         assert torch.isfinite(loss).all()
-
+        print(loss)
         metrics = {}
         return loss, metrics
 
-    def _get_predicted_dist_and_label(self, batch):
-        dist_params = torch.nn.functional.softplus(self.model(batch.x, batch.batch))
+    def _get_predicted_dist_and_label(self, batch, min_sigmaarg=-10, max_sigmaarg=5.0):
+        batch = batch.to(self.device)
+        # avoid inf and 0 (unstable)
+        sigmaarg = torch.clamp(batch.x, min=min_sigmaarg, max=max_sigmaarg)
+        sigma = torch.exp(sigmaarg)
+        assert torch.isfinite(sigma).all()
+        dist_params = torch.nn.functional.softplus(self.model(sigma, batch.batch))
         dist_params = einops.rearrange(
             dist_params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
         )
