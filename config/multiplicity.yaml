@@ -26,6 +26,8 @@ evaluation:
  batchsize: 128
 
 plot: true
+plotting:
+ n_distributions: 20
 
 defaults:
  - model: tr_multiplicity

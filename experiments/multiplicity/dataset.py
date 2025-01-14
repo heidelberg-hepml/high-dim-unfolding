@@ -62,7 +62,7 @@ class MultiplicityDataset(BaseDataset):
             particles = np.array(data["sim_particles"])[: int(split[0] * size)]
             sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]
             gen_mults = np.array(data["gen_mults"], dtype=int)[: int(split[0] * size)]
-        elif mode == "test":
+        elif mode == "val":
             particles = np.array(data["sim_particles"])[
                 int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
             ]
@@ -73,13 +73,13 @@ class MultiplicityDataset(BaseDataset):
                 int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
         else:
-            particles = np.array(data["gen_particles"])[
+            particles = np.array(data["sim_particles"])[
                 int((split[0] + split[1]) * size) :
             ]
-            sim_mults = np.array(data["gen_mults"], dtype=int)[
+            sim_mults = np.array(data["sim_mults"], dtype=int)[
                 int((split[0] + split[1]) * size) :
             ]
-            gen_mults = np.array(data["sim_mults"], dtype=int)[
+            gen_mults = np.array(data["gen_mults"], dtype=int)[
                 int((split[0] + split[1]) * size) :
             ]
 

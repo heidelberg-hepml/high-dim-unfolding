@@ -52,16 +52,15 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
                 plot_dict["results_test"]["samples"].numpy(),
             ],
             ["train", "val", "test"],
-            bins=cfg.data.max_num_particles
         )
 
         file = f"{plot_path}/distributions.pdf"
         plot_distributions(
             file,
             [
-                (plot_dict["results_train"]["params"][:5],plot_dict["results_train"]["samples"][:5,1].numpy()),
-                (plot_dict["results_val"]["params"][:5],plot_dict["results_val"]["samples"][:5,1].numpy()),
-                (plot_dict["results_test"]["params"][:5],plot_dict["results_test"]["samples"][:5,1].numpy()),
+                (plot_dict["results_train"]["params"][:cfg.plotting.n_distributions],plot_dict["results_train"]["samples"][:cfg.plotting.n_distributions,1].numpy()),
+                (plot_dict["results_val"]["params"][:cfg.plotting.n_distributions],plot_dict["results_val"]["samples"][:cfg.plotting.n_distributions,1].numpy()),
+                (plot_dict["results_test"]["params"][:cfg.plotting.n_distributions],plot_dict["results_test"]["samples"][:cfg.plotting.n_distributions,1].numpy()),
             ],
             ["train", "val", "test"],
             title=title,
@@ -211,20 +210,20 @@ def plot_mult_histograms(
     file,
     data,
     labels,
-    bins=200,
 ):
-    bins = int(max([np.max(dat).item() for dat in data]))
+    bins_max = int(max([np.max(dat).item() for dat in data]))
+    bins = np.arange(1, bins_max+1)
     hists = []
     for dat in data:
-        hist_sample, bins = np.histogram(dat[:, 0], bins=bins)
+        hist_sample, _ = np.histogram(dat[:, 0], bins=bins)
         hist_target, _ = np.histogram(dat[:, 1], bins=bins)
-        hists.append([hist_sample, hist_target])
+        hists.append([hist_sample/dat.shape[0], hist_target/dat.shape[0]])
 
     fig, axs = plt.subplots(1, 3, figsize=(18, 6))
     dup_last = lambda a: np.append(a, a[-1])
     for i, label in enumerate(labels):
-        for hist, label_hist, color in zip(hists[i], ['sample', 'target'], colors[:2]):
-            axs[i].step(bins, dup_last(hist), label=label_hist, linewidth=1.0, where="post", color=color)
+        axs[i].step(bins, dup_last(hists[i][0]), label='sample', linewidth=1.0, where="post")
+        axs[i].step(bins, dup_last(hists[i][1]), label='target', linewidth=1.0, where="post")
         axs[i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
         axs[i].set_title(f'dataset {label}', fontsize=FONTSIZE)
 
@@ -243,9 +242,8 @@ def plot_distributions(
         dist = GammaMixture(params)
         pdf = dist.log_prob(x).exp().detach().numpy()
         for j in range(len(params)):
-            axs[i].plot(x[:,j], pdf[:,j], label=f'{j+1}')
+            axs[i].plot(x[:,j], pdf[:,j])
         axs[i].set_title(f'dataset {label}', fontsize=FONTSIZE)
-        axs[i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
