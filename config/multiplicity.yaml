@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_debug
+exp_name: mult_long
 
 seed: 42
 
@@ -8,25 +8,25 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 128
+ length: -1
  split: [0.8, 0.1, 0.1]
  rescale_data: false
  max_num_particles: 152
 
 dist: 
- type: GammaMixture
- n_components: 3
+ type: Categorical
+ n_components: 5
 
 loss:
- type: cross_entropy
+ type: smooth_cross_entropy
  smoothness: 1
 
 train: true
 training:
- iterations: 5000
+ iterations: 100000
  batchsize: 128
  lr: 1e-3
- validate_every_n_steps: 50000000
+ validate_every_n_steps: 5000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
 
 evaluate: true
