@@ -4,7 +4,7 @@ import torch
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.base_plots import plot_loss
-from experiments.multiplicity.distributions import GammaMixture
+from experiments.multiplicity.distributions import GammaMixture, CategoricalDistribution
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -25,24 +25,13 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
         file = f"{plot_path}/loss.pdf"
         plot_loss(
             file,
-            [plot_dict["train_loss"], plot_dict["val_loss"]],
+            [plot_dict["train_loss"], []],
             plot_dict["train_lr"],
             labels=["train loss", "val loss"],
             logy=True,
         )
 
     if cfg.evaluate:
-        file = f"{plot_path}/params_histograms.pdf"
-        plot_param_histograms(
-            file,
-            [
-                plot_dict["results_train"]["params"].numpy(),
-                plot_dict["results_val"]["params"].numpy(),
-                plot_dict["results_test"]["params"].numpy(),
-            ],
-            ["train", "val", "test"],
-        )
-
         file = f"{plot_path}/multiplicity_histograms.pdf"
         plot_mult_histograms(
             file,
@@ -54,17 +43,50 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
             ["train", "val", "test"],
         )
 
-        file = f"{plot_path}/distributions.pdf"
-        plot_distributions(
+        if cfg.dist.type == "GammaMixture":
+            file = f"{plot_path}/params_histograms.pdf"
+            plot_param_histograms(
+                file,
+                [
+                    plot_dict["results_train"]["params"].numpy(),
+                    plot_dict["results_val"]["params"].numpy(),
+                    plot_dict["results_test"]["params"].numpy(),
+                ],
+                ["train", "val", "test"],
+            )
+            file = f"{plot_path}/distributions.pdf"
+            plot_distributions(
+                file,
+                [
+                    (plot_dict["results_train"]["params"][:cfg.plotting.n_distributions],plot_dict["results_train"]["samples"].numpy()),
+                    (plot_dict["results_val"]["params"][:cfg.plotting.n_distributions],plot_dict["results_val"]["samples"].numpy()),
+                    (plot_dict["results_test"]["params"][:cfg.plotting.n_distributions],plot_dict["results_test"]["samples"].numpy()),
+                ],
+                ["train", "val", "test"],
+                x_max=cfg.data.max_num_particles,
+                distribution = GammaMixture,
+            )
+        elif cfg.dist.type == "Categorical":
+            file = f"{plot_path}/distributions.pdf"
+            plot_distributions(
+                file,
+                [
+                    (plot_dict["results_train"]["params"][:cfg.plotting.n_distributions],plot_dict["results_train"]["samples"].numpy()),
+                    (plot_dict["results_val"]["params"][:cfg.plotting.n_distributions],plot_dict["results_val"]["samples"].numpy()),
+                    (plot_dict["results_test"]["params"][:cfg.plotting.n_distributions],plot_dict["results_test"]["samples"].numpy()),
+                ],
+                ["train", "val", "test"],
+                x_max=cfg.data.max_num_particles,
+                distribution = 'categorical',
+            )
+        file = f"{plot_path}/main_histogram.pdf"
+        plot_histograms(
             file,
             [
-                (plot_dict["results_train"]["params"][:cfg.plotting.n_distributions],plot_dict["results_train"]["samples"][:cfg.plotting.n_distributions,1].numpy()),
-                (plot_dict["results_val"]["params"][:cfg.plotting.n_distributions],plot_dict["results_val"]["samples"][:cfg.plotting.n_distributions,1].numpy()),
-                (plot_dict["results_test"]["params"][:cfg.plotting.n_distributions],plot_dict["results_test"]["samples"][:cfg.plotting.n_distributions,1].numpy()),
+                plot_dict["results_test"]["samples"][:, 1].numpy(),
+                plot_dict["results_test"]["samples"][:, 0].numpy(),
             ],
-            ["train", "val", "test"],
-            title=title,
-            x_max=cfg.data.max_num_particles,
+            ["target", "prediction"],
         )
 
 
@@ -82,6 +104,7 @@ def plot_histograms(
     ratio_ticks=[0.9, 1.0, 1.1],
 ):
     hists = []
+    bins = np.arange(1, np.max(np.array(data))+1)
     for dat in data:
         hist, bins = np.histogram(dat, bins=bins, range=xrange)
         hists.append(hist)
@@ -201,7 +224,7 @@ def plot_param_histograms(
                 axs[j, i].legend(
                     loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND
                 )
-                axs[j, i].set_title(f"dataset {labels[i]}, component {params_labels[j]}", fontsize=FONTSIZE)
+                axs[j, i].set_title(f"{labels[i]} dataset, component {params_labels[j]}", fontsize=FONTSIZE)
 
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
@@ -217,34 +240,60 @@ def plot_mult_histograms(
     for dat in data:
         hist_sample, _ = np.histogram(dat[:, 0], bins=bins)
         hist_target, _ = np.histogram(dat[:, 1], bins=bins)
-        hists.append([hist_sample/dat.shape[0], hist_target/dat.shape[0]])
+        hist_diff_sample, bins_diff = np.histogram(dat[:, 0]-dat[:, 2], bins=60)
+        hist_diff_target, _ = np.histogram(dat[:, 1]-dat[:, 2], bins=bins_diff)
+        hists.append([hist_sample/dat.shape[0], hist_target/dat.shape[0], hist_diff_sample/dat.shape[0], hist_diff_target/dat.shape[0]])
 
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    fig, axs = plt.subplots(2, 3, figsize=(18, 12))
     dup_last = lambda a: np.append(a, a[-1])
     for i, label in enumerate(labels):
-        axs[i].step(bins, dup_last(hists[i][0]), label='sample', linewidth=1.0, where="post")
-        axs[i].step(bins, dup_last(hists[i][1]), label='target', linewidth=1.0, where="post")
-        axs[i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-        axs[i].set_title(f'dataset {label}', fontsize=FONTSIZE)
+        axs[0, i].step(bins, dup_last(hists[i][0]), label='sample', linewidth=1.0, where="post")
+        axs[0, i].step(bins, dup_last(hists[i][1]), label='target', linewidth=1.0, where="post")
+        axs[0, i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+        axs[0, i].set_title(f'{label} dataset', fontsize=FONTSIZE)
+        axs[1, i].step(bins_diff, dup_last(hists[i][2]), label='sample', linewidth=1.0, where="post")
+        axs[1, i].step(bins_diff, dup_last(hists[i][3]), label='target', linewidth=1.0, where="post")
+        axs[1, i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+        axs[1, i].set_title(f'{label} dataset', fontsize=FONTSIZE)
 
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
 
 def plot_distributions(
-    file, data, labels, title, x_max
+    file, data, labels, x_max, distribution, n_plots=6
 ):
-    x = torch.linspace(0, x_max, 1000).reshape(-1, 1).repeat(1, len(data[0][0]))
 
-    fig, axs = plt.subplots(1, 3, figsize=(18, 6))
+    fig, axs = plt.subplots(n_plots+1, 3, figsize=(15, 20))
 
     for i, dat, label in zip(range(3), data, labels):
         params, target = dat
-        dist = GammaMixture(params)
-        pdf = dist.log_prob(x).exp().detach().numpy()
-        for j in range(len(params)):
-            axs[i].plot(x[:,j], pdf[:,j])
-        axs[i].set_title(f'dataset {label}', fontsize=FONTSIZE)
-    
+        if distribution == 'categorical':
+            bins = np.arange(1, x_max+1)
+            for logits in params:
+                axs[0, i].step(bins, logits)
+        else:
+            x = torch.linspace(0, x_max, 1000).reshape(-1, 1).repeat(1, len(params))
+            dist = distribution(params)
+            pdf = dist.log_prob(x).exp().detach().numpy()
+            for j in range(len(params)):
+                axs[0, i].plot(x[:,j], pdf[:,j])
+        axs[0, i].set_title(f'{label} dataset', fontsize=FONTSIZE)
+
+    params = data[0][0]
+    target = data[0][1]
+    for i in range(3):
+        for j in range(n_plots):
+            if distribution == 'categorical':
+                axs[j+1, i].step(bins, params[i+3*j], label='predicted mult dist')
+            else:
+                x = torch.linspace(0, x_max, 1000).reshape(-1, 1).repeat(1, len(params))
+                dist = distribution(params)
+                pdf = dist.log_prob(x).exp().detach().numpy()
+                axs[j+1, i].plot(x[:, i+3*j], pdf[:, i+3*j], label=f'predicted mult dist')
+            axs[j+1, i].axvline(target[i+3*j, 1], c='red', label='target mult')
+            axs[j+1, i].axvline(target[i+3*j, 2], c='green', label='base mult')
+            axs[j+1, i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
 

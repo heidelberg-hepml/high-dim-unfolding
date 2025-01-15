@@ -2,13 +2,14 @@ import numpy as np
 import einops
 import torch
 from torch_geometric.loader import DataLoader
+import energyflow
 
 import os, time
 from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
 from experiments.multiplicity.dataset import MultiplicityDataset
-from experiments.multiplicity.distributions import GammaMixture
+from experiments.multiplicity.distributions import GammaMixture, CategoricalDistribution,cross_entropy, smooth_cross_entropy
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -18,10 +19,25 @@ MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
-        self.loss = lambda dist, target: dist.cross_entropy(target).sum()
+        if self.cfg.loss.type == "cross_entropy":
+            if self.cfg.dist.type == "Categorical":
+                self.loss = lambda dist, target: cross_entropy(dist,target - 1).sum()
+            else:
+                self.loss = lambda dist, target: cross_entropy(dist,target).sum()
+        elif self.cfg.loss.type == "smooth_cross_entropy":
+            if self.cfg.dist.type == "Categorical":
+                self.loss = lambda dist, target: smooth_cross_entropy(dist,target - 1, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
+            else:
+                self.loss = lambda dist, target: smooth_cross_entropy(dist,target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
 
     def init_physics(self):
-        pass
+        with open_dict(self.cfg):
+            if self.cfg.dist.type == "GammaMixture":
+                self.distribution = GammaMixture
+                self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
+            elif self.cfg.dist.type == "Categorical":
+                self.distribution = CategoricalDistribution
+                self.cfg.model.net.out_channels = self.cfg.data.max_num_particles
 
     def init_data(self):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
@@ -31,29 +47,41 @@ class MultiplicityExperiment(BaseExperiment):
         LOGGER.info(f"Creating {Dataset.__name__} from {data_path}")
         t0 = time.time()
         kwargs = {"rescale_data": self.cfg.data.rescale_data}
+
+        data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=self.cfg.data.length,
+            pad=True,
+            cache_dir=data_path,
+            include_keys=["particles", "mults"],
+        )
+
+        shuffle_indices = torch.randperm(self.cfg.data.length)
+        data["sim_particles"] = data["sim_particles"][shuffle_indices]
+        data["sim_mults"] = data["sim_mults"][shuffle_indices]
+        data["gen_mults"] = data["gen_mults"][shuffle_indices]
+
         self.data_train = Dataset(**kwargs)
         self.data_test = Dataset(**kwargs)
         self.data_val = Dataset(**kwargs)
         self.data_train.load_data(
-            data_path,
-            n_elements=self.cfg.data.length,
+            data,
             mode="train",
             split=self.cfg.data.split,
         )
         self.data_test.load_data(
-            data_path,
-            n_elements=self.cfg.data.length,
+            data,
             mode="test",
             split=self.cfg.data.split,
         )
         self.data_val.load_data(
-            data_path,
-            n_elements=self.cfg.data.length,
+            data,
             mode="val",
             split=self.cfg.data.split,
         )
         dt = time.time() - t0
         LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt/60:.2f} min")
+        del data
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
@@ -143,27 +171,25 @@ class MultiplicityExperiment(BaseExperiment):
 
     def _batch_loss(self, batch):
         predicted_dist, label = self._get_predicted_dist_and_label(batch)
-        loss = predicted_dist.cross_entropy(label).mean()
+        loss = self.loss(predicted_dist, label)
         assert torch.isfinite(loss).all()
         params = predicted_dist.params.cpu().detach()
         sample = predicted_dist.sample().cpu().detach()
+        sim_mult = torch.tensor(batch.sim_mult)
         metrics = {
             "params": params,
-            "samples": torch.cat([sample.unsqueeze(-1), label.unsqueeze(-1).cpu()], dim=-1),
+            "samples": torch.stack([sample, label.cpu(), sim_mult], dim=-1),
         }
         return loss, metrics
 
     def _get_predicted_dist_and_label(self, batch, min_sigmaarg=-10, max_sigmaarg=5.0):
         batch = batch.to(self.device)
+        output = self.model(batch.x, batch.batch)
         # avoid inf and 0 (unstable)
-        sigmaarg = torch.clamp(batch.x, min=min_sigmaarg, max=max_sigmaarg)
+        sigmaarg = torch.clamp(output, min=min_sigmaarg, max=max_sigmaarg)
         sigma = torch.exp(sigmaarg)
         assert torch.isfinite(sigma).all()
-        dist_params = torch.nn.functional.softplus(self.model(sigma, batch.batch))
-        dist_params = einops.rearrange(
-            dist_params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
-        )
-        predicted_dist = GammaMixture(dist_params)
+        predicted_dist = self.distribution(sigma)
         return predicted_dist, batch.label
 
     def _init_metrics(self):

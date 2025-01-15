@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import energyflow
 from torch_geometric.data import Data
+from experiments.logger import LOGGER
 
 EPS = 1e-5
 
@@ -25,8 +26,7 @@ class BaseDataset(torch.utils.data.Dataset):
 class MultiplicityDataset(BaseDataset):
     def load_data(
         self,
-        filename,
-        n_elements,
+        data,
         mode,
         split=[0.8, 0.1, 0.1],
         mass=0.1,
@@ -46,18 +46,9 @@ class MultiplicityDataset(BaseDataset):
         dtype : torch.dtype
             Data type of the tensors
         """
-        data = energyflow.zjets_delphes.load(
-            "Herwig",
-            num_data=n_elements,
-            pad=True,
-            cache_dir=filename,
-            include_keys=["particles", "mults"],
-        )
+
         size = len(data["sim_particles"])
-        shuffle_indices = torch.randperm(size)
-        data["sim_particles"] = data["sim_particles"][shuffle_indices]
-        data["sim_mults"] = data["sim_mults"][shuffle_indices]
-        data["gen_particles"] = data["gen_particles"][shuffle_indices]
+
         if mode == "train":
             particles = np.array(data["sim_particles"])[: int(split[0] * size)]
             sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]
@@ -96,5 +87,5 @@ class MultiplicityDataset(BaseDataset):
             fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
             label = labels[i, ...]
 
-            data = Data(x=fourmomenta, scalars=scalars, label=label)
+            data = Data(x=fourmomenta, scalars=scalars, label=label, sim_mult=sim_mults[i])
             self.data_list.append(data)
