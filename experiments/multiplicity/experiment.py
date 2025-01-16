@@ -20,15 +20,9 @@ MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
         if self.cfg.loss.type == "cross_entropy":
-            if self.cfg.dist.type == "Categorical":
-                self.loss = lambda dist, target: cross_entropy(dist,target - 1).sum()
-            else:
-                self.loss = lambda dist, target: cross_entropy(dist,target).sum()
+            self.loss = lambda dist, target: cross_entropy(dist,target).sum()
         elif self.cfg.loss.type == "smooth_cross_entropy":
-            if self.cfg.dist.type == "Categorical":
-                self.loss = lambda dist, target: smooth_cross_entropy(dist,target - 1, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
-            else:
-                self.loss = lambda dist, target: smooth_cross_entropy(dist,target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
+            self.loss = lambda dist, target: smooth_cross_entropy(dist,target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
 
     def init_physics(self):
         with open_dict(self.cfg):

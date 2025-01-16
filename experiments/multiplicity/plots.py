@@ -219,7 +219,7 @@ def plot_param_histograms(
         for i_mix, hists_param in enumerate(hists_mix):
             for j, hist in enumerate(hists_param):
                 axs[j, i].step(
-                    bins_list[j], dup_last(hist), label=f"{i_mix+1}", linewidth=1.0, where="post", color=colors[i_mix]
+                    bins_list[j], dup_last(hist), label=f"{i_mix+1}", linewidth=1.0, where="post"
                 )
                 axs[j, i].legend(
                     loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND
