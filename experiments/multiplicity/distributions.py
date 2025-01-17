@@ -47,3 +47,18 @@ class CategoricalDistribution(D.Categorical):
     def __init__(self, logits):
         super().__init__(logits=logits)
         self.params = logits
+
+class GaussianMixture(D.MixtureSameFamily):
+    def __init__(self, params):
+        if len(params.shape) == 2:
+            params = einops.rearrange(
+                params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
+            )
+        self.params = params
+        mix = D.Categorical(torch.ones_like(params[:, :, 2]))
+        gammas = D.Normal(params[:, :, 0], params[:, :, 1])
+        super().__init__(mix, gammas)
+
+    def sample(self, *args, **kwargs):
+        samples = super().sample(*args, **kwargs)
+        return torch.round(samples)

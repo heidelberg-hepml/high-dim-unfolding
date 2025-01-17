@@ -4,7 +4,7 @@ import torch
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.base_plots import plot_loss
-from experiments.multiplicity.distributions import GammaMixture, CategoricalDistribution
+from experiments.multiplicity.distributions import GammaMixture, GaussianMixture, CategoricalDistribution
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -65,6 +65,29 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
                 ["train", "val", "test"],
                 x_max=cfg.data.max_num_particles,
                 distribution = GammaMixture,
+            )
+        elif cfg.dist.type == "GaussianMixture":
+            file = f"{plot_path}/params_histograms.pdf"
+            plot_param_histograms(
+                file,
+                [
+                    plot_dict["results_train"]["params"].numpy(),
+                    plot_dict["results_val"]["params"].numpy(),
+                    plot_dict["results_test"]["params"].numpy(),
+                ],
+                ["train", "val", "test"],
+            )
+            file = f"{plot_path}/distributions.pdf"
+            plot_distributions(
+                file,
+                [
+                    (plot_dict["results_train"]["params"][:cfg.plotting.n_distributions],plot_dict["results_train"]["samples"].numpy()),
+                    (plot_dict["results_val"]["params"][:cfg.plotting.n_distributions],plot_dict["results_val"]["samples"].numpy()),
+                    (plot_dict["results_test"]["params"][:cfg.plotting.n_distributions],plot_dict["results_test"]["samples"].numpy()),
+                ],
+                ["train", "val", "test"],
+                x_max=cfg.data.max_num_particles,
+                distribution = GaussianMixture,
             )
         elif cfg.dist.type == "Categorical":
             file = f"{plot_path}/distributions.pdf"

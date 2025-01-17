@@ -9,7 +9,7 @@ from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
 from experiments.multiplicity.dataset import MultiplicityDataset
-from experiments.multiplicity.distributions import GammaMixture, CategoricalDistribution,cross_entropy, smooth_cross_entropy
+from experiments.multiplicity.distributions import GammaMixture, CategoricalDistribution, GaussianMixture, cross_entropy, smooth_cross_entropy
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -20,7 +20,7 @@ MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
         if self.cfg.loss.type == "cross_entropy":
-            self.loss = lambda dist, target: cross_entropy(dist,target).sum()
+            self.loss = lambda dist, target: cross_entropy(dist,target).mean()
         elif self.cfg.loss.type == "smooth_cross_entropy":
             self.loss = lambda dist, target: smooth_cross_entropy(dist,target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
 
@@ -28,6 +28,9 @@ class MultiplicityExperiment(BaseExperiment):
         with open_dict(self.cfg):
             if self.cfg.dist.type == "GammaMixture":
                 self.distribution = GammaMixture
+                self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
+            elif self.cfg.dist.type == "GaussianMixture":
+                self.distribution = GaussianMixture
                 self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
             elif self.cfg.dist.type == "Categorical":
                 self.distribution = CategoricalDistribution
