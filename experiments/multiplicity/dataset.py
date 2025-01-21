@@ -80,12 +80,14 @@ class MultiplicityDataset(BaseDataset):
         # create list of torch_geometric.data.Data objects
         self.data_list = []
         for i in range(kinematics.shape[0]):
-            scalars = kinematics[
-                i, : sim_mults[i], -1
-            ].clone()  # store PID as scalar info
+            scalars = (
+                kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
+            )  # store PID as scalar info
             fourmomenta = kinematics[i, : sim_mults[i]]
             fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
             label = labels[i, ...]
 
-            data = Data(x=fourmomenta, scalars=scalars, label=label, sim_mult=sim_mults[i])
+            data = Data(
+                x=fourmomenta, scalars=scalars, label=label, sim_mult=sim_mults[i]
+            )
             self.data_list.append(data)

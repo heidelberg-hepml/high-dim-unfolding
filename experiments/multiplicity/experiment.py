@@ -9,8 +9,16 @@ from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
 from experiments.multiplicity.dataset import MultiplicityDataset
-from experiments.multiplicity.distributions import GammaMixture, CategoricalDistribution, GaussianMixture, cross_entropy, smooth_cross_entropy
+from experiments.multiplicity.distributions import (
+    GammaMixture,
+    CategoricalDistribution,
+    GaussianMixture,
+    cross_entropy,
+    smooth_cross_entropy,
+)
 from experiments.multiplicity.plots import plot_mixer
+from experiments.eventgen.helpers import jetmomenta_to_fourmomenta
+from experiments.tagging.embedding import embed_tagging_data_into_ga
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 
@@ -20,21 +28,67 @@ MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
         if self.cfg.loss.type == "cross_entropy":
-            self.loss = lambda dist, target: cross_entropy(dist,target).mean()
+            self.loss = lambda dist, target: cross_entropy(dist, target).mean()
         elif self.cfg.loss.type == "smooth_cross_entropy":
-            self.loss = lambda dist, target: smooth_cross_entropy(dist,target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness).sum()
+            self.loss = lambda dist, target: smooth_cross_entropy(
+                dist, target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness
+            ).sum()
 
     def init_physics(self):
+
+        self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+
         with open_dict(self.cfg):
-            if self.cfg.dist.type == "GammaMixture":
-                self.distribution = GammaMixture
-                self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
-            elif self.cfg.dist.type == "GaussianMixture":
-                self.distribution = GaussianMixture
-                self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
-            elif self.cfg.dist.type == "Categorical":
-                self.distribution = CategoricalDistribution
-                self.cfg.model.net.out_channels = self.cfg.data.max_num_particles
+            if self.modelname == "Transformer":
+                if self.cfg.dist.type == "GammaMixture":
+                    self.distribution = GammaMixture
+                    self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
+                elif self.cfg.dist.type == "GaussianMixture":
+                    self.distribution = GaussianMixture
+                    self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
+                elif self.cfg.dist.type == "Categorical":
+                    self.distribution = CategoricalDistribution
+                    self.cfg.model.net.out_channels = self.cfg.data.max_num_particles
+            elif self.modelname == "GATr":
+                if self.cfg.dist.type == "GammaMixture":
+                    self.distribution = GammaMixture
+                    self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
+                elif self.cfg.dist.type == "GaussianMixture":
+                    self.distribution = GaussianMixture
+                    self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
+                elif self.cfg.dist.type == "Categorical":
+                    self.distribution = CategoricalDistribution
+                    self.cfg.model.net.out_mv_channels = self.cfg.data.max_num_particles
+                # global token?
+                self.cfg.data.include_global_token = not self.cfg.model.mean_aggregation
+                self.cfg.model.net.in_mv_channels = 1
+
+                # extra scalar channels
+                if self.cfg.data.add_pid:
+                    self.cfg.model.net.in_s_channels += 1
+                if self.cfg.data.add_scalar_features:
+                    self.cfg.model.net.in_s_channels += 7
+                if self.cfg.data.include_global_token:
+                    self.cfg.model.net.in_s_channels += self.cfg.data.num_global_tokens
+
+                # extra mv channels for beam_reference and time_reference
+                if not self.cfg.data.beam_token:
+                    self.cfg.model.net.in_mv_channels += get_num_spurions(
+                        self.cfg.data.beam_reference,
+                        self.cfg.data.add_time_reference,
+                        self.cfg.data.two_beams,
+                        self.cfg.data.add_xzplane,
+                        self.cfg.data.add_yzplane,
+                    )
+
+                # reinsert channels
+                if self.cfg.data.reinsert_channels:
+                    self.cfg.model.net.reinsert_mv_channels = list(
+                        range(self.cfg.model.net.in_mv_channels)
+                    )
+                    self.cfg.model.net.reinsert_s_channels = list(
+                        range(self.cfg.model.net.in_s_channels)
+                    )
 
     def init_data(self):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
@@ -181,7 +235,16 @@ class MultiplicityExperiment(BaseExperiment):
 
     def _get_predicted_dist_and_label(self, batch, min_sigmaarg=-10, max_sigmaarg=5.0):
         batch = batch.to(self.device)
-        output = self.model(batch.x, batch.batch)
+        if self.modelname == "Transformer":
+            output = self.model(batch.x, batch.batch)
+        elif self.modelname == "GATr":
+            embedding = embed_tagging_data_into_ga(
+                jetmomenta_to_fourmomenta(batch.x),
+                batch.scalars,
+                batch.ptr,
+                self.cfg.data,
+            )
+            output = self.model(embedding)
         # avoid inf and 0 (unstable)
         sigmaarg = torch.clamp(output, min=min_sigmaarg, max=max_sigmaarg)
         sigma = torch.exp(sigmaarg)
