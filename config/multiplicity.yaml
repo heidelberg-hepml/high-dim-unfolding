@@ -23,12 +23,12 @@ data:
  reinsert_channels: false
 
 dist: 
- type: GammaMixture
+ type: Categorical
  n_components: 3
 
 loss:
- type: cross_entropy
- smoothness: 2
+ type: smooth_cross_entropy
+ smoothness: 3
 
 train: true
 training:
@@ -36,7 +36,7 @@ training:
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 5000
- force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
 
 evaluate: true
 evaluation:
