@@ -159,9 +159,9 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
             plot_dict["results_test"]["samples"][:, 1].numpy(),
             plot_dict["results_test"]["samples"][:, 0].numpy(),
             title=title,
-            xlabel="multiplicity",
+            xlabel=r"\text{Multiplicity}",
             xrange=[1, 152],
-            model_label="Tr",
+            model_label="Model",
         )
         file = f"{plot_path}/main_histogram2.pdf"
         plot_histograms(

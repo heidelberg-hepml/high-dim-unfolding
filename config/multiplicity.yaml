@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_gatr_debug
+exp_name: mult_tr_debug
 
 seed: 42
 
@@ -23,11 +23,11 @@ data:
  reinsert_channels: false
 
 dist: 
- type: Categorical
+ type: GammaMixture
  n_components: 3
 
 loss:
- type: smooth_cross_entropy
+ type: cross_entropy
  smoothness: 3
 
 train: true
@@ -36,7 +36,7 @@ training:
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 5000
- force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
 
 evaluate: true
 evaluation:
@@ -47,6 +47,6 @@ plotting:
  n_distributions: 128
 
 defaults:
- - model: gatr_multiplicity
+ - model: tr_multiplicity
  - default
  - _self_

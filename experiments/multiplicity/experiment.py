@@ -32,7 +32,7 @@ class MultiplicityExperiment(BaseExperiment):
         elif self.cfg.loss.type == "smooth_cross_entropy":
             self.loss = lambda dist, target: smooth_cross_entropy(
                 dist, target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness
-            ).sum()
+            ).mean()
 
     def init_physics(self):
 
