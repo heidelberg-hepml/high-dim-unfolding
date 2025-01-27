@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 import energyflow
-from torch_geometric.data import Data
+from torch_geometric.data import Data, Batch
 from experiments.logger import LOGGER
 from experiments.eventgen.helpers import jetmomenta_to_fourmomenta
 
@@ -90,11 +90,15 @@ class UnfoldingDataset(BaseDataset):
         self.data_list = []
         for i in range(sim_kinematics.shape[0]):
             if save_pid:
-                scalars = (
+                sim_scalars = (
                     sim_kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
                 )  # store PID as scalar info
+                gen_scalars = (
+                    gen_kinematics[i, : gen_mults[i], -1].clone().unsqueeze(-1)
+                )  # store PID as scalar info
             else:
-                scalars = torch.zeros((sim_mults[i], 0))
+                sim_scalars = torch.zeros((sim_mults[i], 0))
+                gen_scalars = torch.zeros((gen_mults[i], 0))
 
             sim_fourmomenta = sim_kinematics[i, : sim_mults[i]]
             sim_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
@@ -104,9 +108,18 @@ class UnfoldingDataset(BaseDataset):
             gen_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
             gen_fourmomenta = jetmomenta_to_fourmomenta(gen_fourmomenta)
 
-            data = Data(
+            data_sim = Data(
                 x=sim_fourmomenta,
-                scalars=scalars,
-                y=gen_fourmomenta,
+                scalars=sim_scalars,
             )
-            self.data_list.append(data)
+            data_gen = Data(
+                x=gen_fourmomenta,
+                scalars=gen_scalars,
+            )
+            self.data_list.append((data_sim, data_gen))
+
+
+def collate(data_list):
+    batch_sim = Batch.from_data_list([data[0] for data in data_list])
+    batch_gen = Batch.from_data_list([data[1] for data in data_list])
+    return batch_sim, batch_gen

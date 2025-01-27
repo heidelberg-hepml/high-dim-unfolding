@@ -49,6 +49,26 @@ class MultiplicityTransformerWrapper(nn.Module):
         return outputs
 
 
+class MultiplicityConditionalTransformerWrapper(nn.Module):
+    def __init__(self, net, force_xformers=False):
+        super().__init__()
+        self.net = net
+        self.force_xformers = force_xformers
+        self.aggregation = MeanAggregation()
+
+    def forward(self, batch, ptr):
+        mask = xformers_sa_mask(ptr, materialize=not self.force_xformers)
+        outputs = self.net(
+            x=batch.unsqueeze(0),
+            condition=batch.unsqueeze(0),
+            attention_mask=mask,
+            condition_attention_mask=mask,
+            crossattention_mask=mask,
+        )
+        outputs = self.aggregation(outputs, ptr).squeeze(0)
+        return outputs
+
+
 class MultiplicityGATrWrapper(nn.Module):
     """
     L-GATr for multiplicity
