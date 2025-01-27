@@ -45,11 +45,17 @@ class OnShellDistribution(BaseDistribution):
         fourmomenta = self.propose(
             shape, device=device, dtype=dtype, generator=generator
         )
-        fourmomenta[..., 3] = self.onshell_mass.to(device, dtype=dtype)
+        self.onshell_mass = (
+            self.onshell_mass.to(device, dtype=dtype).expand(fourmomenta.shape[:-1])
+            / self.units
+        )
+        fourmomenta[..., 0] = self.onshell_mass**2 + torch.sum(
+            fourmomenta[..., 1:] ** 2, dim=-1
+        )
         return fourmomenta
 
 
-class NaivePPPM2(OnShellDistribution):
+class NaivePPP(OnShellDistribution):
     """Base distribution 1: 3-momentum from standard normal"""
 
     def __init__(self, *args, **kwargs):
@@ -71,7 +77,29 @@ class NaivePPPM2(OnShellDistribution):
         return log_prob
 
 
-class StandardLogPtPhiEtaLogM2(RejectionDistribution):
+class StandardPPP(OnShellDistribution):
+    """Base distribution 1: 3-momentum from standard normal"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coordinates = c.StandardPPPM2()
+
+    def propose(self, shape, device, dtype, generator=None):
+        eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+        fourmomenta = self.coordinates.x_to_fourmomenta(eps)
+        return fourmomenta
+
+    def log_prob(self, fourmomenta):
+        pppm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(pppm2)
+        log_prob[..., 3] = 0.0  # fixed mass does not contribute
+        log_prob = log_prob.sum(dim=[-1, -2]).unsqueeze(-1)
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(pppm2)[0]
+        log_prob = log_prob + logdetjac
+        return log_prob
+
+
+class StandardLogPtPhiEta(RejectionDistribution):
     """Base distribution 4: phi uniform; eta, log(pt) and log(mass) from fitted normal"""
 
     def __init__(self, *args, **kwargs):

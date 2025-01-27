@@ -31,6 +31,7 @@ class UnfoldingDataset(BaseDataset):
         mode,
         split=[0.8, 0.1, 0.1],
         mass=0.1,
+        save_pid=False,
         dtype=torch.float32,
     ):
         """
@@ -88,9 +89,13 @@ class UnfoldingDataset(BaseDataset):
         # create list of torch_geometric.data.Data objects
         self.data_list = []
         for i in range(sim_kinematics.shape[0]):
-            scalars = (
-                sim_kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
-            )  # store PID as scalar info
+            if save_pid:
+                scalars = (
+                    sim_kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
+                )  # store PID as scalar info
+            else:
+                scalars = torch.zeros((sim_mults[i], 0))
+
             sim_fourmomenta = sim_kinematics[i, : sim_mults[i]]
             sim_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
             sim_fourmomenta = jetmomenta_to_fourmomenta(sim_fourmomenta)
