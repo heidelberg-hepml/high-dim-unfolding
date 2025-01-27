@@ -37,6 +37,10 @@ class MultiplicityExperiment(BaseExperiment):
     def init_physics(self):
 
         self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+        if self.modelname == "ConditionalTransformer":
+            self.modelname = "Transformer"
+        elif self.modelname == "ConditionalGATr":
+            self.modelname = "GATr"
 
         with open_dict(self.cfg):
             if self.modelname == "Transformer":
@@ -61,6 +65,8 @@ class MultiplicityExperiment(BaseExperiment):
                     self.cfg.model.net.out_mv_channels = self.cfg.data.max_num_particles
                 # global token?
                 self.cfg.data.include_global_token = not self.cfg.model.mean_aggregation
+                if not self.cfg.data.include_global_token:
+                    self.cfg.data.num_global_tokens = 0
                 self.cfg.model.net.in_mv_channels = 1
 
                 # extra scalar channels
@@ -205,7 +211,7 @@ class MultiplicityExperiment(BaseExperiment):
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
         os.makedirs(plot_path, exist_ok=True)
-        model_title = MODEL_TITLE_DICT[type(self.model.net).__name__]
+        model_title = MODEL_TITLE_DICT[self.modelname]
         title = model_title
         LOGGER.info(f"Creating plots in {plot_path}")
 

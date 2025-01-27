@@ -22,10 +22,12 @@ import experiments.logger
 from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER
 from experiments.mlflow import log_mlflow
 
-from gatr.layers import MLPConfig, SelfAttentionConfig
+from gatr.layers import MLPConfig, SelfAttentionConfig, CrossAttentionConfig
 
 cs = ConfigStore.instance()
 cs.store(name="base_attention", node=SelfAttentionConfig)
+cs.store(name="base_attention_condition", node=SelfAttentionConfig)
+cs.store(name="base_cross_attention", node=CrossAttentionConfig)
 cs.store(name="base_mlp", node=MLPConfig)
 
 # set to 'True' to debug autograd issues (slows down code)
@@ -580,9 +582,11 @@ class BaseExperiment:
         grad_norm = (
             torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
-                self.cfg.training.clip_grad_norm
-                if self.cfg.training.clip_grad_norm is not None
-                else float("inf"),
+                (
+                    self.cfg.training.clip_grad_norm
+                    if self.cfg.training.clip_grad_norm is not None
+                    else float("inf")
+                ),
                 error_if_nonfinite=False,
             )
             .cpu()

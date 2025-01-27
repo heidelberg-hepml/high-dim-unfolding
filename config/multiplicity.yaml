@@ -8,7 +8,7 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 1000
+ length: -1
  split: [0.8, 0.1, 0.1]
  rescale_data: false
  max_num_particles: 152
@@ -32,7 +32,7 @@ loss:
 
 train: true
 training:
- iterations: 1000
+ iterations: 10000
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 5000
@@ -47,6 +47,6 @@ plotting:
  n_distributions: 128
 
 defaults:
- - model: tr_multiplicity
+ - model: cgatr_multiplicity
  - default
  - _self_

@@ -109,3 +109,53 @@ class MultiplicityGATrWrapper(nn.Module):
         else:
             params = outputs[is_global]
         return params
+
+
+class MultiplicityConditionalGATrWrapper(nn.Module):
+    """
+    L-GATr for multiplicity
+    """
+
+    def __init__(
+        self,
+        net,
+        mean_aggregation=False,
+        force_xformers=True,
+    ):
+        super().__init__()
+        self.net = net
+        self.aggregation = MeanAggregation() if mean_aggregation else None
+        self.force_xformers = force_xformers
+
+    def forward(self, embedding):
+        input_multivector = embedding["mv"].unsqueeze(0)
+        input_scalars = embedding["s"].unsqueeze(0)
+        condition_multivector = embedding["mv"].unsqueeze(0)
+        condition_scalars = embedding["s"].unsqueeze(0)
+
+        mask = xformers_sa_mask(embedding["batch"], materialize=not self.force_xformers)
+        multivector_outputs, scalar_outputs = self.net(
+            multivectors=input_multivector,
+            multivectors_condition=condition_multivector,
+            scalars=input_scalars,
+            scalars_condition=condition_scalars,
+            attention_mask=mask,
+            attention_mask_condition=mask,
+            crossattention_mask=mask,
+        )
+        params = self.extract_from_ga(
+            multivector_outputs,
+            scalar_outputs,
+            embedding["batch"],
+            embedding["is_global"],
+        )
+
+        return params
+
+    def extract_from_ga(self, multivector, scalars, batch, is_global):
+        outputs = extract_scalar(multivector)[0, :, :, 0]
+        if self.aggregation is not None:
+            params = self.aggregation(outputs, index=batch)
+        else:
+            params = outputs[is_global]
+        return params
