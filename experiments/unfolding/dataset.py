@@ -1,38 +1,107 @@
 import torch
+import numpy as np
+import energyflow
+from torch_geometric.data import Data
+from experiments.logger import LOGGER
+from experiments.eventgen.helpers import jetmomenta_to_fourmomenta
+
+EPS = 1e-5
 
 
-class EventDataset(torch.utils.data.Dataset):
-    def __init__(self, events, dtype):
-        self.events = [
-            torch.tensor(events_onedataset, dtype=dtype) for events_onedataset in events
-        ]
-        self.events_eff = [e.clone() for e in self.events]
-        self.lens = [len(events_onedataset) for events_onedataset in self.events]
+class BaseDataset(torch.utils.data.Dataset):
+
+    def __init__(self, rescale_data):
+        super().__init__()
+        self.rescale_data = rescale_data
+
+    def load_data(self, filename, mode):
+        raise NotImplementedError
 
     def __len__(self):
-        return max(self.lens)
+        return len(self.data_list)
 
     def __getitem__(self, idx):
-        # if sub-dataset has less than max(self.lens) events,
-        # some events will be sampled more than one time
-        # Note that the model sees events with smaller idx more often
-        return [events[idx % _len] for events, _len in zip(self.events_eff, self.lens)]
+        return self.data_list[idx]
 
 
-class EventDataLoader(torch.utils.data.DataLoader):
-    def __init__(self, dataset, batch_size, shuffle=True, drop_last=False):
-        super().__init__(
-            dataset, batch_size=batch_size, shuffle=shuffle, drop_last=drop_last
-        )
-        self.shuffle = shuffle
+class UnfoldingDataset(BaseDataset):
+    def load_data(
+        self,
+        data,
+        mode,
+        split=[0.8, 0.1, 0.1],
+        mass=0.1,
+        dtype=torch.float32,
+    ):
+        """
+        Parameters
+        ----------
+        filename : str
+            Path to file in npz format where the dataset in stored
+        mode : {"train", "test", "val"}
+            Purpose of the dataset
+        split : list of float
+            Fraction of data to use for training, testing and validation
+        mass : float
+            Mass of the particle to reconstruct
+        dtype : torch.dtype
+            Data type of the tensors
+        """
 
-    def __iter__(self):
-        if self.shuffle:
-            # manually shuffle the dataset after each epoch
-            # this is necessary to avoid having small-idx events more often in the custom __getitem__ method
-            perms = [torch.randperm(len(events)) for events in self.dataset.events]
-            self.dataset.events_eff = [
-                events[perm] for events, perm in zip(self.dataset.events, perms)
+        size = len(data["sim_particles"])
+
+        if mode == "train":
+            sim_particles = np.array(data["sim_particles"])[: int(split[0] * size)]
+            gen_particles = np.array(data["gen_particles"])[: int(split[0] * size)]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[: int(split[0] * size)]
+        elif mode == "val":
+            sim_particles = np.array(data["sim_particles"])[
+                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+            ]
+            gen_particles = np.array(data["gen_particles"])[
+                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+            ]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[
+                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+            ]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[
+                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+            ]
+        else:
+            sim_particles = np.array(data["sim_particles"])[
+                int((split[0] + split[1]) * size) :
+            ]
+            gen_particles = np.array(data["gen_particles"])[
+                int((split[0] + split[1]) * size) :
+            ]
+            sim_mults = np.array(data["sim_mults"], dtype=int)[
+                int((split[0] + split[1]) * size) :
+            ]
+            gen_mults = np.array(data["gen_mults"], dtype=int)[
+                int((split[0] + split[1]) * size) :
             ]
 
-        return super().__iter__()
+        sim_kinematics = torch.tensor(sim_particles, dtype=dtype)
+        gen_kinematics = torch.tensor(gen_particles, dtype=dtype)
+
+        # create list of torch_geometric.data.Data objects
+        self.data_list = []
+        for i in range(sim_kinematics.shape[0]):
+            scalars = (
+                sim_kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
+            )  # store PID as scalar info
+            sim_fourmomenta = sim_kinematics[i, : sim_mults[i]]
+            sim_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
+            sim_fourmomenta = jetmomenta_to_fourmomenta(sim_fourmomenta)
+
+            gen_fourmomenta = gen_kinematics[i, : gen_mults[i]]
+            gen_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
+            gen_fourmomenta = jetmomenta_to_fourmomenta(gen_fourmomenta)
+
+            data = Data(
+                x=sim_fourmomenta,
+                scalars=scalars,
+                y=gen_fourmomenta,
+            )
+            self.data_list.append(data)
