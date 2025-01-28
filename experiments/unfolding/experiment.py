@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch_geometric.data import DataLoader
 
 import os, time
 from omegaconf import open_dict
@@ -7,14 +8,13 @@ from hydra.utils import instantiate
 from tqdm import trange, tqdm
 
 from experiments.base_experiment import BaseExperiment
-from experiments.eventgen.dataset import EventDataset, EventDataLoader
-from experiments.eventgen.helpers import ensure_onshell
-import experiments.eventgen.plotter as plotter
+from experiments.unfolding.dataset import ZplusJetsDataset, collate
+import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 
 
-class EventGenerationExperiment(BaseExperiment):
+class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
         self.define_process_specifics()
 
@@ -84,54 +84,69 @@ class EventGenerationExperiment(BaseExperiment):
                 raise ValueError(f"modeltype={self.modeltype} not implemented")
 
     def init_data(self):
-        LOGGER.info(f"Working with {self.cfg.data.n_jets} extra jets")
+        LOGGER.info(f"Creating {Dataset.__name__} from {data_path}")
+        t0 = time.time()
 
-        # load all datasets and organize them in lists
-        self.events_raw = []
-        for n_jets in self.cfg.data.n_jets:
-            # load data
-            data_path = eval(f"self.cfg.data.data_path_{n_jets}j")
-            assert os.path.exists(data_path), f"data_path {data_path} does not exist"
-            data_raw = np.load(data_path)
-            LOGGER.info(f"Loaded data with shape {data_raw.shape} from {data_path}")
-
-            # bring data into correct shape
-            if self.cfg.data.subsample is not None:
-                assert self.cfg.data.subsample < data_raw.shape[0]
-                LOGGER.info(
-                    f"Reducing the size of the dataset from {data_raw.shape[0]} to {self.cfg.data.subsample}"
-                )
-                data_raw = data_raw[: self.cfg.data.subsample, :]
-            data_raw = data_raw.reshape(data_raw.shape[0], data_raw.shape[1] // 4, 4)
-            data_raw = torch.tensor(data_raw, dtype=self.dtype)
-
-            # collect everything
-            self.events_raw.append(data_raw)
-
-        # change global units
-        self.model.init_physics(
-            self.units,
-            self.pt_min,
-            self.delta_r_min,
-            self.onshell_list,
-            self.onshell_mass,
-            self.virtual_components,
-            self.cfg.data.base_type,
-            self.cfg.data.use_pt_min,
-            self.cfg.data.use_delta_r_min,
+        data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=self.cfg.data.length,
+            pad=True,
+            cache_dir=data_path,
+            include_keys=["particles", "jets", "mults"],
         )
 
-        # preprocessing
-        self.events_prepd = []
-        for ijet in range(len(self.cfg.data.n_jets)):
-            # preprocess data
-            self.events_raw[ijet] = ensure_onshell(
-                self.events_raw[ijet],
-                self.onshell_list,
-                self.onshell_mass,
-            )
-            data_prepd = self.model.preprocess(self.events_raw[ijet])
-            self.events_prepd.append(data_prepd)
+        data["sim_particles"] = torch.tensor(data["sim_particles"])
+        data["sim_jets"] = torch.tensor(data["sim_jets"])
+        data["gen_particles"] = torch.tensor(data["gen_particles"])
+        data["gen_jets"] = torch.tensor(data["gen_jets"])
+
+        # undo dataset preprocessing
+        data["sim_particles"][..., 1:3] = data["sim_particles"][..., 1:3] + data[
+            "sim_jets"
+        ][..., 1:3].unsqueeze(1)
+        data["gen_particles"][..., 1:3] = data["gen_particles"][..., 1:3] + data[
+            "gen_jets"
+        ][..., 1:3].unsqueeze(1)
+
+        train_idx = round(self.cfg.data.split[0] * data["sim_particles"].shape[0])
+        val_idx = train_idx + round(
+            self.cfg.data.split[1] * data["sim_particles"].shape[0]
+        )
+
+        # compute mean and std
+        # train_det_particles = data["sim_particles"][0:train_idx]
+        # n_train_det = torch.sum(data["sim_mults"][0:train_idx])
+        train_gen_particles = data["gen_particles"][0:train_idx]
+        n_train_gen = torch.sum(data["gen_mults"][0:train_idx])
+
+        # train_det_mean = train_det_particles.sum(0, 1) / n_train_det
+        # train_det_std = torch.sqrt(
+        #     ((train_det_particles - train_det_mean) ** 2).sum(0, 1) / n_train_det
+        # )
+        train_gen_mean = train_gen_particles.sum(0, 1) / n_train_gen
+        train_gen_std = torch.sqrt(
+            ((train_gen_particles - train_gen_mean.view(1, 1, 4)) ** 2).sum(0, 1)
+            / n_train_gen
+        )
+        # remove it for the fixed mass
+        # train_det_mean[..., 3] = 0.0
+        # train_det_std[..., 3] = 1.0
+        train_gen_mean[..., 3] = 0.0
+        train_gen_std[..., 3] = 1.0
+
+        with open_dict(self.cfg):
+            # self.cfg.data.train_det_mean = train_det_mean.unsqueeze(0)
+            # self.cfg.data.train_det_std = train_det_std.unsqueeze(0)
+            self.cfg.data.train_gen_mean = train_gen_mean.unsqueeze(0)
+            self.cfg.data.train_gen_std = train_gen_std.unsqueeze(0)
+
+        self.train_dataset = ZplusJetsDataset(self.cfg.data)
+        self.test_dataset = ZplusJetsDataset(self.cfg.data)
+        self.val_dataset = ZplusJetsDataset(self.cfg.data)
+
+        self.train_dataset.load_data(data, (0, train_idx))
+        self.test_dataset.load_data(data, (train_idx, val_idx))
+        self.val_dataset.load_data(data, (val_idx, -1))
 
         # initialize cfm (might require data)
         self.model.init_distribution()
@@ -143,50 +158,27 @@ class EventGenerationExperiment(BaseExperiment):
         self.model.init_geometry()
 
     def _init_dataloader(self):
-        assert sum(self.cfg.data.train_test_val) <= 1
-
-        # seperate data into train, test and validation subsets for each dataset
-        self.data_raw, self.data_prepd = [], []
-        for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-            n_data = self.events_raw[ijet].shape[0]
-            split_val = int(n_data * self.cfg.data.train_test_val[::-1][0])
-            split_test = int(n_data * sum(self.cfg.data.train_test_val[::-1][:2]))
-            split_train = int(n_data * sum(self.cfg.data.train_test_val[::-1]))
-
-            data_raw = {
-                "val": self.events_raw[ijet][0:split_val],
-                "tst": self.events_raw[ijet][split_val:split_test],
-                "trn": self.events_raw[ijet][split_test:split_train],
-            }
-            data_prepd = {
-                "val": self.events_prepd[ijet][0:split_val],
-                "tst": self.events_prepd[ijet][split_val:split_test],
-                "trn": self.events_prepd[ijet][split_test:split_train],
-            }
-            self.data_raw.append(data_raw)
-            self.data_prepd.append(data_prepd)
-
-        # create dataloaders
-        self.train_loader = EventDataLoader(
-            dataset=EventDataset([x["trn"] for x in self.data_prepd], dtype=self.dtype),
+        self.train_loader = DataLoader(
+            dataset=self.data_train,
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
+            collate_fn=collate,
         )
-
-        self.test_loader = EventDataLoader(
-            dataset=EventDataset([x["tst"] for x in self.data_prepd], dtype=self.dtype),
+        self.test_loader = DataLoader(
+            dataset=self.data_test,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
+            collate_fn=collate,
         )
-
-        self.val_loader = EventDataLoader(
-            dataset=EventDataset([x["val"] for x in self.data_prepd], dtype=self.dtype),
+        self.val_loader = DataLoader(
+            dataset=self.data_val,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
+            collate_fn=collate,
         )
 
         LOGGER.info(
-            f"Constructed dataloaders with train_test_val={self.cfg.data.train_test_val}, "
+            f"Constructed dataloaders with "
             f"train_batches={len(self.train_loader)}, test_batches={len(self.test_loader)}, val_batches={len(self.val_loader)}, "
             f"batch_size={self.cfg.training.batchsize} (training), {self.cfg.evaluation.batchsize} (evaluation)"
         )

@@ -74,8 +74,64 @@ class NaivePPP(OnShellDistribution):
         pppm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
         log_prob = log_prob_normal(pppm2)
         log_prob[..., 3] = 0.0  # fixed mass does not contribute
-        log_prob = log_prob.sum(dim=[-1, -2]).unsqueeze(-1)
+        log_prob = log_prob.sum(-1).unsqueeze(-1)
         logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(pppm2)[0]
+        log_prob = log_prob + logdetjac
+        return log_prob
+
+
+class StandardPPP(OnShellDistribution):
+    def __init__(self, mean, std, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coordinates = c.StandardPPPLogM2(mean=mean, std=std)
+
+    def propose(self, shape, device, dtype, generator=None):
+        eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+        fourmomenta = self.coordinates.x_to_fourmomenta(eps)
+        return fourmomenta
+
+    def log_prob(self, fourmomenta):
+        pppm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(pppm2)
+        log_prob[..., 3] = 0.0  # fixed mass does not contribute
+        log_prob = log_prob.sum(-1).unsqueeze(-1)
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(pppm2)[0]
+        log_prob = log_prob + logdetjac
+        return log_prob
+
+
+class StandardLogPtPhiEtaLogM2(RejectionDistribution):
+    """Base distribution 4: phi uniform; eta, log(pt) and log(mass) from fitted normal"""
+
+    def __init__(self, pt_min, units, mean, std, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coordinates = c.StandardLogPtPhiEtaLogM2(pt_min, units, mean, std)
+
+    def propose(self, shape, device, dtype, generator=None):
+        """Base distribution for precisesiast: pt, eta gaussian; phi uniform; mass shifted gaussian"""
+        # sample (logpt, phi, eta, logmass)
+        eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+
+        # sample phi uniformly
+        eps = self.coordinates.transforms[-1].inverse(eps)
+        eps[..., 1] = math.pi * (
+            2 * torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
+            - 1
+        )
+
+        for t in self.coordinates.transforms[:-1][::-1]:
+            eps = t.inverse(eps)
+        return eps
+
+    def log_prob(self, fourmomenta):
+        logptphietalogm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(logptphietalogm2)
+        log_prob[..., 1] = -math.log(
+            2 * math.pi
+        )  # normalization factor for uniform phi distribution: 1/(2 pi)
+        log_prob[..., 3] = 0.0
+        log_prob = log_prob.sum(-1).unsqueeze(-1)
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(logptphietalogm2)[0]
         log_prob = log_prob + logdetjac
         return log_prob
 

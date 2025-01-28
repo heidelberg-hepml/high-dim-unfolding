@@ -8,14 +8,10 @@ from experiments.eventgen.helpers import jetmomenta_to_fourmomenta
 EPS = 1e-5
 
 
-class BaseDataset(torch.utils.data.Dataset):
-
-    def __init__(self, rescale_data):
+class ZplusJetDataset(torch.utils.data.Dataset):
+    def __init__(self, data_cfg):
         super().__init__()
-        self.rescale_data = rescale_data
-
-    def load_data(self, filename, mode):
-        raise NotImplementedError
+        self.cfg = data_cfg
 
     def __len__(self):
         return len(self.data_list)
@@ -23,103 +19,99 @@ class BaseDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.data_list[idx]
 
-
-class UnfoldingDataset(BaseDataset):
-    def load_data(
-        self,
-        data,
-        mode,
-        split=[0.8, 0.1, 0.1],
-        mass=0.1,
-        save_pid=False,
-        dtype=torch.float32,
-    ):
-        """
-        Parameters
-        ----------
-        filename : str
-            Path to file in npz format where the dataset in stored
-        mode : {"train", "test", "val"}
-            Purpose of the dataset
-        split : list of float
-            Fraction of data to use for training, testing and validation
-        mass : float
-            Mass of the particle to reconstruct
-        dtype : torch.dtype
-            Data type of the tensors
-        """
-
-        size = len(data["sim_particles"])
-
-        if mode == "train":
-            sim_particles = np.array(data["sim_particles"])[: int(split[0] * size)]
-            gen_particles = np.array(data["gen_particles"])[: int(split[0] * size)]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[: int(split[0] * size)]
-        elif mode == "val":
-            sim_particles = np.array(data["sim_particles"])[
-                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
-            ]
-            gen_particles = np.array(data["gen_particles"])[
-                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
-            ]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[
-                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
-            ]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[
-                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
-            ]
-        else:
-            sim_particles = np.array(data["sim_particles"])[
-                int((split[0] + split[1]) * size) :
-            ]
-            gen_particles = np.array(data["gen_particles"])[
-                int((split[0] + split[1]) * size) :
-            ]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[
-                int((split[0] + split[1]) * size) :
-            ]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[
-                int((split[0] + split[1]) * size) :
-            ]
-
-        sim_kinematics = torch.tensor(sim_particles, dtype=dtype)
-        gen_kinematics = torch.tensor(gen_particles, dtype=dtype)
-
+    def load_data(self, data, bounds):
         # create list of torch_geometric.data.Data objects
         self.data_list = []
-        for i in range(sim_kinematics.shape[0]):
-            if save_pid:
-                sim_scalars = (
-                    sim_kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
-                )  # store PID as scalar info
-                gen_scalars = (
-                    gen_kinematics[i, : gen_mults[i], -1].clone().unsqueeze(-1)
-                )  # store PID as scalar info
+        for det_event, gen_event, det_mult, gen_mult, index in zip(
+            data["sim_particles"][bounds[0] : bounds[1]],
+            data["gen_particles"][bounds[0] : bounds[1]],
+            data["sim_mults"][bounds[0] : bounds[1]],
+            data["gen_mults"][bounds[0] : bounds[1]],
+            range(bounds[1] - bounds[0]),
+        ):
+            det_event = det_event[:det_mult]
+            gen_event = gen_event[:gen_mult]
+            if self.cfg.save_pid_encoding:
+                det_scalars = pid_encoding(det_event[:, -1], cfg=self.cfg)
+                gen_scalars = pid_encoding(gen_event[:, -1], cfg=self.cfg)
+            elif self.cfg.save_pid:
+                det_scalars = torch.tensor(det_event[:, -1], dtype=self.cfg.dtype)
+                gen_scalars = torch.tensor(gen_event[:, -1], dtype=self.cfg.dtype)
             else:
-                sim_scalars = torch.zeros((sim_mults[i], 0))
-                gen_scalars = torch.zeros((gen_mults[i], 0))
+                det_scalars = torch.zeros((det_event.shape[0], 0), dtype=self.cfg.dtype)
+                gen_scalars = torch.zeros((gen_event.shape[0], 0), dtype=self.cfg.dtype)
 
-            sim_fourmomenta = sim_kinematics[i, : sim_mults[i]]
-            sim_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
-            sim_fourmomenta = jetmomenta_to_fourmomenta(sim_fourmomenta)
+            # replace pid with constant mass for all particles
+            det_event[..., -1] = self.cfg.onshell_mass
+            gen_event[..., -1] = self.cfg.onshell_mass
 
-            gen_fourmomenta = gen_kinematics[i, : gen_mults[i]]
-            gen_fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
-            gen_fourmomenta = jetmomenta_to_fourmomenta(gen_fourmomenta)
+            # convert to fourmomenta
+            det_fourmomenta = jetmomenta_to_fourmomenta(det_event)
+            gen_fourmomenta = jetmomenta_to_fourmomenta(gen_event)
 
-            data_sim = Data(
-                x=sim_fourmomenta,
-                scalars=sim_scalars,
+            det_data = Data(
+                x=det_fourmomenta,
+                scalars=det_scalars,
             )
-            data_gen = Data(
+            gen_data = Data(
                 x=gen_fourmomenta,
                 scalars=gen_scalars,
             )
-            self.data_list.append((data_sim, data_gen))
+            self.data_list.append((det_data, gen_data))
 
 
 def collate(data_list):
-    batch_sim = Batch.from_data_list([data[0] for data in data_list])
-    batch_gen = Batch.from_data_list([data[1] for data in data_list])
-    return batch_sim, batch_gen
+    det_batch = Batch.from_data_list([data[0] for data in data_list])
+    gen_batch = Batch.from_data_list([data[1] for data in data_list])
+    return det_batch, gen_batch
+
+
+float_to_pid = {
+    0.0: 22,  # photon
+    0.1: 211,  # pi+
+    0.2: -211,  # pi-
+    0.3: 130,  # K0_L
+    0.4: 11,  # e-
+    0.5: -11,  # e+
+    0.6: 13,  # mu-
+    0.7: -13,  # mu+
+    0.8: 321,  # K+
+    0.9: -321,  # K-
+    1.0: 2212,  # proton
+    1.1: -2212,  # anti-proton
+    1.2: 2112,  # neutron
+    1.3: -2112,  # anti-neutron
+}
+
+
+def single_pid_encoding(pid):
+    if pid in [211, -11, -13, 321, 2212]:
+        charge = 1
+    elif pid in [-211, 11, 13, -321, -2212]:
+        charge = -1
+    else:
+        charge = 0
+    abs_pid = abs(pid)
+    vector = [
+        charge,  # Charge
+        1 if abs_pid == 11 else 0,  # Electron
+        1 if abs_pid == 13 else 0,  # Muon
+        1 if abs_pid == 22 else 0,  # Photon
+        1 if abs_pid in [211, 321, 2212] else 0,  # Charged Hadron
+        1 if abs_pid in [130, 2112, 0] else 0,  # Neutral Hadron
+    ]
+    return vector
+
+
+def pid_encoding(float_pids, cfg) -> torch.Tensor:
+    vectors = []
+    for float_pid in float_pids:
+        if float_pid.item() not in float_to_pid:
+            raise ValueError(f"Unknown PID: {float_pid}")
+        pid = float_to_pid[float_pid.item()]
+        vectors.append(single_pid_encoding(pid))
+    vectors = torch.tensor(vectors, dtype=cfg.dtype)
+    if cfg.save_pid:
+        float_pids = torch.tensor(float_pids, dtype=cfg.dtype)
+        vectors = torch.cat(vectors, float_pids, dim=-1)
+    return vectors
