@@ -241,7 +241,7 @@ class MultiplicityExperiment(BaseExperiment):
         }
         return loss, metrics
 
-    def _get_predicted_dist_and_label(self, batch, min_sigmaarg=-10, max_sigmaarg=5.0):
+    def _get_predicted_dist_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
         batch = batch.to(self.device)
         if self.modelname == "Transformer":
             output = self.model(batch.x, batch.batch)
@@ -253,11 +253,12 @@ class MultiplicityExperiment(BaseExperiment):
                 self.cfg.data,
             )
             output = self.model(embedding)
-        # avoid inf and 0 (unstable)
-        sigmaarg = torch.clamp(output, min=min_sigmaarg, max=max_sigmaarg)
-        sigma = torch.exp(sigmaarg)
-        assert torch.isfinite(sigma).all()
-        predicted_dist = self.distribution(sigma)
+
+        params = torch.clamp(output, min=min_arg, max=max_arg)  # avoid inf and 0
+        params = torch.exp(params)  # ensure positive params
+
+        predicted_dist = self.distribution(params)  # batch of mixtures
+
         return predicted_dist, batch.label
 
     def _init_metrics(self):
