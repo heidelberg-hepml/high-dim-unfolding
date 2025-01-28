@@ -77,7 +77,7 @@ class MultiplicityGATrWrapper(nn.Module):
     def __init__(
         self,
         net,
-        mean_aggregation=False,
+        mean_aggregation=True,
         force_xformers=True,
     ):
         super().__init__()
@@ -102,12 +102,12 @@ class MultiplicityGATrWrapper(nn.Module):
 
         return params
 
-    def extract_from_ga(self, multivector, scalars, batch, is_global):
+    def extract_from_ga(self, multivector, scalars, batch):
         outputs = extract_scalar(multivector)[0, :, :, 0]
         if self.aggregation is not None:
             params = self.aggregation(outputs, index=batch)
         else:
-            params = outputs[is_global]
+            raise NotImplementedError
         return params
 
 
@@ -119,7 +119,7 @@ class MultiplicityConditionalGATrWrapper(nn.Module):
     def __init__(
         self,
         net,
-        mean_aggregation=False,
+        mean_aggregation=True,
         force_xformers=True,
     ):
         super().__init__()
@@ -152,10 +152,10 @@ class MultiplicityConditionalGATrWrapper(nn.Module):
 
         return params
 
-    def extract_from_ga(self, multivector, scalars, batch, is_global):
+    def extract_from_ga(self, multivector, scalars, batch):
         outputs = extract_scalar(multivector)[0, :, :, 0]
         if self.aggregation is not None:
             params = self.aggregation(outputs, index=batch)
         else:
-            params = outputs[is_global]
+            raise NotImplementedError
         return params

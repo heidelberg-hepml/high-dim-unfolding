@@ -7,23 +7,13 @@ from experiments.logger import LOGGER
 EPS = 1e-5
 
 
-class BaseDataset(torch.utils.data.Dataset):
-
-    def __init__(self, rescale_data):
-        super().__init__()
-        self.rescale_data = rescale_data
-
-    def load_data(self, filename, mode):
-        raise NotImplementedError
-
+class MultiplicityDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.data_list)
 
     def __getitem__(self, idx):
         return self.data_list[idx]
 
-
-class MultiplicityDataset(BaseDataset):
     def load_data(
         self,
         data,
@@ -50,44 +40,52 @@ class MultiplicityDataset(BaseDataset):
         size = len(data["sim_particles"])
 
         if mode == "train":
-            particles = np.array(data["sim_particles"])[: int(split[0] * size)]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[: int(split[0] * size)]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[: int(split[0] * size)]
+            det_particles = np.array(data["sim_particles"])[
+                : int(split[0] * size)
+            ]  # detector-level particles
+            det_mults = np.array(data["sim_mults"], dtype=int)[
+                : int(split[0] * size)
+            ]  # detector-level multiplicity
+            gen_mults = np.array(data["gen_mults"], dtype=int)[
+                : int(split[0] * size)
+            ]  # genlevel multiplicity
         elif mode == "val":
-            particles = np.array(data["sim_particles"])[
+            det_particles = np.array(data["sim_particles"])[
                 int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
             ]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[
+            det_mults = np.array(data["sim_mults"], dtype=int)[
                 int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
             ]
             gen_mults = np.array(data["gen_mults"], dtype=int)[
                 int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
-        else:
-            particles = np.array(data["sim_particles"])[
+        elif mode == "test":
+            det_particles = np.array(data["sim_particles"])[
                 int((split[0] + split[1]) * size) :
             ]
-            sim_mults = np.array(data["sim_mults"], dtype=int)[
+            det_mults = np.array(data["sim_mults"], dtype=int)[
                 int((split[0] + split[1]) * size) :
             ]
             gen_mults = np.array(data["gen_mults"], dtype=int)[
                 int((split[0] + split[1]) * size) :
             ]
+        else:
+            raise ValueError("Mode must be one of {'train', 'test', 'val'}")
 
-        kinematics = torch.tensor(particles, dtype=dtype)
+        kinematics = torch.tensor(particles, dtype=dtype)  # contains p_T, eta, phi, PID
         labels = torch.tensor(gen_mults, dtype=torch.int)
 
         # create list of torch_geometric.data.Data objects
         self.data_list = []
         for i in range(kinematics.shape[0]):
             scalars = (
-                kinematics[i, : sim_mults[i], -1].clone().unsqueeze(-1)
+                kinematics[i, : det_mults[i], -1].clone().unsqueeze(-1)
             )  # store PID as scalar info
-            fourmomenta = kinematics[i, : sim_mults[i]]
-            fourmomenta[..., -1] = mass  # set constant mass for all fourmomenta
+            kinematics = kinematics[i, : det_mults[i]]
+            kinematics[..., -1] = mass  # replace PID by constant mass for all particles
             label = labels[i, ...]
 
             data = Data(
-                x=fourmomenta, scalars=scalars, label=label, sim_mult=sim_mults[i]
+                x=kinematics, scalars=scalars, label=label, det_mult=det_mults[i]
             )
             self.data_list.append(data)

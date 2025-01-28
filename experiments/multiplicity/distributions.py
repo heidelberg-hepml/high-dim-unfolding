@@ -2,15 +2,21 @@ import torch
 import torch.distributions as D
 import einops
 
+
 def cross_entropy(distribution, target):
     assert target.shape == distribution.batch_shape
     if isinstance(distribution, CategoricalDistribution):
         target -= 1
     return -distribution.log_prob(target)
 
+
 def smooth_cross_entropy(distribution, target, max_num_particles, smoothness=0.5):
     assert target.shape == distribution.batch_shape
-    bins = torch.arange(1, max_num_particles + 1, device=target.device).unsqueeze(1).repeat(1, len(target))
+    bins = (
+        torch.arange(1, max_num_particles + 1, device=target.device)
+        .unsqueeze(1)
+        .repeat(1, len(target))
+    )
     if isinstance(distribution, CategoricalDistribution):
         bins -= 1
     logprobs = distribution.log_prob(bins).transpose(0, 1)
@@ -28,6 +34,7 @@ def smooth_cross_entropy(distribution, target, max_num_particles, smoothness=0.5
     ).squeeze(1)
     return torch.sum(-logprobs * weights, dim=-1)
 
+
 class GammaMixture(D.MixtureSameFamily):
     def __init__(self, params):
         if len(params.shape) == 2:
@@ -35,7 +42,7 @@ class GammaMixture(D.MixtureSameFamily):
                 params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
             )
         self.params = params
-        mix = D.Categorical(torch.ones_like(params[:, :, 2]))
+        mix = D.Categorical(params[:, :, 2])
         gammas = D.Gamma(params[:, :, 0], params[:, :, 1])
         super().__init__(mix, gammas)
 
@@ -43,10 +50,12 @@ class GammaMixture(D.MixtureSameFamily):
         samples = super().sample(*args, **kwargs)
         return torch.round(samples)
 
+
 class CategoricalDistribution(D.Categorical):
     def __init__(self, logits):
         super().__init__(logits=logits)
         self.params = logits
+
 
 class GaussianMixture(D.MixtureSameFamily):
     def __init__(self, params):
@@ -55,7 +64,7 @@ class GaussianMixture(D.MixtureSameFamily):
                 params, "b (n_mix n_params) -> b n_mix n_params", n_params=3
             )
         self.params = params
-        mix = D.Categorical(torch.ones_like(params[:, :, 2]))
+        mix = D.Categorical(params[:, :, 2])
         gammas = D.Normal(params[:, :, 0], params[:, :, 1])
         super().__init__(mix, gammas)
 

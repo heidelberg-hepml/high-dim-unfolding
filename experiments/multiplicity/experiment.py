@@ -37,6 +37,8 @@ class MultiplicityExperiment(BaseExperiment):
     def init_physics(self):
 
         self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+
+        # just for the test of the conditional models
         if self.modelname == "ConditionalTransformer":
             self.modelname = "Transformer"
         elif self.modelname == "ConditionalGATr":
@@ -63,10 +65,11 @@ class MultiplicityExperiment(BaseExperiment):
                 elif self.cfg.dist.type == "Categorical":
                     self.distribution = CategoricalDistribution
                     self.cfg.model.net.out_mv_channels = self.cfg.data.max_num_particles
-                # global token?
-                self.cfg.data.include_global_token = not self.cfg.model.mean_aggregation
-                if not self.cfg.data.include_global_token:
-                    self.cfg.data.num_global_tokens = 0
+
+                # no global token for the embedding
+                self.cfg.data.include_global_token = False
+                self.cfg.data.num_global_tokens = 0
+
                 self.cfg.model.net.in_mv_channels = 1
 
                 # extra scalar channels
@@ -103,7 +106,6 @@ class MultiplicityExperiment(BaseExperiment):
     def _init_data(self, Dataset, data_path):
         LOGGER.info(f"Creating {Dataset.__name__} from {data_path}")
         t0 = time.time()
-        kwargs = {"rescale_data": self.cfg.data.rescale_data}
 
         data = energyflow.zjets_delphes.load(
             "Herwig",
@@ -118,9 +120,9 @@ class MultiplicityExperiment(BaseExperiment):
         data["sim_mults"] = data["sim_mults"][shuffle_indices]
         data["gen_mults"] = data["gen_mults"][shuffle_indices]
 
-        self.data_train = Dataset(**kwargs)
-        self.data_test = Dataset(**kwargs)
-        self.data_val = Dataset(**kwargs)
+        self.data_train = Dataset()
+        self.data_test = Dataset()
+        self.data_val = Dataset()
         self.data_train.load_data(
             data,
             mode="train",
@@ -232,10 +234,10 @@ class MultiplicityExperiment(BaseExperiment):
         assert torch.isfinite(loss).all()
         params = predicted_dist.params.cpu().detach()
         sample = predicted_dist.sample().cpu().detach()
-        sim_mult = torch.tensor(batch.sim_mult)
+        det_mult = torch.tensor(batch.det_mult)
         metrics = {
             "params": params,
-            "samples": torch.stack([sample, label.cpu(), sim_mult], dim=-1),
+            "samples": torch.stack([sample, label.cpu(), det_mult], dim=-1),
         }
         return loss, metrics
 
