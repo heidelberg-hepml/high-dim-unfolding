@@ -68,7 +68,7 @@ class CrossAttention(nn.Module):
             k = self.k_pos_encoding(k)
 
         # Attention layer
-        h = self._attend(q, k, v, attention_mask)
+        h = BaselineSelfAttention._attend(q, k, v, attention_mask)
 
         # Concatenate heads and transform linearly
         h = rearrange(
@@ -79,29 +79,6 @@ class CrossAttention(nn.Module):
 
         if self.dropout is not None:
             outputs = self.dropout(outputs)
-
-        return outputs
-
-    @staticmethod
-    def _attend(q, k, v, attention_mask=None):
-        """Scaled dot-product attention."""
-
-        # Add batch dimension if needed
-        bh_shape = q.shape[:-2]
-        q = to_nd(q, 4)
-        k = to_nd(k, 4)
-        v = to_nd(v, 4)
-
-        # SDPA
-        outputs = scaled_dot_product_attention(
-            q.contiguous(),
-            k.expand_as(q).contiguous(),
-            v.expand_as(q),
-            attn_mask=attention_mask,
-        )
-
-        # Return batch dimensions to inputs
-        outputs = outputs.view(*bh_shape, *outputs.shape[-2:])
 
         return outputs
 
@@ -241,20 +218,22 @@ class ConditionalTransformer(nn.Module):
         condition = self.condition_linear_in(condition)
         for block in self.condition_blocks:
             if self.checkpoint_blocks:
-                fn = partial(block, attention_mask=condition_attention_mask)
-                condition = checkpoint(fn, condition)
+                condition = checkpoint(
+                    block, inputs=condition, attention_mask=condition_attention_mask
+                )
             else:
                 condition = block(condition, attention_mask=condition_attention_mask)
 
         x = self.linear_in(x)
         for block in self.blocks:
             if self.checkpoint_blocks:
-                fn = partial(
+                x = checkpoint(
                     block,
+                    inputs=x,
+                    condition=condition,
                     attention_mask=attention_mask,
                     crossattention_mask=crossattention_mask,
                 )
-                x = checkpoint(fn, x)
             else:
                 x = block(
                     x,

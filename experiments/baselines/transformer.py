@@ -428,8 +428,12 @@ class Transformer(nn.Module):
         h = self.linear_in(inputs)
         for block in self.blocks:
             if self.checkpoint_blocks:
-                fn = partial(block, attention_mask=attention_mask, is_causal=is_causal)
-                h = checkpoint(fn, h)
+                h = checkpoint(
+                    block,
+                    inputs=h,
+                    attention_mask=attention_mask,
+                    is_causal=is_causal,
+                )
             else:
                 h = block(h, attention_mask=attention_mask, is_causal=is_causal)
         outputs = self.linear_out(h)
