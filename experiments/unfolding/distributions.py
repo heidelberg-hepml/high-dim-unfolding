@@ -6,12 +6,9 @@ from experiments.eventgen.helpers import (
     delta_r_fast,
     fourmomenta_to_jetmomenta,
 )
-import experiments.eventgen.coordinates as c
+import experiments.unfolding.coordinates as c
 
-# sample a few extra events to speed up rejection sampling
-SAMPLING_FACTOR = 10  # typically acceptance_rate > 0.5
-
-from experiments.eventgen.helpers import EPS1
+from experiments.unfolding.helpers import EPS1
 
 
 class BaseDistribution:
@@ -81,7 +78,7 @@ class NaivePPP(OnShellDistribution):
 
 
 class StandardPPP(OnShellDistribution):
-    def __init__(self, mean, std, *args, **kwargs):
+    def __init__(self, pt_min, mean, std, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.coordinates = c.StandardPPPLogM2(mean=mean, std=std)
 
@@ -100,12 +97,12 @@ class StandardPPP(OnShellDistribution):
         return log_prob
 
 
-class StandardLogPtPhiEtaLogM2(RejectionDistribution):
+class StandardLogPtPhiEta(OnShellDistribution):
     """Base distribution 4: phi uniform; eta, log(pt) and log(mass) from fitted normal"""
 
-    def __init__(self, pt_min, units, mean, std, *args, **kwargs):
+    def __init__(self, pt_min, mean, std, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coordinates = c.StandardLogPtPhiEtaLogM2(pt_min, units, mean, std)
+        self.coordinates = c.StandardLogPtPhiEtaLogM2(pt_min, self.units, mean, std)
 
     def propose(self, shape, device, dtype, generator=None):
         """Base distribution for precisesiast: pt, eta gaussian; phi uniform; mass shifted gaussian"""

@@ -1,4 +1,4 @@
-from experiments.eventgen.helpers import ensure_angle
+from experiments.unfolding.helpers import ensure_angle
 
 
 class BaseGeometry:

@@ -9,6 +9,7 @@ from experiments.eventgen.processes import (
 from experiments.tagging.jetclassexperiment import JetClassTaggingExperiment
 from experiments.tagging.finetuneexperiment import TopTaggingFineTuneExperiment
 from experiments.multiplicity.experiment import MultiplicityExperiment
+from experiments.unfolding.experiment import UnfoldingExperiment
 
 import random
 import numpy as np
@@ -40,6 +41,8 @@ def main(cfg):
         exp = zmumuExperiment(cfg)
     elif cfg.exp_type == "multiplicity":
         exp = MultiplicityExperiment(cfg)
+    elif cfg.exp_type == "unfolding":
+        exp = UnfoldingExperiment(cfg)
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 

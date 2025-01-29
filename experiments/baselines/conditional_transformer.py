@@ -211,7 +211,7 @@ class ConditionalTransformer(nn.Module):
         x: torch.Tensor,
         condition: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        condition_attention_mask: Optional[torch.Tensor] = None,
+        attention_mask_condition: Optional[torch.Tensor] = None,
         crossattention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
 
@@ -219,10 +219,10 @@ class ConditionalTransformer(nn.Module):
         for block in self.condition_blocks:
             if self.checkpoint_blocks:
                 condition = checkpoint(
-                    block, inputs=condition, attention_mask=condition_attention_mask
+                    block, inputs=condition, attention_mask=attention_mask_condition
                 )
             else:
-                condition = block(condition, attention_mask=condition_attention_mask)
+                condition = block(condition, attention_mask=attention_mask_condition)
 
         x = self.linear_in(x)
         for block in self.blocks:

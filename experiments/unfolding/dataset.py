@@ -3,7 +3,7 @@ import numpy as np
 import energyflow
 from torch_geometric.data import Data, Batch
 from experiments.logger import LOGGER
-from experiments.eventgen.helpers import jetmomenta_to_fourmomenta
+from experiments.unfolding.helpers import jetmomenta_to_fourmomenta
 
 EPS = 1e-5
 
@@ -12,6 +12,13 @@ class ZplusJetDataset(torch.utils.data.Dataset):
     def __init__(self, data_cfg):
         super().__init__()
         self.cfg = data_cfg
+        if self.cfg.dtype == "float32":
+            self.dtype = torch.float32
+        elif self.cfg.dtype == "float64":
+            self.dtype = torch.float64
+        else:
+            self.dtype = torch.float32
+            LOGGER.warning(f"dtype={self.cfg.dtype} not recognized, using float32")
 
     def __len__(self):
         return len(self.data_list)
@@ -31,23 +38,27 @@ class ZplusJetDataset(torch.utils.data.Dataset):
         ):
             det_event = det_event[:det_mult]
             gen_event = gen_event[:gen_mult]
-            if self.cfg.save_pid_encoding:
-                det_scalars = pid_encoding(det_event[:, -1], cfg=self.cfg)
-                gen_scalars = pid_encoding(gen_event[:, -1], cfg=self.cfg)
+            if self.cfg.pid_encoding:
+                det_scalars = pid_encoding(det_event[:, -1], cfg=self.cfg).to(
+                    self.dtype
+                )
+                gen_scalars = pid_encoding(gen_event[:, -1], cfg=self.cfg).to(
+                    self.dtype
+                )
             elif self.cfg.save_pid:
-                det_scalars = torch.tensor(det_event[:, -1], dtype=self.cfg.dtype)
-                gen_scalars = torch.tensor(gen_event[:, -1], dtype=self.cfg.dtype)
+                det_scalars = torch.tensor(det_event[:, -1], dtype=self.dtype)
+                gen_scalars = torch.tensor(gen_event[:, -1], dtype=self.dtype)
             else:
-                det_scalars = torch.zeros((det_event.shape[0], 0), dtype=self.cfg.dtype)
-                gen_scalars = torch.zeros((gen_event.shape[0], 0), dtype=self.cfg.dtype)
+                det_scalars = torch.zeros((det_event.shape[0], 0), dtype=self.dtype)
+                gen_scalars = torch.zeros((gen_event.shape[0], 0), dtype=self.dtype)
 
             # replace pid with constant mass for all particles
             det_event[..., -1] = self.cfg.onshell_mass
             gen_event[..., -1] = self.cfg.onshell_mass
 
             # convert to fourmomenta
-            det_fourmomenta = jetmomenta_to_fourmomenta(det_event)
-            gen_fourmomenta = jetmomenta_to_fourmomenta(gen_event)
+            det_fourmomenta = jetmomenta_to_fourmomenta(det_event).to(self.dtype)
+            gen_fourmomenta = jetmomenta_to_fourmomenta(gen_event).to(self.dtype)
 
             det_data = Data(
                 x=det_fourmomenta,
@@ -57,13 +68,13 @@ class ZplusJetDataset(torch.utils.data.Dataset):
                 x=gen_fourmomenta,
                 scalars=gen_scalars,
             )
-            self.data_list.append((det_data, gen_data))
+            self.data_list.append((gen_data, det_data))
 
 
 def collate(data_list):
-    det_batch = Batch.from_data_list([data[0] for data in data_list])
-    gen_batch = Batch.from_data_list([data[1] for data in data_list])
-    return det_batch, gen_batch
+    gen_batch = Batch.from_data_list([data[0] for data in data_list])
+    det_batch = Batch.from_data_list([data[1] for data in data_list])
+    return gen_batch, det_batch
 
 
 float_to_pid = {
@@ -110,8 +121,7 @@ def pid_encoding(float_pids, cfg) -> torch.Tensor:
             raise ValueError(f"Unknown PID: {float_pid}")
         pid = float_to_pid[float_pid.item()]
         vectors.append(single_pid_encoding(pid))
-    vectors = torch.tensor(vectors, dtype=cfg.dtype)
+    vectors = torch.tensor(vectors)
     if cfg.save_pid:
-        float_pids = torch.tensor(float_pids, dtype=cfg.dtype)
-        vectors = torch.cat(vectors, float_pids, dim=-1)
+        vectors = torch.cat([vectors, float_pids.unsqueeze(-1)], dim=-1)
     return vectors

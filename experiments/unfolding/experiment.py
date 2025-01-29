@@ -6,9 +6,10 @@ import os, time
 from omegaconf import open_dict
 from hydra.utils import instantiate
 from tqdm import trange, tqdm
+import energyflow
 
 from experiments.base_experiment import BaseExperiment
-from experiments.unfolding.dataset import ZplusJetsDataset, collate
+from experiments.unfolding.dataset import ZplusJetDataset, collate
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -16,46 +17,25 @@ from experiments.mlflow import log_mlflow
 
 class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
-        self.define_process_specifics()
 
         # dynamically set wrapper properties
-        self.modeltype = (
-            "GPT" if self.cfg.model._target_.rsplit(".", 1)[-1] == "JetGPT" else "CFM"
-        )
+        self.modeltype = "CFM"
         self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
-        n_particles = self.n_hard_particles + max(self.cfg.data.n_jets)
-        n_datasets = len(self.cfg.data.n_jets)
+
         with open_dict(self.cfg):
-            # preparation for joint training
-            if self.modelname in ["GATr", "Transformer"]:
-                self.cfg.model.process_token_channels = n_datasets
-                self.cfg.model.type_token_channels = n_particles
-            else:
-                # no joint training possible
-                assert len(self.cfg.data.n_jets) == 1
 
             # dynamically set channel dimensions
-            if self.modelname == "GATr":
-                self.cfg.model.net.in_s_channels = (
-                    n_particles + n_datasets + self.cfg.cfm.embed_t_dim
-                )
-            elif self.modelname == "Transformer":
-                self.cfg.model.net.in_channels = (
-                    4 + n_datasets + n_particles + self.cfg.cfm.embed_t_dim
-                )
-            elif self.modelname == "GAP":
-                self.cfg.model.net.in_mv_channels = n_particles
-                self.cfg.model.net.out_mv_channels = n_particles
+            if self.modelname == "ConditionalGATr":
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.out_s_channels = n_particles * 4
-            elif self.modelname == "MLP":
-                self.cfg.model.net.in_shape = 4 * n_particles + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.out_shape = 4 * n_particles
-
-            # extra treatment for lorentz-symmetry breaking inputs in equivariant models
-            if self.modelname in ["GATr", "GAP"]:
+                self.cfg.model.net.condition_in_s_channels = self.cfg.cfm.embed_t_dim
+                if self.cfg.data.save_pid:
+                    self.cfg.model.net.in_s_channels += 1
+                    self.cfg.model.net.condition_in_s_channels += 1
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_s_channels += 6
+                    self.cfg.model.net.condition_in_s_channels += 6
                 if self.cfg.model.beam_reference is not None:
-                    self.cfg.model.net.in_mv_channels += (
+                    self.cfg.model.net.condition_in_mv_channels += (
                         2
                         if (
                             self.cfg.model.two_beams
@@ -64,26 +44,27 @@ class UnfoldingExperiment(BaseExperiment):
                         else 1
                     )
                 if self.cfg.model.add_time_reference:
-                    self.cfg.model.net.in_mv_channels += 1
+                    self.cfg.model.net.condition_in_mv_channels += 1
+
+            elif self.modelname == "ConditionalTransformer":
+                self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
+                self.cfg.model.net.condition_in_channels = 4
+                if self.cfg.data.save_pid:
+                    self.cfg.model.net.in_channels += 1
+                    self.cfg.model.net.condition_in_channels += 1
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
+                    self.cfg.model.net.condition_in_channels += 6
 
             # copy model-specific parameters
-            if self.modeltype == "CFM":
-                self.cfg.model.odeint = self.cfg.odeint
-                self.cfg.model.cfm = self.cfg.cfm
-            elif self.modeltype == "GPT":
-                assert (
-                    self.cfg.exp_type == "ttbar"
-                ), "JetGPT only implemented for exp_type=ttbar, not exp_type={self.cfg.exp_type}"
-                self.cfg.model.gpt = self.cfg.gpt
-                if self.cfg.model.n_gauss is None:
-                    self.cfg.model.n_gauss = self.cfg.model.net.hidden_channels // 3
-                max_idx = 4 * n_particles
-                self.cfg.model.net.in_channels = 1 + max_idx + n_datasets
-                self.cfg.model.net.out_channels = 3 * self.cfg.model.n_gauss
-            else:
-                raise ValueError(f"modeltype={self.modeltype} not implemented")
+            self.cfg.model.odeint = self.cfg.odeint
+            self.cfg.model.cfm = self.cfg.cfm
 
     def init_data(self):
+        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
+        self._init_data(ZplusJetDataset, data_path)
+
+    def _init_data(self, Dataset, data_path):
         LOGGER.info(f"Creating {Dataset.__name__} from {data_path}")
         t0 = time.time()
 
@@ -99,6 +80,8 @@ class UnfoldingExperiment(BaseExperiment):
         data["sim_jets"] = torch.tensor(data["sim_jets"])
         data["gen_particles"] = torch.tensor(data["gen_particles"])
         data["gen_jets"] = torch.tensor(data["gen_jets"])
+        data["sim_mults"] = torch.tensor(data["sim_mults"])
+        data["gen_mults"] = torch.tensor(data["gen_mults"])
 
         # undo dataset preprocessing
         data["sim_particles"][..., 1:3] = data["sim_particles"][..., 1:3] + data[
@@ -123,9 +106,9 @@ class UnfoldingExperiment(BaseExperiment):
         # train_det_std = torch.sqrt(
         #     ((train_det_particles - train_det_mean) ** 2).sum(0, 1) / n_train_det
         # )
-        train_gen_mean = train_gen_particles.sum(0, 1) / n_train_gen
+        train_gen_mean = train_gen_particles.sum(dim=[0, 1]) / n_train_gen
         train_gen_std = torch.sqrt(
-            ((train_gen_particles - train_gen_mean.view(1, 1, 4)) ** 2).sum(0, 1)
+            ((train_gen_particles - train_gen_mean.view(1, 1, 4)) ** 2).sum(dim=[0, 1])
             / n_train_gen
         )
         # remove it for the fixed mass
@@ -137,41 +120,47 @@ class UnfoldingExperiment(BaseExperiment):
         with open_dict(self.cfg):
             # self.cfg.data.train_det_mean = train_det_mean.unsqueeze(0)
             # self.cfg.data.train_det_std = train_det_std.unsqueeze(0)
-            self.cfg.data.train_gen_mean = train_gen_mean.unsqueeze(0)
-            self.cfg.data.train_gen_std = train_gen_std.unsqueeze(0)
+            self.cfg.data.train_gen_mean = [mean.item() for mean in train_gen_mean]
+            self.cfg.data.train_gen_std = [std.item() for std in train_gen_std]
 
-        self.train_dataset = ZplusJetsDataset(self.cfg.data)
-        self.test_dataset = ZplusJetsDataset(self.cfg.data)
-        self.val_dataset = ZplusJetsDataset(self.cfg.data)
+        self.train_dataset = ZplusJetDataset(self.cfg.data)
+        self.test_dataset = ZplusJetDataset(self.cfg.data)
+        self.val_dataset = ZplusJetDataset(self.cfg.data)
 
         self.train_dataset.load_data(data, (0, train_idx))
         self.test_dataset.load_data(data, (train_idx, val_idx))
         self.val_dataset.load_data(data, (val_idx, -1))
 
         # initialize cfm (might require data)
+        self.model.init_physics(
+            self.cfg.data.units,
+            self.cfg.data.pt_min,
+            self.cfg.data.train_gen_mean,
+            self.cfg.data.train_gen_std,
+            self.cfg.data.base_type,
+            self.cfg.data.onshell_mass,
+            self.device,
+        )
         self.model.init_distribution()
         self.model.init_coordinates()
-        fit_data = [x / self.units for x in self.events_raw]
-        self.model.coordinates.init_fit(fit_data)
-        if hasattr(self.model, "distribution"):
-            self.model.distribution.coordinates.init_fit(fit_data)
         self.model.init_geometry()
+        print(self.train_dataset[0][0].x.dtype, self.train_dataset[0][0].scalars.dtype)
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
-            dataset=self.data_train,
+            dataset=self.train_dataset,
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
             collate_fn=collate,
         )
         self.test_loader = DataLoader(
-            dataset=self.data_test,
+            dataset=self.test_dataset,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
             collate_fn=collate,
         )
         self.val_loader = DataLoader(
-            dataset=self.data_val,
+            dataset=self.val_dataset,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
             collate_fn=collate,
@@ -205,84 +194,19 @@ class UnfoldingExperiment(BaseExperiment):
         for key in self.cfg.evaluation.eval_loss:
             if key in loaders.keys():
                 self._evaluate_loss_single(loaders[key], key)
-        for key in self.cfg.evaluation.eval_log_prob:
-            if key == "gen":
-                # log_probs of generated events are not interesting
-                # + they are not well-defined, because generated events might be in regions
-                # that are not included in the base distribution (because of pt_min, delta_r_min)
-                continue
-            self._evaluate_log_prob_single(loaders[key], key)
 
     def _evaluate_classifier_metric(self, ijet, n_jets):
-        assert self.cfg.evaluation.sample, "need samples for classifier evaluation"
-
-        # initiate
-        with open_dict(self.cfg):
-            num_particles = self.n_hard_particles + n_jets
-            self.cfg.classifier.net.in_shape = 4 * num_particles
-            if self.cfg.classifier.cfg_preprocessing.add_delta_r:
-                self.cfg.classifier.net.in_shape += (
-                    num_particles * (num_particles - 1) // 2
-                )
-            if self.cfg.classifier.cfg_preprocessing.add_virtual:
-                self.cfg.classifier.net.in_shape += 4 * len(self.virtual_components)
-        classifier_factory = instantiate(self.cfg.classifier, _partial_=True)
-        classifier = classifier_factory(experiment=self, device=self.device)
-
-        data_true = self.events_raw[ijet]
-        data_fake = self.data_raw[ijet]["gen"]
-        LOGGER.info(
-            f"Classifier generated data true/fake has shape {tuple(data_true.shape)}/{tuple(data_fake.shape)}"
-        )
-
-        # preprocessing
-        cls_params = {"mean": None, "std": None}
-        data_true, cls_params = classifier.preprocess(data_true, cls_params)
-        data_fake = classifier.preprocess(data_fake, cls_params)[0]
-        data_true = classifier.train_test_val_split(data_true)
-        data_fake = classifier.train_test_val_split(data_fake)
-        classifier.init_data(data_true, data_fake)
-
-        # do things
-        classifier.train()
-        classifier.evaluate()
-
-        # save weighted events
-        if self.cfg.evaluation.save_samples and self.cfg.save:
-            events_true = classifier.train_test_val_split(self.events_raw[ijet])["tst"]
-            events_fake = classifier.train_test_val_split(self.data_raw[ijet]["gen"])[
-                "tst"
-            ]
-            weights_true = classifier.results["weights"]["true"]
-            weights_fake = classifier.results["weights"]["fake"]
-            os.makedirs(os.path.join(self.cfg.run_dir, "samples"), exist_ok=True)
-            filename = os.path.join(
-                self.cfg.run_dir,
-                "samples",
-                f"samples_weighted_{self.cfg.run_idx}_{n_jets}j",
-            )
-            np.savez(
-                filename,
-                events_true=events_true,
-                events_fake=events_fake,
-                weights_true=weights_true,
-                weights_fake=weights_fake,
-            )
-        return classifier
+        pass
 
     def _evaluate_loss_single(self, loader, title):
         self.model.eval()
         losses = []
-        mses = {f"{n_jets}j": [] for n_jets in self.cfg.data.n_jets}
         LOGGER.info(f"Starting to evaluate loss for model on {title} dataset")
         t0 = time.time()
         for i, data in enumerate(loader):
             loss = 0.0
-            for ijet, data_single in enumerate(data):
-                x0 = data_single.to(self.device)
-                loss_single = self.model.batch_loss(x0, ijet)[0]
-                loss += loss_single / len(self.cfg.data.n_jets)
-                mses[f"{self.cfg.data.n_jets[ijet]}j"].append(loss_single.cpu().item())
+            data[0], data[1] = data[0].to(self.device), data[1].to(self.device)
+            loss = self.model.batch_loss(data)[0]
             losses.append(loss.cpu().item())
         dt = time.time() - t0
         LOGGER.info(
@@ -291,229 +215,34 @@ class UnfoldingExperiment(BaseExperiment):
 
         if self.cfg.use_mlflow:
             log_mlflow(f"eval.{title}.loss", np.mean(losses))
-            for key, values in mses.items():
-                log_mlflow(f"eval.{title}.{key}.mse", np.mean(values))
 
     def _evaluate_log_prob_single(self, loader, title):
-        self.model.eval()
-        self.NLLs = {f"{n_jets}j": [] for n_jets in self.cfg.data.n_jets}
-        LOGGER.info(f"Starting to evaluate log_prob for model on {title} dataset")
-        t0 = time.time()
-        for i, data in enumerate(tqdm(loader)):
-            for ijet, data_single in enumerate(data):
-                x0 = data_single.to(self.device)
-                NLL = -self.model.log_prob(x0, ijet).squeeze().cpu()
-                self.NLLs[f"{self.cfg.data.n_jets[ijet]}j"].extend(
-                    NLL.squeeze().numpy().tolist()
-                )
-        dt = time.time() - t0
-        LOGGER.info(
-            f"Finished evaluating log_prob for {title} dataset after {dt/60:.2f}min"
-        )
-        for key, values in self.NLLs.items():
-            LOGGER.info(f"NLL_{key} = {np.mean(values)}")
-            if self.cfg.use_mlflow:
-                log_mlflow(f"eval.{title}.{key}.NLL", np.mean(values))
+        pass
 
     def _sample_events(self):
-        self.model.eval()
-
-        for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-            sample = []
-            shape = (self.cfg.evaluation.batchsize, self.n_hard_particles + n_jets, 4)
-            n_batches = (
-                1 + (self.cfg.evaluation.nsamples - 1) // self.cfg.evaluation.batchsize
-            )
-            LOGGER.info(
-                f"Starting to generate {self.cfg.evaluation.nsamples} {n_jets}j events"
-            )
-            t0 = time.time()
-            for i in trange(n_batches, desc="Sampled batches"):
-                x_t = self.model.sample(
-                    ijet,
-                    shape,
-                    self.device,
-                    self.dtype,
-                )
-                sample.append(x_t)
-            t1 = time.time()
-            LOGGER.info(
-                f"Finished generating {n_jets}j events after {t1-t0:.2f}s = {(t1-t0)/60:.2f}min"
-            )
-
-            samples = torch.cat(sample, dim=0)[
-                : self.cfg.evaluation.nsamples, ...
-            ].cpu()
-            self.data_prepd[ijet]["gen"] = samples
-
-            samples_raw = self.model.undo_preprocess(samples)
-            self.data_raw[ijet]["gen"] = samples_raw
-
-            m2 = samples_raw[..., 0] ** 2 - (samples_raw[..., 1:] ** 2).sum(dim=-1)
-            LOGGER.info(
-                f"Fraction of events with m2<0: {(m2<0).float().mean():.4f} (flip m2->-m2 for these events)"
-            )
-
-            if self.cfg.evaluation.save_samples and self.cfg.save:
-                os.makedirs(os.path.join(self.cfg.run_dir, "samples"), exist_ok=True)
-                filename = os.path.join(
-                    self.cfg.run_dir,
-                    "samples",
-                    f"samples_{self.cfg.run_idx}_{n_jets}j.npy",
-                )
-                np.save(filename, samples_raw)
-
-        self.sample_loader = torch.utils.data.DataLoader(
-            dataset=EventDataset([x["gen"] for x in self.data_prepd], dtype=self.dtype),
-            batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
-        )
+        pass
 
     def plot(self):
-        path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
-        os.makedirs(os.path.join(path), exist_ok=True)
-        LOGGER.info(f"Creating plots in {path}")
-
-        self.plot_titles = [
-            r"${%s}+{%s}j$" % (self.plot_title, n_jets)
-            for n_jets in self.cfg.data.n_jets
-        ]
-        kwargs = {
-            "exp": self,
-            "model_label": self.modelname,
-        }
-
-        if self.cfg.train:
-            filename = os.path.join(path, "training.pdf")
-            plotter.plot_losses(filename=filename, **kwargs)
-
-        if not self.cfg.evaluate:
-            return
-
-        # set correct masses
-        if self.cfg.evaluation.sample:
-            for label in ["trn", "tst", "gen"]:
-                for ijet in range(len(self.cfg.data.n_jets)):
-                    self.data_raw[ijet][label] = ensure_onshell(
-                        self.data_raw[ijet][label],
-                        self.onshell_list,
-                        self.onshell_mass,
-                    )
-
-        # If specified, collect weights from classifier
-        if self.cfg.evaluation.classifier and self.cfg.plotting.reweighted:
-            weights = {
-                ijet: self.classifiers[ijet].weights_fake.squeeze()
-                for ijet, n_jets in enumerate(self.cfg.data.n_jets)
-            }
-        else:
-            weights = {ijet: None for ijet, n_jets in enumerate(self.cfg.data.n_jets)}
-
-        # can manually create a mask
-        if self.cfg.plotting.create_mask:
-            mask_dict = {}
-            for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-                # create your mask here
-                assert weights[ijet] is not None
-                mask_dict[ijet] = {"condition": "w<0.5", "mask": weights[ijet] < 0.5}
-            weights[ijet] = None
-        else:
-            mask_dict = {ijet: None for ijet, n_jets in enumerate(self.cfg.data.n_jets)}
-
-        if (
-            self.cfg.plotting.log_prob
-            and len(self.cfg.evaluation.eval_log_prob) > 0
-            and self.cfg.evaluate
-        ):
-            filename = os.path.join(path, "neg_log_prob.pdf")
-            plotter.plot_log_prob(filename=filename, **kwargs)
-
-        if self.cfg.evaluation.classifier and self.cfg.evaluate:
-            filename = os.path.join(path, "classifier.pdf")
-            plotter.plot_classifier(filename=filename, **kwargs)
-
-        if self.cfg.evaluation.sample:
-            if self.cfg.plotting.fourmomenta:
-                filename = os.path.join(path, "fourmomenta.pdf")
-                plotter.plot_fourmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.jetmomenta:
-                filename = os.path.join(path, "jetmomenta.pdf")
-                plotter.plot_jetmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.preprocessed:
-                filename = os.path.join(path, "preprocessed.pdf")
-                plotter.plot_preprocessed(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.virtual and len(self.virtual_components) > 0:
-                filename = os.path.join(path, "virtual.pdf")
-                plotter.plot_virtual(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.delta:
-                filename = os.path.join(path, "delta.pdf")
-                plotter.plot_delta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.deta_dphi:
-                filename = os.path.join(path, "deta_dphi.pdf")
-                plotter.plot_deta_dphi(filename=filename, **kwargs)
+        pass
 
     def _init_loss(self):
         # loss defined manually within the model
         pass
 
-    def _batch_loss(self, data):
-
-        # average over contributions from different datasets
-        loss = 0.0
-        mse = []
-        component_mse = []
-        for ijet, x0 in enumerate(data):
-            x0 = x0.to(self.device)
-            mse_single, component_mse_single = self.model.batch_loss(x0, ijet)
-            loss += mse_single / len(self.cfg.data.n_jets)
-            mse.append(mse_single.cpu().item())
-            component_mse.append([x.cpu().item() for x in component_mse_single])
+    def _batch_loss(self, batch):
+        batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
+        loss, component_loss = self.model.batch_loss(batch)
+        mse = loss.cpu().item()
+        component_mse = [x.cpu().item() for x in component_loss]
         assert torch.isfinite(loss).all()
 
-        metrics = {
-            f"{n_jets}j.mse": mse[ijet]
-            for (ijet, n_jets) in enumerate(self.cfg.data.n_jets)
-        }
+        metrics = {"mse": mse}
         for k in range(4):
-            for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-                metrics[f"{n_jets}j.mse_{k}"] = component_mse[ijet][k]
+            metrics[f"mse_{k}"] = component_mse[k]
         return loss, metrics
 
     def _init_metrics(self):
-        metrics = {f"{n_jets}j.mse": [] for n_jets in self.cfg.data.n_jets}
+        metrics = {"mse": []}
         for k in range(4):
-            for n_jets in self.cfg.data.n_jets:
-                metrics[f"{n_jets}j.mse_{k}"] = []
+            metrics[f"mse_{k}"] = []
         return metrics
-
-    def define_process_specifics(self):
-        self.plot_title = None
-        self.n_hard_particles = None
-        self.n_jets_max = None
-        self.onshell_list = None
-        self.onshell_mass = None
-        self.units = None
-        self.pt_min = None
-        self.delta_r_min = None
-        self.obs_names_index = None
-        self.fourmomentum_ranges = None
-        self.jetmomentum_ranges = None
-        self.virtual_components = None
-        self.virtual_names = None
-        self.virtual_ranges = None
-        raise NotImplementedError

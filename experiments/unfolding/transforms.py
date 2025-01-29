@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from experiments.eventgen.helpers import (
+from experiments.unfolding.helpers import (
     unpack_last,
     EPS1,
     EPS2,
@@ -369,7 +369,7 @@ class Pt_to_LogPt(BaseTransform):
         self.pt_min = torch.tensor(pt_min) / units
 
     def get_dpt(self, pt):
-        return torch.clamp(pt - self.pt_min[: pt.shape[-1]].to(pt.device), min=EPS2)
+        return torch.clamp(pt - self.pt_min.to(pt.device), min=EPS2)
 
     def _forward(self, ptx):
         pt, x1, x2, x3 = unpack_last(ptx)
@@ -379,11 +379,7 @@ class Pt_to_LogPt(BaseTransform):
 
     def _inverse(self, logptx):
         logpt, x1, x2, x3 = unpack_last(logptx)
-        pt = (
-            logpt.clamp(max=CUTOFF).exp()
-            + self.pt_min[: logpt.shape[-1]].to(logpt.device)
-            - EPS1
-        )
+        pt = logpt.clamp(max=CUTOFF).exp() + self.pt_min.to(logpt.device) - EPS1
         return torch.stack((pt, x1, x2, x3), dim=-1)
 
     def _jac_forward(self, ptx, logptx):
