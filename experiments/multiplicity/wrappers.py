@@ -62,7 +62,7 @@ class MultiplicityConditionalTransformerWrapper(nn.Module):
             x=batch.unsqueeze(0),
             condition=batch.unsqueeze(0),
             attention_mask=mask,
-            condition_attention_mask=mask,
+            attention_mask_condition=mask,
             crossattention_mask=mask,
         )
         outputs = self.aggregation(outputs, ptr).squeeze(0)

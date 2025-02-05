@@ -8,7 +8,7 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 10
+ length: 1000
  split: [0.8, 0.1, 0.1]
  dtype: float32
  save_pid: true
@@ -47,7 +47,7 @@ odeint:
 
 train: true
 training:
- iterations: 100
+ iterations: 1000
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 5000

@@ -1,6 +1,4 @@
 _target_: experiments.unfolding.wrappers.ConditionalTransformerCFM
-force_xformers: '${training.force_xformers}'
-mean_aggregation: true
 
 net:
   _target_: experiments.baselines.ConditionalTransformer
@@ -11,7 +9,7 @@ net:
   hidden_channels: 128
 
   num_blocks: 2
-  num_heads: 4
+  num_heads: 8
   dropout_prob: null
 
   pos_encoding: false

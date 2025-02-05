@@ -36,7 +36,6 @@ class MultiplicityDataset(torch.utils.data.Dataset):
         dtype : torch.dtype
             Data type of the tensors
         """
-
         size = len(data["sim_particles"])
 
         if mode == "train":
@@ -51,10 +50,10 @@ class MultiplicityDataset(torch.utils.data.Dataset):
             ]  # genlevel multiplicity
         elif mode == "val":
             det_particles = np.array(data["sim_particles"])[
-                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+                int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
             det_mults = np.array(data["sim_mults"], dtype=int)[
-                int(split[0] * size) : int(split[0] * size) + int(split[1] * size)
+                int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
             gen_mults = np.array(data["gen_mults"], dtype=int)[
                 int(split[0] * size) : int((split[0] + split[1]) * size)
@@ -72,7 +71,9 @@ class MultiplicityDataset(torch.utils.data.Dataset):
         else:
             raise ValueError("Mode must be one of {'train', 'test', 'val'}")
 
-        kinematics = torch.tensor(particles, dtype=dtype)  # contains p_T, eta, phi, PID
+        kinematics = torch.tensor(
+            det_particles, dtype=dtype
+        )  # contains p_T, eta, phi, PID
         labels = torch.tensor(gen_mults, dtype=torch.int)
 
         # create list of torch_geometric.data.Data objects
@@ -81,11 +82,9 @@ class MultiplicityDataset(torch.utils.data.Dataset):
             scalars = (
                 kinematics[i, : det_mults[i], -1].clone().unsqueeze(-1)
             )  # store PID as scalar info
-            kinematics = kinematics[i, : det_mults[i]]
-            kinematics[..., -1] = mass  # replace PID by constant mass for all particles
+            pepm = kinematics[i, : det_mults[i]]  # save pt, eta, phi, mass
+            pepm[..., -1] = mass  # replace PID by constant mass for all particles
             label = labels[i, ...]
 
-            data = Data(
-                x=kinematics, scalars=scalars, label=label, det_mult=det_mults[i]
-            )
+            data = Data(x=pepm, scalars=scalars, label=label, det_mult=det_mults[i])
             self.data_list.append(data)

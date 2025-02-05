@@ -128,7 +128,6 @@ class CFM(nn.Module):
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
-        print(xt_straight.dtype, vt_straight.dtype, t.dtype)
         vp_straight = self.get_velocity(xt_straight, t, batch)
 
         # evaluate conditional flow matching objective

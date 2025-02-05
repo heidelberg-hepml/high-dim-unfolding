@@ -1,6 +1,4 @@
 _target_: experiments.unfolding.wrappers.ConditionalGATrCFM
-force_xformers: '${training.force_xformers}'
-mean_aggregation: true
 
 net:
  _target_: gatr.nets.ConditionalGATr

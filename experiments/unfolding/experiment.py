@@ -1,6 +1,6 @@
 import numpy as np
 import torch
-from torch_geometric.data import DataLoader
+from torch_geometric.loader import DataLoader
 
 import os, time
 from omegaconf import open_dict
@@ -144,7 +144,6 @@ class UnfoldingExperiment(BaseExperiment):
         self.model.init_distribution()
         self.model.init_coordinates()
         self.model.init_geometry()
-        print(self.train_dataset[0][0].x.dtype, self.train_dataset[0][0].scalars.dtype)
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
