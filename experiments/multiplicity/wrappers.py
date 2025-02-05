@@ -6,6 +6,8 @@ from torch_geometric.nn.aggr import MeanAggregation
 from xformers.ops.fmha import BlockDiagonalMask
 from gatr.interface import embed_vector, extract_scalar
 
+from experiments.logger import LOGGER
+
 
 def xformers_sa_mask(batch, materialize=False):
     """
@@ -133,6 +135,11 @@ class MultiplicityConditionalGATrWrapper(nn.Module):
         condition_multivector = embedding["mv"].unsqueeze(0)
         condition_scalars = embedding["s"].unsqueeze(0)
 
+        LOGGER.info(f"input_multivector : {input_multivector.shape}")
+        LOGGER.info(f"input_scalars : {input_scalars.shape}")
+        LOGGER.info(f"condition_multivector : {condition_multivector.shape}")
+        LOGGER.info(f"condition_scalars : {condition_scalars.shape}")
+
         mask = xformers_sa_mask(embedding["batch"], materialize=not self.force_xformers)
         multivector_outputs, scalar_outputs = self.net(
             multivectors=input_multivector,
@@ -152,7 +159,7 @@ class MultiplicityConditionalGATrWrapper(nn.Module):
 
         return params
 
-    def extract_from_ga(self, multivector, scalars, batch):
+    def extract_from_ga(self, multivector, scalars, batch, is_global):
         outputs = extract_scalar(multivector)[0, :, :, 0]
         if self.aggregation is not None:
             params = self.aggregation(outputs, index=batch)

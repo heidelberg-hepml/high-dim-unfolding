@@ -14,6 +14,8 @@ import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 
+from experiments.unfolding.plots import plot_kinematics
+
 
 class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
@@ -27,34 +29,37 @@ class UnfoldingExperiment(BaseExperiment):
             # dynamically set channel dimensions
             if self.modelname == "ConditionalGATr":
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.condition_in_s_channels = self.cfg.cfm.embed_t_dim
+                self.cfg.model.net.condition_s_channels = 0
                 if self.cfg.data.save_pid:
                     self.cfg.model.net.in_s_channels += 1
-                    self.cfg.model.net.condition_in_s_channels += 1
+                    self.cfg.model.net.condition_s_channels += 1
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_s_channels += 6
-                    self.cfg.model.net.condition_in_s_channels += 6
-                if self.cfg.model.beam_reference is not None:
-                    self.cfg.model.net.condition_in_mv_channels += (
+                    self.cfg.model.net.condition_s_channels += 6
+                if self.cfg.data.add_scalar_features:
+                    self.cfg.model.net.condition_s_channels += 7
+                if not self.cfg.data.beam_token:
+                    self.cfg.model.net.condition_mv_channels += (
                         2
                         if (
-                            self.cfg.model.two_beams
-                            and self.cfg.model.beam_reference != "xyplane"
+                            self.cfg.data.two_beams
+                            and self.cfg.data.beam_reference != "xyplane"
                         )
                         else 1
                     )
-                if self.cfg.model.add_time_reference:
-                    self.cfg.model.net.condition_in_mv_channels += 1
+                    if self.cfg.data.add_time_reference:
+                        self.cfg.model.net.condition_mv_channels += 1
+                self.cfg.model.cfg_data = self.cfg.data
 
             elif self.modelname == "ConditionalTransformer":
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.condition_in_channels = 4
+                self.cfg.model.net.condition_channels = 4
                 if self.cfg.data.save_pid:
                     self.cfg.model.net.in_channels += 1
-                    self.cfg.model.net.condition_in_channels += 1
+                    self.cfg.model.net.condition_channels += 1
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net.condition_in_channels += 6
+                    self.cfg.model.net.condition_channels += 6
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -128,8 +133,11 @@ class UnfoldingExperiment(BaseExperiment):
         self.val_dataset = ZplusJetDataset(self.cfg.data)
 
         self.train_dataset.load_data(data, (0, train_idx))
+        LOGGER.info(f"Loaded {len(self.train_dataset)} training events")
         self.test_dataset.load_data(data, (train_idx, val_idx))
-        self.val_dataset.load_data(data, (val_idx, -1))
+        LOGGER.info(f"Loaded {len(self.test_dataset)} testing events")
+        self.val_dataset.load_data(data, (val_idx, data["sim_particles"].shape[0]))
+        LOGGER.info(f"Loaded {len(self.val_dataset)} validation events")
 
         # initialize cfm (might require data)
         self.model.init_physics(
@@ -180,8 +188,13 @@ class UnfoldingExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         if self.cfg.evaluation.sample:
-            self._sample_events()
-            loaders["gen"] = self.sample_loader
+            samples, samples_ptr, targets, targets_ptr = self._sample_events(
+                loaders["train"], self.cfg.evaluation.n_batches
+            )
+            plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
+            os.makedirs(plot_path, exist_ok=True)
+            plot_kinematics(plot_path, samples, targets)
+
         else:
             LOGGER.info("Skip sampling")
 
@@ -194,7 +207,7 @@ class UnfoldingExperiment(BaseExperiment):
             if key in loaders.keys():
                 self._evaluate_loss_single(loaders[key], key)
 
-    def _evaluate_classifier_metric(self, ijet, n_jets):
+    def _evaluate_classifier_metric(self):
         pass
 
     def _evaluate_loss_single(self, loader, title):
@@ -218,8 +231,39 @@ class UnfoldingExperiment(BaseExperiment):
     def _evaluate_log_prob_single(self, loader, title):
         pass
 
-    def _sample_events(self):
-        pass
+    def _sample_events(self, loader, n_batches):
+        samples = torch.empty((0, 4), device=self.device)
+        targets = torch.empty((0, 4), device=self.device)
+        samples_ptr = torch.zeros((1,), device=self.device)
+        targets_ptr = torch.zeros((1,), device=self.device)
+        it = iter(loader)
+        for i in range(n_batches):
+            batch = next(it)
+            batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
+            batch = (batch[0], batch[1])
+
+            target = batch[0].x
+            target_ptr = batch[0].ptr
+            targets = torch.cat([targets, target], dim=0)
+            targets_ptr = torch.cat(
+                [
+                    targets_ptr,
+                    torch.tensor(target_ptr[1:]) + targets_ptr[-1],
+                ],
+                dim=0,
+            )
+
+            sample, ptr = self.model.sample(
+                batch,
+                self.device,
+                self.dtype,
+            )
+            samples = torch.cat([samples, sample], dim=0)
+            samples_ptr = torch.cat(
+                [samples_ptr, torch.tensor(ptr[1:]) + samples_ptr[-1]], dim=0
+            )
+
+        return samples, samples_ptr, targets, targets_ptr
 
     def plot(self):
         pass
@@ -234,7 +278,6 @@ class UnfoldingExperiment(BaseExperiment):
         mse = loss.cpu().item()
         component_mse = [x.cpu().item() for x in component_loss]
         assert torch.isfinite(loss).all()
-
         metrics = {"mse": mse}
         for k in range(4):
             metrics[f"mse_{k}"] = component_mse[k]

@@ -8,7 +8,7 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 1000
+ length: 100000
  split: [0.8, 0.1, 0.1]
  dtype: float32
  save_pid: true
@@ -27,6 +27,7 @@ data:
  base_type: 2
  pt_min: 0.0
  units: 1.0
+ rescale_data: false
 
 cfm:
  embed_t_dim: 8
@@ -47,15 +48,20 @@ odeint:
 
 train: true
 training:
- iterations: 1000
+ iterations: 100000
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 5000
- force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ clip_grad_norm: 5.
 
-evaluate: false
+evaluate: true
 evaluation:
  batchsize: 128
+ classifier: false
+ sample: true
+ n_batches: 500
+ eval_loss: ["train"]
 
 plot: false
 plotting:

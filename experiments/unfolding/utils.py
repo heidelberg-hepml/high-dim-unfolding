@@ -2,6 +2,8 @@ import torch
 import math
 from torch import nn
 
+from experiments.logger import LOGGER
+
 
 class GaussianFourierProjection(nn.Module):
     def __init__(self, embed_dim, input_dim=1, scale=30.0):
@@ -15,6 +17,20 @@ class GaussianFourierProjection(nn.Module):
     def forward(self, t):
         projection = 2 * math.pi * torch.matmul(t, self.weights)
         embedding = torch.cat([torch.sin(projection), torch.cos(projection)], dim=-1)
+        return embedding
+
+
+class TimeEmbedding(nn.Module):
+    def __init__(self, embed_dim, input_dim=1, scale=30.0):
+        super().__init__()
+        self.proj = GaussianFourierProjection(embed_dim, input_dim, scale)
+        self.linear = nn.Linear(embed_dim, embed_dim)
+        self.linear.weight.requires_grad = False
+        self.linear.bias.requires_grad = False
+
+    def forward(self, t):
+        projection = self.proj(t)
+        embedding = self.linear(projection)
         return embedding
 
 

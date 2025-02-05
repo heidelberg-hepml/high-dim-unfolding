@@ -13,9 +13,9 @@ font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
-plt.rcParams[
-    "text.latex.preamble"
-] = r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
+plt.rcParams["text.latex.preamble"] = (
+    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
+)
 
 # fontsize
 FONTSIZE = 14
@@ -386,4 +386,18 @@ def simple_histogram(
     ax.set_xlim(xrange)
     ax.tick_params(axis="both", labelsize=TICKLABELSIZE)
     plt.savefig(file, bbox_inches="tight", format="pdf")
+    plt.close()
+
+
+def plot_kinematics(path, samples, targets):
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["Energy", "p_x", "p_y", "p_z"]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.histogram(targets[:, i].cpu(), bins=100, range=None)[1]
+        ax.hist(samples[:, i].cpu(), bins=bins, range=None, label="samples")
+        ax.hist(targets[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="targets")
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics.pdf", format="pdf", bbox_inches="tight")
     plt.close()

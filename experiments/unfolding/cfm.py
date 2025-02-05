@@ -9,7 +9,7 @@ from experiments.unfolding.distributions import (
     StandardPPP,
     StandardLogPtPhiEta,
 )
-from experiments.unfolding.utils import GaussianFourierProjection
+from experiments.unfolding.utils import TimeEmbedding
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.logger import LOGGER
@@ -49,11 +49,8 @@ class CFM(nn.Module):
         odeint={"method": "dopri5", "atol": 1e-5, "rtol": 1e-5, "options": None},
     ):
         super().__init__()
-        self.t_embedding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
-            ),
-            nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
+        self.t_embedding = TimeEmbedding(
+            embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
         )
         self.trace_fn = hutchinson_trace if cfm.hutchinson else autograd_trace
         self.odeint = odeint
@@ -139,15 +136,14 @@ class CFM(nn.Module):
         ]
         return distance, distance_particlewise
 
-    def sample(self, shape, device, dtype):
+    def sample(self, batch, device, dtype):
         """
         Sample from CFM model
         Solve an ODE using a NN-parametrized velocity field
 
         Parameters
         ----------
-        shape : List[int]
-            Shape of events that should be generated
+        batch : tuple of Batch graphs
         device : torch.device
         dtype : torch.dtype
 
@@ -162,11 +158,12 @@ class CFM(nn.Module):
             t = t * torch.ones(
                 shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
             )
-            vt_straight = self.get_velocity(xt_straight, t)
+            vt_straight = self.get_velocity(xt_straight, t, batch)
             vt_straight = self.handle_velocity(vt_straight)
             return vt_straight
 
         # sample fourmomenta from base distribution
+        shape = batch[0].x.shape
         x1_fourmomenta = self.sample_base(shape, device, dtype)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
 
@@ -193,9 +190,9 @@ class CFM(nn.Module):
 
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
-        return x0_fourmomenta
+        return x0_fourmomenta, batch[0].ptr
 
-    def log_prob(self, x0_fourmomenta):
+    def log_prob(self, batch):
         """
         Evaluate log_prob for existing target samples in a CFM model
         Solve ODE involving the trace of the velocity field, this is more expensive than normal sampling
@@ -206,14 +203,16 @@ class CFM(nn.Module):
 
         Parameters
         ----------
-        x0_fourmomenta : torch.tensor with shape (batchsize, n_particles, 4)
-            Target space particles in fourmomenta space
+
+        batch : tuple of Batch graphs
 
         Returns
         -------
         log_prob_fourmomenta : torch.tensor with shape (batchsize)
             log_prob of each event in x0, evaluated in fourmomenta space
         """
+
+        x0_fourmomenta = batch[0].x
 
         def net_wrapper(t, state):
             with torch.set_grad_enabled(True):
@@ -227,7 +226,7 @@ class CFM(nn.Module):
                     dtype=xt_straight.dtype,
                     device=xt_straight.device,
                 )
-                vt_straight = self.get_velocity(xt_straight, t)
+                vt_straight = self.get_velocity(xt_straight, t, batch)
                 vt_straight = self.handle_velocity(vt_straight)
                 dlogp_dt_straight = -self.trace_fn(vt_straight, xt_straight).unsqueeze(
                     -1

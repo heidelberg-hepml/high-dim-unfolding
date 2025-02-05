@@ -35,7 +35,7 @@ training:
  iterations: 10000
  batchsize: 128
  lr: 1e-3
- validate_every_n_steps: 5000
+ validate_every_n_steps: 500000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
 
 evaluate: true
@@ -47,6 +47,6 @@ plotting:
  n_distributions: 128
 
 defaults:
- - model: cond_tr_multiplicity
+ - model: cond_gatr_multiplicity
  - default
  - _self_

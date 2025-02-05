@@ -203,7 +203,7 @@ class ConditionalTransformer(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        condition_in_channels: int,
+        condition_channels: int,
         out_channels: int,
         hidden_channels: int,
         num_blocks: int = 10,
@@ -218,7 +218,7 @@ class ConditionalTransformer(nn.Module):
         super().__init__()
         self.checkpoint_blocks = checkpoint_blocks
         self.linear_in = nn.Linear(in_channels, hidden_channels)
-        self.condition_linear_in = nn.Linear(condition_in_channels, hidden_channels)
+        self.condition_linear_in = nn.Linear(condition_channels, hidden_channels)
 
         self.condition_blocks = nn.ModuleList(
             [

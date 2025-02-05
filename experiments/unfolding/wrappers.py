@@ -2,8 +2,9 @@ import torch
 import numpy as np
 
 from experiments.unfolding.cfm import EventCFM
-from experiments.tagging.embedding import embed_tagging_data_into_ga
-from gatr.interface import embed_vector
+from experiments.unfolding.embedding import embed_into_ga_with_spurions
+from gatr.interface import embed_vector, extract_vector
+from experiments.logger import LOGGER
 
 from xformers.ops.fmha.attn_bias import BlockDiagonalMask
 
@@ -48,35 +49,42 @@ class ConditionalCFMForGA(EventCFM):
         super().__init__(*args, **kwargs)
         self.scalar_dims = scalar_dims
         assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
+        self.cfg_data = cfg_data
 
-    def get_velocity(self, batch, t):
+    def get_velocity(self, xt, t, batch):
         assert self.coordinates is not None
         input_batch, condition_batch = batch
 
-        fourmomenta = self.coordinates.x_to_fourmomenta(input_batch.x)
+        fourmomenta = self.coordinates.x_to_fourmomenta(xt)
         condition_fourmomenta = self.coordinates.x_to_fourmomenta(condition_batch.x)
-
-        mv, s = self.embed_into_ga(fourmomenta, input_batch.scalars, input_batch.ptr, t)
-        condition_mv, condition_s = embed_tagging_data_into_ga(
-            condition_fourmomenta,
-            condition_batch.scalars,
-            condition_batch.ptr,
-            self.cfg_data,
+        mv, s = self.embed_into_ga(fourmomenta, input_batch.scalars, t)
+        condition_mv, condition_s, condition_batch_indices = (
+            embed_into_ga_with_spurions(
+                condition_fourmomenta,
+                condition_batch.scalars,
+                condition_batch.ptr,
+                self.cfg_data,
+            )
         )
 
         attention_mask = xformers_sa_mask(input_batch.batch)
-        atention_mask_condition = xformers_sa_mask(condition_batch.batch)
-        crossattention_mask = xformers_sa_mask(input_batch.batch, condition_batch.batch)
+        attention_mask_condition = xformers_sa_mask(condition_batch_indices)
+        crossattention_mask = xformers_sa_mask(
+            input_batch.batch, condition_batch_indices
+        )
 
         mv_outputs, s_outputs = self.net(
-            multivectors=mv,
-            multivectors_condition=condition_mv,
-            scalars=s,
-            scalars_condition=condition_s,
+            multivectors=mv.unsqueeze(0),
+            multivectors_condition=condition_mv.unsqueeze(0),
+            scalars=s.unsqueeze(0),
+            scalars_condition=condition_s.unsqueeze(0),
             attention_mask=attention_mask,
-            attention_mask_condition=atention_mask_condition,
+            attention_mask_condition=attention_mask_condition,
             crossattention_mask=crossattention_mask,
         )
+        mv_outputs = mv_outputs.squeeze(0)
+        s_outputs = s_outputs.squeeze(0)
+
         v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs)
 
         v_straight = self.coordinates.velocity_fourmomenta_to_x(
@@ -111,7 +119,7 @@ class ConditionalTransformerCFM(EventCFM):
     def get_velocity(self, xt, t, batch):
         input_batch, condition_batch = batch
 
-        t_embedding = self.t_embedding(t).expand(xt.shape[0], -1)
+        t_embedding = self.t_embedding(t)
 
         x = torch.cat([xt, input_batch.scalars, t_embedding], dim=-1)
         condition = torch.cat([condition_batch.x, condition_batch.scalars], dim=-1)
@@ -121,12 +129,13 @@ class ConditionalTransformerCFM(EventCFM):
         crossattention_mask = xformers_sa_mask(input_batch.batch, condition_batch.batch)
 
         v = self.net(
-            x=x,
-            condition=condition,
+            x=x.unsqueeze(0),
+            condition=condition.unsqueeze(0),
             attention_mask=attention_mask,
             attention_mask_condition=attention_mask_condition,
             crossattention_mask=crossattention_mask,
         )
+        v = v.squeeze(0)
         return v
 
 
@@ -159,16 +168,16 @@ class ConditionalGATrCFM(ConditionalCFMForGA):
         """
         super().__init__(
             scalar_dims,
+            cfg_data,
             cfm,
             odeint,
         )
-        self.cfg_data = cfg_data
         self.net = net
 
-    def embed_into_ga(self, fourmomenta, scalars, ptr, t):
+    def embed_into_ga(self, fourmomenta, scalars, t):
 
         # scalar embedding
-        t = self.t_embedding(t).expand(fourmomenta.shape[0], fourmomenta.shape[1], -1)
+        t = self.t_embedding(t)
         s = torch.cat([scalars, t], dim=-1)
 
         mv = embed_vector(fourmomenta).unsqueeze(-2)

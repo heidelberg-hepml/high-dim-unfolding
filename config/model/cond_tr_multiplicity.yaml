@@ -4,7 +4,7 @@ net:
   _target_: experiments.baselines.ConditionalTransformer
 
   in_channels: 4
-  condition_in_channels: 4
+  condition_channels: 4
   out_channels: null
   hidden_channels: 128
 
