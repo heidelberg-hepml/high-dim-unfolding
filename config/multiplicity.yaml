@@ -44,6 +44,8 @@ evaluation:
 
 plot: true
 plotting:
+ histogram: true
+ distributions: true
  n_distributions: 128
 
 defaults:

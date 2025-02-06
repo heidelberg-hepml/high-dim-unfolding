@@ -115,11 +115,6 @@ class MultiplicityExperiment(BaseExperiment):
             include_keys=["particles", "mults"],
         )
 
-        shuffle_indices = torch.randperm(len(data["sim_particles"]))
-        data["sim_particles"] = data["sim_particles"][shuffle_indices]
-        data["sim_mults"] = data["sim_mults"][shuffle_indices]
-        data["gen_mults"] = data["gen_mults"][shuffle_indices]
-
         self.data_train = Dataset()
         self.data_test = Dataset()
         self.data_val = Dataset()

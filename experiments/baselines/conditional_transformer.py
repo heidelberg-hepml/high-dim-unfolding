@@ -115,7 +115,7 @@ class ConditionalTransformerBlock(nn.Module):
     def __init__(
         self,
         channels: int,
-        conditional_channels: int,
+        condition_channels: int,
         num_heads: int,
         increase_hidden_channels=1,
         multi_query: bool = True,
@@ -138,7 +138,7 @@ class ConditionalTransformerBlock(nn.Module):
 
         self.cross_attention = CrossAttention(
             in_q_channels=channels,
-            in_kv_channels=conditional_channels,
+            in_kv_channels=condition_channels,
             hidden_channels=channels,
             out_channels=channels,
             num_heads=num_heads,
@@ -208,7 +208,7 @@ class ConditionalTransformer(nn.Module):
             [
                 ConditionalTransformerBlock(
                     channels=hidden_channels,
-                    conditional_channels=hidden_channels,
+                    condition_channels=hidden_channels,
                     num_heads=num_heads,
                     increase_hidden_channels=increase_hidden_channels,
                     multi_query=multi_query,
@@ -224,7 +224,7 @@ class ConditionalTransformer(nn.Module):
         x: torch.Tensor,
         condition: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        condition_attention_mask: Optional[torch.Tensor] = None,
+        attention_mask_condition: Optional[torch.Tensor] = None,
         crossattention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
 
@@ -232,10 +232,10 @@ class ConditionalTransformer(nn.Module):
         for block in self.condition_blocks:
             if self.checkpoint_blocks:
                 condition = checkpoint(
-                    block, inputs=condition, attention_mask=condition_attention_mask
+                    block, inputs=condition, attention_mask=attention_mask_condition
                 )
             else:
-                condition = block(condition, attention_mask=condition_attention_mask)
+                condition = block(condition, attention_mask=attention_mask_condition)
 
         x = self.linear_in(x)
         for block in self.blocks:
