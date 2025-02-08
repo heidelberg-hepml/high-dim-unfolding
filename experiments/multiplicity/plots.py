@@ -52,12 +52,30 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
                 file,
                 plot_dict["results_train"]["params"][: cfg.plotting.n_distributions],
                 plot_dict["results_train"]["samples"].numpy(),
-                x_max=cfg.data.max_num_particles,
-                distribution=dist_class,
+                x_max=100,
+                distribution_label=cfg.dist.type,
             )
 
         if cfg.plotting.histogram:
             file = f"{plot_path}/main_histogram.pdf"
+            plot_histogram(
+                file,
+                plot_dict["results_train"]["samples"][:, 1].numpy(),
+                plot_dict["results_train"]["samples"][:, 0].numpy(),
+                xlabel=r"\text{Multiplicity}",
+                xrange=[1, 100],
+                model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
+            )
+            file = f"{plot_path}/histogram2.pdf"
+            plot_histogram(
+                file,
+                plot_dict["results_train"]["samples"][:, 1].numpy(),
+                plot_dict["results_test"]["samples"][:, 1].numpy(),
+                xlabel=r"\text{Multiplicity}",
+                xrange=[1, 100],
+                model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
+            )
+            file = f"{plot_path}/histogram3.pdf"
             plot_histogram(
                 file,
                 plot_dict["results_test"]["samples"][:, 1].numpy(),
@@ -72,12 +90,10 @@ def plot_histogram(
     file,
     train,
     model,
-    title,
     xlabel,
     xrange,
     model_label,
     logy=False,
-    n_bins=60,
     error_range=[0.85, 1.15],
     error_ticks=[0.9, 1.0, 1.1],
 ):
@@ -291,7 +307,7 @@ def plot_param_histograms(
     plt.close()
 
 
-def plot_distributions(file, params, samples, x_max, distribution_label, n_plots=3):
+def plot_distributions(file, params, samples, x_max, distribution_label, n_plots=5):
 
     with PdfPages(file) as pdf:
 
@@ -308,16 +324,17 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
         else:
             x = torch.linspace(0, x_max, 1000).reshape(-1, 1).repeat(1, len(params))
             dist = distribution(params)
-            pdf = dist.log_prob(x).exp().detach().numpy()
+            density = dist.log_prob(x).exp().detach().numpy()
             for j in range(len(params)):
-                ax.plot(x[:, j], pdf[:, j], linewidth=0.5)
+                ax.plot(x[:, j], density[:, j], linewidth=0.5)
         ax.set_xlabel("Multiplicity", fontsize=FONTSIZE)
         ax.set_ylabel("Probability", fontsize=FONTSIZE)
+        ax.set_ylim((0, 0.15))
         ax.set_title(
             f"{len(params)} predicted distributions ({distribution_label})",
             fontsize=FONTSIZE,
         )
-        pdf.savefig(fig)
+        pdf.savefig(fig, bbox_inches="tight")
 
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 4))
@@ -325,7 +342,7 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
                 ax.step(bins, params[i], label="Predicted multiplicity distribution")
             else:
                 x = torch.linspace(0, x_max, 1000).reshape(-1, 1)
-                dist = distribution(params[i])
+                dist = distribution(params[i].unsqueeze(0))
                 density = dist.log_prob(x).exp().detach().numpy()
                 ax.plot(x, density, label=f"predicted mult dist")
             ax.axvline(
@@ -343,8 +360,9 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
             ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
             ax.set_xlabel("Multiplicity", fontsize=FONTSIZE)
             ax.set_ylabel("Probability", fontsize=FONTSIZE)
+            ax.set_ylim((0, 0.15))
             ax.set_title(
-                f"Predicted distribution with parameters {params[i]}",
+                f"Predicted distribution",
                 fontsize=FONTSIZE,
             )
-            pdf.savefig(fig, format="pdf", bbox_inches="tight")
+            pdf.savefig(fig, bbox_inches="tight")

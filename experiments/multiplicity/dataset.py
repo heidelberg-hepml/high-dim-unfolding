@@ -1,17 +1,25 @@
-from experiments.eventgen.helpers import ensure_angle, jetmomenta_to_fourmomenta
+import energyflow
 import torch
 import numpy as np
-import energyflow
 from torch_geometric.data import Data
-from experiments.logger import LOGGER
+
+from experiments.multiplicity.utils import ensure_angle, jetmomenta_to_fourmomenta
+
 
 EPS = 1e-5
 
 
-class MultiplicityDataset(torch.utils.data.Dataset):
+class MultiplicityDataset:
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, data_path, cfg):
+        self.cfg = cfg
+        self.data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=self.cfg.data.length,
+            pad=True,
+            cache_dir=data_path,
+            include_keys=["particles", "mults", "jets"],
+        )
         self.standardize = {
             "mean": torch.zeros(1, 4),
             "std": torch.ones(1, 4),
@@ -27,9 +35,10 @@ class MultiplicityDataset(torch.utils.data.Dataset):
         self,
         data,
         mode,
+        model,
         split=[0.8, 0.1, 0.1],
         mass=0.1,
-        convert_to_fourmomenta=False,
+        standardize=True,
         dtype=torch.float32,
     ):
         """
@@ -39,59 +48,76 @@ class MultiplicityDataset(torch.utils.data.Dataset):
             Path to file in npz format where the dataset in stored
         mode : {"train", "test", "val"}
             Purpose of the dataset
+        model : {"Transformer", "GATr"}
+            Model used
         split : list of float
             Fraction of data to use for training, testing and validation
         mass : float
             Mass of the particle to reconstruct
+        standardize : bool
+            Whether to standardize the data
+            if model == GATr, standardization on fourmomenta with the same factors for all coordinates
+            if model == Transformer, standardization on (Pt,Phi,Eta)
         dtype : torch.dtype
             Data type of the tensors
         """
         size = len(data["sim_particles"])
 
         if mode == "train":
-            det_particles = np.array(data["sim_particles"])[
+            det_particles = torch.tensor(data["sim_particles"])[
                 : int(split[0] * size)
             ]  # detector-level particles
-            det_jets = np.array(data["sim_jets"])[
+            det_jets = torch.tensor(data["sim_jets"])[
                 : int(split[0] * size)
             ]  # detector-level jets
-            det_mults = np.array(data["sim_mults"], dtype=int)[
+            det_mults = torch.tensor(data["sim_mults"], dtype=int)[
                 : int(split[0] * size)
             ]  # detector-level multiplicity
-            gen_mults = np.array(data["gen_mults"], dtype=int)[
+            gen_mults = torch.tensor(data["gen_mults"], dtype=int)[
                 : int(split[0] * size)
             ]  # genlevel multiplicity
+
             mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
             flattened_particles = det_particles[mask]
-            self.standardize["mean"][..., :3] = flattened_particles.mean(
-                dim=0, keepdim=True
-            )[..., [0, 2, 1]]
-            self.standardize["std"][..., :3] = flattened_particles.std(
-                dim=0, keepdim=True
-            )[..., [0, 2, 1]]
+            flattened_particles[..., [1, 2]] = flattened_particles[..., [2, 1]]
+
+            if model == "GATr":
+                flattened_particles[..., 3] = mass
+                flattened_particles = jetmomenta_to_fourmomenta(flattened_particles)
+                self.standardize["mean"] = flattened_particles.mean().view(1, 4)
+                self.standardize["std"] = flattened_particles.std().view(1, 4)
+            else:
+                self.standardize["mean"][..., :3] = flattened_particles.mean(
+                    dim=0, keepdim=True
+                )[..., :3]
+                self.standardize["std"][..., :3] = flattened_particles.std(
+                    dim=0, keepdim=True
+                )[..., :3]
 
         elif mode == "val":
-            det_particles = np.array(data["sim_particles"])[
+            det_particles = torch.tensor(data["sim_particles"])[
                 int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
-            det_jets = np.array(data["sim_jets"])[
+            det_jets = torch.tensor(data["sim_jets"])[
                 int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
-            det_mults = np.array(data["sim_mults"], dtype=int)[
+            det_mults = torch.tensor(data["sim_mults"], dtype=int)[
                 int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[
+            gen_mults = torch.tensor(data["gen_mults"], dtype=int)[
                 int(split[0] * size) : int((split[0] + split[1]) * size)
             ]
         elif mode == "test":
-            det_particles = np.array(data["sim_particles"])[
+            det_particles = torch.tensor(data["sim_particles"])[
                 int((split[0] + split[1]) * size) :
             ]
-            det_jets = np.array(data["sim_jets"])[int((split[0] + split[1]) * size) :]
-            det_mults = np.array(data["sim_mults"], dtype=int)[
+            det_jets = torch.tensor(data["sim_jets"])[
                 int((split[0] + split[1]) * size) :
             ]
-            gen_mults = np.array(data["gen_mults"], dtype=int)[
+            det_mults = torch.tensor(data["sim_mults"], dtype=int)[
+                int((split[0] + split[1]) * size) :
+            ]
+            gen_mults = torch.tensor(data["gen_mults"], dtype=int)[
                 int((split[0] + split[1]) * size) :
             ]
         else:
@@ -115,13 +141,15 @@ class MultiplicityDataset(torch.utils.data.Dataset):
 
             # store standardized pt, phi, eta, mass
             fourvector = kinematics[i, : det_mults[i]]
-            fourvector = (fourvector - self.standardize["mean"]) / self.standardize[
-                "std"
-            ]
-
             fourvector[..., -1] = mass  # replace PID by constant mass for all particles
-            if convert_to_fourmomenta:
+
+            if model == "GATr":
                 fourvector = jetmomenta_to_fourmomenta(fourvector)
+
+            if standardize:
+                fourvector = (fourvector - self.standardize["mean"]) / self.standardize[
+                    "std"
+                ]
 
             label = labels[i]
 

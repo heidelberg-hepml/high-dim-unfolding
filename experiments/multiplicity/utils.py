@@ -72,3 +72,35 @@ def xformers_sa_mask(batch, materialize=False):
         # materialize mask to torch.tensor (only for testing purposes)
         mask = mask.materialize(shape=(len(batch), len(batch))).to(batch.device)
     return mask
+
+
+def get_batch_from_ptr(ptr):
+    return torch.arange(len(ptr) - 1, device=ptr.device).repeat_interleave(
+        ptr[1:] - ptr[:-1],
+    )
+
+
+def get_pt(fourmomenta):
+    return torch.sqrt(fourmomenta[..., 1] ** 2 + fourmomenta[..., 2] ** 2)
+
+
+def get_phi(fourmomenta):
+    return torch.arctan2(fourmomenta[..., 2], fourmomenta[..., 1])
+
+
+def get_eta(fourmomenta):
+    p_abs = torch.sqrt(torch.sum(fourmomenta[..., 1:] ** 2, dim=-1))
+    eta = stable_arctanh(fourmomenta[..., 3] / p_abs, eps=EPS2)
+    return eta
+
+
+def stable_arctanh(x, eps=EPS2):
+    # implementation of arctanh that avoids log(0) issues
+    return 0.5 * (torch.log((1 + x).clamp(min=eps)) - torch.log((1 - x).clamp(min=eps)))
+
+
+def get_mass(fourmomenta, eps=EPS2):
+    m2 = fourmomenta[..., 0] ** 2 - torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
+    m2 = torch.abs(m2)
+    m = torch.sqrt(m2.clamp(min=EPS2))
+    return m

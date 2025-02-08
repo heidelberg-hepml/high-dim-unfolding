@@ -17,10 +17,11 @@ from experiments.multiplicity.distributions import (
     smooth_cross_entropy,
 )
 from experiments.multiplicity.plots import plot_mixer
-from experiments.eventgen.helpers import jetmomenta_to_fourmomenta
-from experiments.tagging.embedding import embed_tagging_data_into_ga
+from experiments.multiplicity.utils import jetmomenta_to_fourmomenta
+from experiments.multiplicity.embedding import embed_data_into_ga
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
+from gatr.interface import get_num_spurions
 
 MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 
@@ -112,7 +113,7 @@ class MultiplicityExperiment(BaseExperiment):
             num_data=self.cfg.data.length,
             pad=True,
             cache_dir=data_path,
-            include_keys=["particles", "mults"],
+            include_keys=["particles", "mults", "jets"],
         )
 
         self.data_train = Dataset()
@@ -121,17 +122,26 @@ class MultiplicityExperiment(BaseExperiment):
         self.data_train.load_data(
             data,
             mode="train",
+            model=self.modelname,
             split=self.cfg.data.split,
-        )
-        self.data_test.load_data(
-            data,
-            mode="test",
-            split=self.cfg.data.split,
+            mass=self.cfg.data.mass,
+            standardize=self.cfg.data.standardize,
         )
         self.data_val.load_data(
             data,
             mode="val",
+            model=self.modelname,
             split=self.cfg.data.split,
+            mass=self.cfg.data.mass,
+            standardize=self.cfg.data.standardize,
+        )
+        self.data_test.load_data(
+            data,
+            mode="test",
+            model=self.modelname,
+            split=self.cfg.data.split,
+            mass=self.cfg.data.mass,
+            standardize=self.cfg.data.standardize,
         )
         dt = time.time() - t0
         LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt/60:.2f} min")
@@ -143,13 +153,13 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
         )
-        self.test_loader = DataLoader(
-            dataset=self.data_test,
+        self.val_loader = DataLoader(
+            dataset=self.data_val,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
         )
-        self.val_loader = DataLoader(
-            dataset=self.data_val,
+        self.test_loader = DataLoader(
+            dataset=self.data_test,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
         )
@@ -215,8 +225,8 @@ class MultiplicityExperiment(BaseExperiment):
         plot_dict = {}
         if self.cfg.evaluate:
             plot_dict["results_train"] = self.results_train
-            plot_dict["results_test"] = self.results_test
             plot_dict["results_val"] = self.results_val
+            plot_dict["results_test"] = self.results_test
         if self.cfg.train:
             plot_dict["train_loss"] = self.train_loss
             plot_dict["val_loss"] = self.val_loss
@@ -229,7 +239,7 @@ class MultiplicityExperiment(BaseExperiment):
         assert torch.isfinite(loss).all()
         params = predicted_dist.params.cpu().detach()
         sample = predicted_dist.sample().cpu().detach()
-        det_mult = torch.tensor(batch.det_mult)
+        det_mult = torch.tensor(batch.det_mult).cpu()
         metrics = {
             "params": params,
             "samples": torch.stack([sample, label.cpu(), det_mult], dim=-1),
@@ -241,8 +251,8 @@ class MultiplicityExperiment(BaseExperiment):
         if self.modelname == "Transformer":
             output = self.model(batch.x, batch.batch)
         elif self.modelname == "GATr":
-            embedding = embed_tagging_data_into_ga(
-                jetmomenta_to_fourmomenta(batch.x),
+            embedding = embed_data_into_ga(
+                batch.x,
                 batch.scalars,
                 batch.ptr,
                 self.cfg.data,

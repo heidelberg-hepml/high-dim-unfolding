@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_ctr_debug
+exp_name: mult_debug
 
 seed: 42
 
@@ -8,9 +8,11 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 10000
+ length: 100000
  split: [0.8, 0.1, 0.1]
- rescale_data: false
+ units: None
+ mass: 0.1
+ standardize: true
  max_num_particles: 152
  beam_reference: xyplane
  two_beams: true
@@ -41,14 +43,15 @@ training:
 evaluate: true
 evaluation:
  batchsize: 128
+ validate: false
 
 plot: true
 plotting:
  histogram: true
  distributions: true
- n_distributions: 128
+ n_distributions: 20
 
 defaults:
- - model: cond_gatr_multiplicity
+ - model: tr_multiplicity
  - default
  - _self_
