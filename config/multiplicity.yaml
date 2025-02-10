@@ -8,19 +8,20 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 100000
+ length: -1
  split: [0.8, 0.1, 0.1]
- units: None
+ units: 1.
  mass: 0.1
  standardize: true
  max_num_particles: 152
+ pid_raw: false
+ pid_encoding: true
  beam_reference: xyplane
  two_beams: true
  beam_token: true
  add_time_reference: true
  add_xzplane: false
  add_yzplane: false
- add_pid: false
  add_scalar_features: false
  reinsert_channels: false
 
@@ -34,7 +35,7 @@ loss:
 
 train: true
 training:
- iterations: 10000
+ iterations: 1000
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 500000
@@ -43,15 +44,14 @@ training:
 evaluate: true
 evaluation:
  batchsize: 128
- validate: false
 
 plot: true
 plotting:
  histogram: true
  distributions: true
- n_distributions: 20
+ n_distributions: 50
 
 defaults:
- - model: tr_multiplicity
+ - model: gatr_multiplicity
  - default
  - _self_

@@ -25,10 +25,10 @@ TICKLABELSIZE = 10
 colors = ["black", "#0343DE", "#A52A2A", "darkorange"]
 
 
-def plot_mixer(cfg, plot_path, title, plot_dict):
+def plot_mixer(cfg, plot_path, plot_dict):
     if cfg.plotting.loss and cfg.train:
         file = f"{plot_path}/loss.pdf"
-        if cfg.evaluation.validate:
+        if cfg.training.validate_every_n_steps < cfg.training.iterations:
             plot_loss(
                 file,
                 [plot_dict["train_loss"], plot_dict["val_loss"]],
@@ -60,24 +60,6 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
             file = f"{plot_path}/main_histogram.pdf"
             plot_histogram(
                 file,
-                plot_dict["results_train"]["samples"][:, 1].numpy(),
-                plot_dict["results_train"]["samples"][:, 0].numpy(),
-                xlabel=r"\text{Multiplicity}",
-                xrange=[1, 100],
-                model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
-            )
-            file = f"{plot_path}/histogram2.pdf"
-            plot_histogram(
-                file,
-                plot_dict["results_train"]["samples"][:, 1].numpy(),
-                plot_dict["results_test"]["samples"][:, 1].numpy(),
-                xlabel=r"\text{Multiplicity}",
-                xrange=[1, 100],
-                model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
-            )
-            file = f"{plot_path}/histogram3.pdf"
-            plot_histogram(
-                file,
                 plot_dict["results_test"]["samples"][:, 1].numpy(),
                 plot_dict["results_test"]["samples"][:, 0].numpy(),
                 xlabel=r"\text{Multiplicity}",
@@ -104,7 +86,6 @@ def plot_histogram(
     file: str
     train: np.ndarray of shape (nevents)
     model: np.ndarray of shape (nevents)
-    title: str
     xlabel: str
     xrange: tuple with 2 floats
     model_label: str
@@ -253,7 +234,6 @@ def plot_param_histograms(
     labels,
     bins=60,
     xlabel=None,
-    title=None,
     logx=False,
     logy=False,
     xrange=None,
@@ -330,30 +310,28 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
         ax.set_xlabel("Multiplicity", fontsize=FONTSIZE)
         ax.set_ylabel("Probability", fontsize=FONTSIZE)
         ax.set_ylim((0, 0.15))
-        ax.set_title(
-            f"{len(params)} predicted distributions ({distribution_label})",
-            fontsize=FONTSIZE,
-        )
         pdf.savefig(fig, bbox_inches="tight")
 
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 4))
             if distribution == "categorical":
-                ax.step(bins, params[i], label="Predicted multiplicity distribution")
+                ax.step(
+                    bins, params[i], label="Predicted distribution", color=colors[3]
+                )
             else:
                 x = torch.linspace(0, x_max, 1000).reshape(-1, 1)
                 dist = distribution(params[i].unsqueeze(0))
                 density = dist.log_prob(x).exp().detach().numpy()
-                ax.plot(x, density, label=f"predicted mult dist")
+                ax.plot(x, density, label=f"Predicted distribution", color=colors[3])
             ax.axvline(
                 samples[i, 1],
-                c="red",
+                c=colors[1],
                 label="Particle-level multiplicity",
                 linestyle="dashed",
             )
             ax.axvline(
                 samples[i, 2],
-                c="green",
+                c=colors[2],
                 label="Detector-level multiplicity",
                 linestyle="dashed",
             )
@@ -361,8 +339,4 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
             ax.set_xlabel("Multiplicity", fontsize=FONTSIZE)
             ax.set_ylabel("Probability", fontsize=FONTSIZE)
             ax.set_ylim((0, 0.15))
-            ax.set_title(
-                f"Predicted distribution",
-                fontsize=FONTSIZE,
-            )
             pdf.savefig(fig, bbox_inches="tight")

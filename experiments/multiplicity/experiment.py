@@ -37,16 +37,14 @@ class MultiplicityExperiment(BaseExperiment):
 
     def init_physics(self):
 
-        self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
-
-        # just for the test of the conditional models
-        if self.modelname == "ConditionalTransformer":
-            self.modelname = "Transformer"
-        elif self.modelname == "ConditionalGATr":
-            self.modelname = "GATr"
-
         with open_dict(self.cfg):
-            if self.modelname == "Transformer":
+            self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+            if self.cfg.modelname == "Transformer":
+                self.cfg.model.net.in_channels = 4
+                if self.cfg.data.pid_raw:
+                    self.cfg.model.net.in_channels += 1
+                elif self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -56,7 +54,7 @@ class MultiplicityExperiment(BaseExperiment):
                 elif self.cfg.dist.type == "Categorical":
                     self.distribution = CategoricalDistribution
                     self.cfg.model.net.out_channels = self.cfg.data.max_num_particles
-            elif self.modelname == "GATr":
+            elif self.cfg.modelname == "GATr":
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
@@ -71,17 +69,19 @@ class MultiplicityExperiment(BaseExperiment):
                 self.cfg.data.include_global_token = False
                 self.cfg.data.num_global_tokens = 0
 
-                self.cfg.model.net.in_mv_channels = 1
-
-                # extra scalar channels
-                if self.cfg.data.add_pid:
+                # scalar channels
+                self.cfg.model.net.in_s_channels = 0
+                if self.cfg.data.pid_raw:
                     self.cfg.model.net.in_s_channels += 1
+                elif self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_s_channels += 6
                 if self.cfg.data.add_scalar_features:
                     self.cfg.model.net.in_s_channels += 7
                 if self.cfg.data.include_global_token:
                     self.cfg.model.net.in_s_channels += self.cfg.data.num_global_tokens
 
-                # extra mv channels for beam_reference and time_reference
+                # mv channels for beam_reference and time_reference
+                self.cfg.model.net.in_mv_channels = 1
                 if not self.cfg.data.beam_token:
                     self.cfg.model.net.in_mv_channels += get_num_spurions(
                         self.cfg.data.beam_reference,
@@ -100,52 +100,18 @@ class MultiplicityExperiment(BaseExperiment):
                         range(self.cfg.model.net.in_s_channels)
                     )
 
+            else:
+                raise ValueError(f"Model not implemented: {self.cfg.modelname}")
+
     def init_data(self):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
-        self._init_data(MultiplicityDataset, data_path)
-
-    def _init_data(self, Dataset, data_path):
-        LOGGER.info(f"Creating {Dataset.__name__} from {data_path}")
+        LOGGER.info(f"Creating MultiplicityDataset from {data_path}")
         t0 = time.time()
-
-        data = energyflow.zjets_delphes.load(
-            "Herwig",
-            num_data=self.cfg.data.length,
-            pad=True,
-            cache_dir=data_path,
-            include_keys=["particles", "mults", "jets"],
-        )
-
-        self.data_train = Dataset()
-        self.data_test = Dataset()
-        self.data_val = Dataset()
-        self.data_train.load_data(
-            data,
-            mode="train",
-            model=self.modelname,
-            split=self.cfg.data.split,
-            mass=self.cfg.data.mass,
-            standardize=self.cfg.data.standardize,
-        )
-        self.data_val.load_data(
-            data,
-            mode="val",
-            model=self.modelname,
-            split=self.cfg.data.split,
-            mass=self.cfg.data.mass,
-            standardize=self.cfg.data.standardize,
-        )
-        self.data_test.load_data(
-            data,
-            mode="test",
-            model=self.modelname,
-            split=self.cfg.data.split,
-            mass=self.cfg.data.mass,
-            standardize=self.cfg.data.standardize,
-        )
-        dt = time.time() - t0
-        LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt/60:.2f} min")
-        del data
+        dataset = MultiplicityDataset(data_path=data_path, cfg=self.cfg)
+        LOGGER.info(f"Created MultiplicityDataset in {time.time() - t0:.2f} seconds")
+        self.data_train = dataset.train_data_list
+        self.data_val = dataset.val_data_list
+        self.data_test = dataset.test_data_list
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
@@ -218,8 +184,6 @@ class MultiplicityExperiment(BaseExperiment):
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
         os.makedirs(plot_path, exist_ok=True)
-        model_title = MODEL_TITLE_DICT[self.modelname]
-        title = model_title
         LOGGER.info(f"Creating plots in {plot_path}")
 
         plot_dict = {}
@@ -231,7 +195,7 @@ class MultiplicityExperiment(BaseExperiment):
             plot_dict["train_loss"] = self.train_loss
             plot_dict["val_loss"] = self.val_loss
             plot_dict["train_lr"] = self.train_lr
-        plot_mixer(self.cfg, plot_path, title, plot_dict)
+        plot_mixer(self.cfg, plot_path, plot_dict)
 
     def _batch_loss(self, batch):
         predicted_dist, label = self._get_predicted_dist_and_label(batch)
@@ -248,9 +212,10 @@ class MultiplicityExperiment(BaseExperiment):
 
     def _get_predicted_dist_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
         batch = batch.to(self.device)
-        if self.modelname == "Transformer":
-            output = self.model(batch.x, batch.batch)
-        elif self.modelname == "GATr":
+        if self.cfg.modelname == "Transformer":
+            input = torch.cat([batch.x, batch.scalars], dim=-1)
+            output = self.model(input, batch.batch)
+        elif self.cfg.modelname == "GATr":
             embedding = embed_data_into_ga(
                 batch.x,
                 batch.scalars,
