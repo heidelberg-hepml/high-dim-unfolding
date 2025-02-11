@@ -155,7 +155,7 @@ def plot_histogram(
             step="post",
         )
 
-        if label == "Dataset":
+        if label == "Truth":
             axs[0].fill_between(
                 bins,
                 dup_last(y) * scale,

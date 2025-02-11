@@ -172,11 +172,11 @@ class MultiplicityExperiment(BaseExperiment):
                 loss.append(batch_loss)
                 params.append(batch_metrics["params"])
                 samples.append(batch_metrics["samples"])
-        loss = np.array(loss)
+        loss = torch.tensor(loss).detach().cpu()
         LOGGER.info(
-            f"Loss on {title} dataset: mean {loss.mean():.4f} , std {loss.std():.4f}"
+            f"Loss on {title} dataset: mean {loss.mean():.4f} , std between batches {loss.std():.4f}"
         )
-        metrics["loss"] = loss / len(loader.dataset)
+        metrics["loss"] = loss.mean()
         metrics["params"] = torch.cat(params)
         metrics["samples"] = torch.cat(samples)
         if self.cfg.use_mlflow:

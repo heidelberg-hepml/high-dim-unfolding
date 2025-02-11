@@ -35,11 +35,12 @@ loss:
 
 train: true
 training:
- iterations: 30000
+ iterations: 50000
  batchsize: 128
  lr: 1e-3
- validate_every_n_steps: 5000
+ validate_every_n_steps: 10000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:

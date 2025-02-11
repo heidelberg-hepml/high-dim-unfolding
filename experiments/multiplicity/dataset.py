@@ -102,10 +102,8 @@ class MultiplicityDataset:
             self.std[..., -1] = 1
         else:
             raise ValueError(f"Not implemented for model {self.cfg.modelname}")
-        del mask, flattened_particles
 
     def create_data_list(self, det_particles, det_pids, det_mults, gen_mults):
-        assert len(det_particles) == len(det_mults) == len(gen_mults)
 
         labels = gen_mults.to(dtype=torch.int)
 
@@ -119,15 +117,13 @@ class MultiplicityDataset:
                 scalars = torch.zeros((det_mults[i], 0), dtype=self.dtype)
 
             # store standardized pt, phi, eta, mass
-            fourvector = det_particles[i, : det_mults[i]]
-
-            if self.cfg.data.standardize:
-                fourvector = (fourvector - self.mean) / self.std
+            det_event = det_particles[i, : det_mults[i]]
 
             label = labels[i]
 
             graph = Data(
-                x=fourvector, scalars=scalars, label=label, det_mult=det_mults[i]
+                x=det_event, scalars=scalars, label=label, det_mult=det_mults[i]
             )
             data_list.append(graph)
+
         return data_list
