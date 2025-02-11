@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 
+import random
 import os, time
 import zipfile
 import logging
@@ -228,8 +229,9 @@ class BaseExperiment:
         # set seed
         if self.cfg.seed is not None:
             LOGGER.info(f"Using seed {self.cfg.seed}")
-            torch.random.manual_seed(self.cfg.seed)
+            torch.manual_seed(self.cfg.seed)
             np.random.seed(self.cfg.seed)
+            random.seed(self.cfg.seed)
 
         return run_name
 

@@ -19,10 +19,6 @@ import torch
 @hydra.main(config_path="config", config_name="amplitudes", version_base=None)
 def main(cfg):
 
-    random.seed(cfg.seed)
-    np.random.seed(cfg.seed)
-    torch.manual_seed(cfg.seed)
-
     if cfg.exp_type == "amplitudes":
         exp = AmplitudeExperiment(cfg)
     elif cfg.exp_type == "toptagging":

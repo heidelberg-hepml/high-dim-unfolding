@@ -5,9 +5,9 @@ net:
 
   in_channels: 4
   out_channels: null
-  hidden_channels: 128
+  hidden_channels: 256
 
-  num_blocks: 2
+  num_blocks: 4
   num_heads: 4
   dropout_prob: null
 

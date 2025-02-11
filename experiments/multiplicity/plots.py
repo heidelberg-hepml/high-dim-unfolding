@@ -50,8 +50,8 @@ def plot_mixer(cfg, plot_path, plot_dict):
             file = f"{plot_path}/distributions.pdf"
             plot_distributions(
                 file,
-                plot_dict["results_train"]["params"][: cfg.plotting.n_distributions],
-                plot_dict["results_train"]["samples"].numpy(),
+                plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
+                plot_dict["results_test"]["samples"].numpy(),
                 x_max=100,
                 distribution_label=cfg.dist.type,
             )
@@ -95,7 +95,7 @@ def plot_histogram(
     error_ticks: tuple with 3 floats
     """
     # construct labels and colors
-    labels = ["Dataset", model_label]
+    labels = ["Truth", model_label]
     colors = ["black", "#A52A2A"]
     bins = np.arange(int(xrange[0]), int(xrange[1]) + 1)
 
@@ -214,7 +214,7 @@ def plot_histogram(
     )
 
     axs[1].set_ylabel(
-        r"$\frac{\mathrm{{%s}}}{\mathrm{Dataset}}$" % model_label, fontsize=FONTSIZE
+        r"$\frac{\mathrm{{%s}}}{\mathrm{Truth}}$" % model_label, fontsize=FONTSIZE
     )
     axs[1].set_yticks(error_ticks)
     axs[1].set_ylim(error_range)

@@ -163,16 +163,20 @@ class MultiplicityExperiment(BaseExperiment):
         )
         metrics = {}
         self.model.eval()
-        loss = 0.0
+        loss = []
         params = []
         samples = []
         with torch.no_grad():
             for batch in loader:
                 batch_loss, batch_metrics = self._batch_loss(batch)
-                loss += batch_loss
+                loss.append(batch_loss)
                 params.append(batch_metrics["params"])
                 samples.append(batch_metrics["samples"])
-        metrics["loss"] = (loss / len(loader.dataset)).cpu().item()
+        loss = np.array(loss)
+        LOGGER.info(
+            f"Loss on {title} dataset: mean {loss.mean():.4f} , std {loss.std():.4f}"
+        )
+        metrics["loss"] = loss / len(loader.dataset)
         metrics["params"] = torch.cat(params)
         metrics["samples"] = torch.cat(samples)
         if self.cfg.use_mlflow:
