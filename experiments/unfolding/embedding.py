@@ -2,14 +2,8 @@ import torch
 from torch.nn.functional import one_hot
 from torch_geometric.utils import scatter
 
-from experiments.unfolding.dataset import EPS
+from experiments.unfolding.utils import get_batch_from_ptr, get_pt, get_phi, get_eta
 from gatr.interface import embed_vector, embed_spurions
-
-
-def get_batch_from_ptr(ptr):
-    return torch.arange(len(ptr) - 1, device=ptr.device).repeat_interleave(
-        ptr[1:] - ptr[:-1],
-    )
 
 
 def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
@@ -123,57 +117,3 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
     batch = get_batch_from_ptr(ptr)
 
     return multivectors, scalars, batch
-
-
-def dense_to_sparse_jet(fourmomenta_dense, scalars_dense):
-    """
-    Transform dense jet into sparse jet
-
-    Parameters
-    ----------
-    fourmomenta_dense: torch.tensor of shape (batchsize, 4, num_particles_max)
-    scalars_dense: torch.tensor of shape (batchsize, num_features, num_particles_max)
-
-    Returns
-    -------
-    fourmomenta_sparse: torch.tensor of shape (num_particles, 4)
-        Fourmomenta for concatenated list of particles of all jets
-    scalars_sparse: torch.tensor of shape (num_particles, num_features)
-        Scalar features for concatenated list of particles of all jets
-    ptr: torch.tensor of shape (batchsize+1)
-        Start indices of each jet, this way we don't lose information when concatenating everything
-        Starts with 0 and ends with the first non-accessible index (=total number of particles)
-    """
-    fourmomenta_dense = torch.transpose(
-        fourmomenta_dense, 1, 2
-    )  # (batchsize, num_particles, 4)
-    scalars_dense = torch.transpose(
-        scalars_dense, 1, 2
-    )  # (batchsize, num_particles, num_features)
-
-    mask = (fourmomenta_dense.abs() > EPS).any(dim=-1)
-    num_particles = mask.sum(dim=-1)
-    fourmomenta_sparse = fourmomenta_dense[mask]
-    scalars_sparse = scalars_dense[mask]
-
-    ptr = torch.zeros(
-        len(num_particles) + 1, device=fourmomenta_dense.device, dtype=torch.long
-    )
-    ptr[1:] = torch.cumsum(num_particles, dim=0)
-    return fourmomenta_sparse, scalars_sparse, ptr
-
-
-def get_pt(p):
-    # transverse momentum
-    return torch.sqrt(p[..., 1] ** 2 + p[..., 2] ** 2)
-
-
-def get_phi(p):
-    # azimuthal angle
-    return torch.arctan2(p[..., 2], p[..., 1])
-
-
-def get_eta(p):
-    # rapidity
-    p_abs = torch.sqrt(torch.sum(p[..., 1:] ** 2, dim=-1))
-    return torch.arctanh(p[..., 3] / p_abs)

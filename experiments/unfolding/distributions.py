@@ -1,14 +1,7 @@
 import torch
 import math
 
-from experiments.eventgen.helpers import (
-    get_pt,
-    delta_r_fast,
-    fourmomenta_to_jetmomenta,
-)
 import experiments.unfolding.coordinates as c
-
-from experiments.unfolding.helpers import EPS1
 
 
 class BaseDistribution:

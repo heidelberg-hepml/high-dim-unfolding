@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_tr_tune
+exp_name: mult_gatr_tune
 
 seed: 42
 
@@ -26,8 +26,9 @@ data:
  reinsert_channels: false
 
 dist: 
- type: GammaMixture
+ type: GaussianMixture
  n_components: 5
+ diff: false
 
 loss:
  type: cross_entropy
@@ -38,8 +39,8 @@ training:
  iterations: 50000
  batchsize: 128
  lr: 1e-3
- validate_every_n_steps: 10000
- force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ validate_every_n_steps: 5000
+ force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
  scheduler: CosineAnnealingLR
 
 evaluate: true
@@ -51,8 +52,9 @@ plotting:
  histogram: true
  distributions: true
  n_distributions: 30
+ diff: true
 
 defaults:
- - model: tr_multiplicity
+ - model: gatr_multiplicity
  - default
  - _self_

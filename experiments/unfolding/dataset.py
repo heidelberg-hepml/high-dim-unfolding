@@ -7,9 +7,6 @@ from experiments.logger import LOGGER
 from experiments.unfolding.utils import jetmomenta_to_fourmomenta, ensure_angle
 
 
-EPS = 1e-5
-
-
 class ZplusJetDataset(torch.utils.data.Dataset):
     def __init__(self, data_path, cfg):
         self.cfg = cfg
