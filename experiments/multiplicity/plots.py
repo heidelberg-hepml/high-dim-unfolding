@@ -48,12 +48,17 @@ def plot_mixer(cfg, plot_path, plot_dict):
     if cfg.evaluate:
         if cfg.plotting.distributions:
             file = f"{plot_path}/distributions.pdf"
+            if cfg.dist.diff:
+                xrange = [-15, 40]
+            else:
+                xrange = [0, 85]
             plot_distributions(
                 file,
                 plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
                 plot_dict["results_test"]["samples"].numpy(),
-                x_max=100,
+                xrange=xrange,
                 distribution_label=cfg.dist.type,
+                diff=cfg.dist.diff,
             )
 
         if cfg.plotting.histogram:
@@ -63,7 +68,19 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 plot_dict["results_test"]["samples"][:, 1].numpy(),
                 plot_dict["results_test"]["samples"][:, 0].numpy(),
                 xlabel=r"\text{Multiplicity}",
-                xrange=[1, 100],
+                xrange=[0, 85],
+                model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
+            )
+        if cfg.plotting.diff:
+            file = f"{plot_path}/diff_histogram.pdf"
+            plot_histogram(
+                file,
+                plot_dict["results_test"]["samples"][:, 1].numpy()
+                - plot_dict["results_test"]["samples"][:, 2].numpy(),
+                plot_dict["results_test"]["samples"][:, 0].numpy()
+                - plot_dict["results_test"]["samples"][:, 2].numpy(),
+                xlabel=r"\text{Multiplicity difference}",
+                xrange=[-15, 40],
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
 
@@ -287,7 +304,9 @@ def plot_param_histograms(
     plt.close()
 
 
-def plot_distributions(file, params, samples, x_max, distribution_label, n_plots=5):
+def plot_distributions(
+    file, params, samples, xrange, distribution_label, diff, n_plots=5
+):
 
     with PdfPages(file) as pdf:
 
@@ -298,11 +317,15 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
 
         fig, ax = plt.subplots(figsize=(6, 4))
         if distribution_label == "Categorical":
-            bins = np.arange(1, x_max + 1)
+            bins = np.arange(xrange[0], xrange[1] + 1)
             for logits in params:
                 ax.step(bins, logits, linewidth=0.5)
         else:
-            x = torch.linspace(0, x_max, 1000).reshape(-1, 1).repeat(1, len(params))
+            x = (
+                torch.linspace(xrange[0], xrange[1], 1000)
+                .reshape(-1, 1)
+                .repeat(1, len(params))
+            )
             dist = distribution(params)
             density = dist.log_prob(x).exp().detach().numpy()
             for j in range(len(params)):
@@ -319,22 +342,30 @@ def plot_distributions(file, params, samples, x_max, distribution_label, n_plots
                     bins, params[i], label="Predicted distribution", color=colors[3]
                 )
             else:
-                x = torch.linspace(0, x_max, 1000).reshape(-1, 1)
+                x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1)
                 dist = distribution(params[i].unsqueeze(0))
                 density = dist.log_prob(x).exp().detach().numpy()
                 ax.plot(x, density, label=f"Predicted distribution", color=colors[3])
-            ax.axvline(
-                samples[i, 1],
-                c=colors[1],
-                label="Particle-level multiplicity",
-                linestyle="dashed",
-            )
-            ax.axvline(
-                samples[i, 2],
-                c=colors[2],
-                label="Detector-level multiplicity",
-                linestyle="dashed",
-            )
+            if diff:
+                ax.axvline(
+                    samples[i, 1] - samples[i, 2],
+                    c=colors[1],
+                    label="Truth",
+                    linestyle="dashed",
+                )
+            else:
+                ax.axvline(
+                    samples[i, 1],
+                    c=colors[1],
+                    label="Particle-level multiplicity",
+                    linestyle="dashed",
+                )
+                ax.axvline(
+                    samples[i, 2],
+                    c=colors[2],
+                    label="Detector-level multiplicity",
+                    linestyle="dashed",
+                )
             ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
             ax.set_xlabel("Multiplicity", fontsize=FONTSIZE)
             ax.set_ylabel("Probability", fontsize=FONTSIZE)

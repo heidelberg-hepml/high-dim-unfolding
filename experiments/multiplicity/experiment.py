@@ -203,11 +203,15 @@ class MultiplicityExperiment(BaseExperiment):
 
     def _batch_loss(self, batch):
         predicted_dist, label = self._get_predicted_dist_and_label(batch)
-        loss = self.loss(predicted_dist, label)
-        assert torch.isfinite(loss).all()
         params = predicted_dist.params.cpu().detach()
-        sample = predicted_dist.sample().cpu().detach()
-        det_mult = torch.tensor(batch.det_mult).cpu()
+        if self.cfg.dist.diff:
+            loss = self.loss(predicted_dist, label - batch.det_mult)
+            sample = (batch.det_mult + predicted_dist.sample()).cpu().detach()
+        else:
+            loss = self.loss(predicted_dist, label)
+            sample = predicted_dist.sample().cpu().detach()
+        assert torch.isfinite(loss).all()
+        det_mult = batch.det_mult.cpu()
         metrics = {
             "params": params,
             "samples": torch.stack([sample, label.cpu(), det_mult], dim=-1),
