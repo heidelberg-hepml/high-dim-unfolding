@@ -181,6 +181,7 @@ class ConditionalTransformer(nn.Module):
         out_channels: int,
         hidden_channels: int,
         num_blocks: int = 10,
+        num_condition_blocks: int = 10,
         num_heads: int = 8,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,
@@ -201,7 +202,7 @@ class ConditionalTransformer(nn.Module):
                     multi_query=multi_query,
                     dropout_prob=dropout_prob,
                 )
-                for _ in range(num_blocks)
+                for _ in range(num_condition_blocks)
             ]
         )
         self.blocks = nn.ModuleList(
