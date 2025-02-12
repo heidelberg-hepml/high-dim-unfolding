@@ -314,12 +314,14 @@ def plot_distributions(
             distribution = GammaMixture
         elif distribution_label == "GaussianMixture":
             distribution = GaussianMixture
+        elif distribution_label == "Categorical":
+            distribution = CategoricalDistribution
 
         fig, ax = plt.subplots(figsize=(6, 4))
         if distribution_label == "Categorical":
             bins = np.arange(xrange[0], xrange[1] + 1)
             for logits in params:
-                ax.step(bins, logits, linewidth=0.5)
+                ax.step(bins, logits[bins], linewidth=0.5)
         else:
             x = (
                 torch.linspace(xrange[0], xrange[1], 1000)
@@ -337,9 +339,12 @@ def plot_distributions(
 
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 4))
-            if distribution == "categorical":
+            if distribution == CategoricalDistribution:
                 ax.step(
-                    bins, params[i], label="Predicted distribution", color=colors[3]
+                    bins,
+                    params[i][bins],
+                    label="Predicted distribution",
+                    color=colors[3],
                 )
             else:
                 x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1)
