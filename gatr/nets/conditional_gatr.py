@@ -77,6 +77,7 @@ class ConditionalGATr(nn.Module):
         attention_condition: SelfAttentionConfig,
         mlp: MLPConfig,
         num_blocks: int = 10,
+        num_condition_blocks: int = 10,
         checkpoint_blocks: bool = False,
         dropout_prob: Optional[float] = None,
         double_layernorm: bool = False,
@@ -115,7 +116,7 @@ class ConditionalGATr(nn.Module):
                     dropout_prob=dropout_prob,
                     double_layernorm=double_layernorm,
                 )
-                for _ in range(num_blocks)
+                for _ in range(num_condition_blocks)
             ]
         )
         self.blocks = nn.ModuleList(
@@ -131,6 +132,7 @@ class ConditionalGATr(nn.Module):
                     dropout_prob=dropout_prob,
                     double_layernorm=double_layernorm,
                 )
+                for _ in range(num_blocks)
             ]
         )
         self.linear_out = EquiLinear(

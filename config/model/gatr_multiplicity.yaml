@@ -10,10 +10,10 @@ net:
  hidden_mv_channels: 8
 
  in_s_channels: 1
- out_s_channels: 1
+ out_s_channels: null
  hidden_s_channels: 8
 
- num_blocks: 4
+ num_blocks: 2
  reinsert_mv_channels: null
  reinsert_s_channels: null
  dropout_prob: null

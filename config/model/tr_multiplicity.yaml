@@ -5,7 +5,7 @@ net:
 
   in_channels: 4
   out_channels: null
-  hidden_channels: 128
+  hidden_channels: 64
 
   num_blocks: 2
   num_heads: 4

@@ -2,11 +2,17 @@ import torch
 from torch.nn.functional import one_hot
 from torch_geometric.utils import scatter
 
-from experiments.unfolding.utils import get_batch_from_ptr, get_pt, get_phi, get_eta
+from experiments.multiplicity.utils import (
+    get_batch_from_ptr,
+    get_pt,
+    get_phi,
+    get_eta,
+    ensure_angle,
+)
 from gatr.interface import embed_vector, embed_spurions
 
 
-def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
+def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
     """
     Embed data into geometric algebra representation
     We use torch_geometric sparse representations to be more memory efficient
@@ -27,7 +33,7 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
     -------
     embedding: dict
         Embedded data
-        Includes keys for multivectors, scalars, and ptr
+        Includes keys for multivectors, scalars, is_global and ptr
     """
     batchsize = len(ptr) - 1
     arange = torch.arange(batchsize, device=fourmomenta.device)
@@ -44,7 +50,7 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
         log_pt_rel = (get_pt(fourmomenta).log() - get_pt(jet).log()).unsqueeze(-1)
         log_energy_rel = (fourmomenta[..., 0].log() - jet[..., 0].log()).unsqueeze(-1)
         phi_4, phi_jet = get_phi(fourmomenta), get_phi(jet)
-        dphi = ((phi_4 - phi_jet + torch.pi) % (2 * torch.pi) - torch.pi).unsqueeze(-1)
+        dphi = ensure_angle(phi_4 - phi_jet).unsqueeze(-1)
         eta_4, eta_jet = get_eta(fourmomenta), get_eta(jet)
         deta = -(eta_4 - eta_jet).unsqueeze(-1)
         dr = torch.sqrt(dphi**2 + deta**2)
@@ -65,6 +71,9 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
             dim=-1,
         )
 
+    # embed fourmomenta into multivectors
+    if cfg_data.units is not None:
+        fourmomenta /= cfg_data.units
     multivectors = embed_vector(fourmomenta)
     multivectors = multivectors.unsqueeze(-2)
 
@@ -114,6 +123,71 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
         spurions = spurions.unsqueeze(0).repeat(multivectors.shape[0], 1, 1)
         multivectors = torch.cat((multivectors, spurions), dim=-2)
 
-    batch = get_batch_from_ptr(ptr)
+    # global tokens
+    num_global_tokens = cfg_data.num_global_tokens
+    if cfg_data.include_global_token and num_global_tokens > 0:
+        # prepend global tokens to the token list
+        global_idxs = torch.stack(
+            [ptr[:-1] + i for i in range(num_global_tokens)], dim=0
+        ) + num_global_tokens * torch.arange(batchsize, device=ptr.device)
+        global_idxs = global_idxs.permute(1, 0).flatten()
+        is_global = torch.zeros(
+            multivectors.shape[0] + batchsize * num_global_tokens,
+            dtype=torch.bool,
+            device=multivectors.device,
+        )
+        is_global[global_idxs] = True
+        multivectors_buffer = multivectors.clone()
+        multivectors = torch.zeros(
+            is_global.shape[0],
+            *multivectors.shape[1:],
+            dtype=multivectors.dtype,
+            device=multivectors.device,
+        )
+        multivectors[~is_global] = multivectors_buffer
+        scalars_buffer = scalars.clone()
+        scalars = torch.zeros(
+            multivectors.shape[0],
+            scalars.shape[1] + num_global_tokens,
+            dtype=scalars.dtype,
+            device=scalars.device,
+        )
+        token_idx = one_hot(torch.arange(num_global_tokens, device=scalars.device))
+        token_idx = token_idx.repeat(batchsize, 1)
+        scalars[~is_global] = torch.cat(
+            (
+                scalars_buffer,
+                torch.zeros(
+                    scalars_buffer.shape[0],
+                    token_idx.shape[1],
+                    dtype=scalars.dtype,
+                    device=scalars.device,
+                ),
+            ),
+            dim=-1,
+        )
+        scalars[is_global] = torch.cat(
+            (
+                torch.zeros(
+                    token_idx.shape[0],
+                    scalars_buffer.shape[1],
+                    dtype=scalars.dtype,
+                    device=scalars.device,
+                ),
+                token_idx,
+            ),
+            dim=-1,
+        )
+        ptr[1:] = ptr[1:] + (arange + 1) * num_global_tokens
+    else:
+        is_global = None
 
-    return multivectors, scalars, batch
+    # return dict
+    batch = get_batch_from_ptr(ptr)
+    embedding = {
+        "mv": multivectors,
+        "s": scalars,
+        "is_global": is_global,
+        "batch": batch,
+    }
+    return embedding
