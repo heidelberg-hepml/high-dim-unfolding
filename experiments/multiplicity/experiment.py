@@ -36,7 +36,7 @@ class MultiplicityExperiment(BaseExperiment):
             ).mean()
         if self.cfg.dist.single_mult:
             self.loss = lambda dist, target: torch.nn.MSELoss()(
-                dist.sample(target.shape), target
+                dist.sample(target.shape).to(torch.float32), target.to(torch.float32)
             )
 
     def init_physics(self):
@@ -49,7 +49,9 @@ class MultiplicityExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += 1
                 elif self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
-                if self.cfg.dist.type == "GammaMixture":
+                if self.cfg.dist.single_mult:
+                    self.cfg.model.net.out_channels = 1
+                elif self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "GaussianMixture":
@@ -57,11 +59,18 @@ class MultiplicityExperiment(BaseExperiment):
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "Categorical":
                     self.distribution = CategoricalDistribution
-                    self.cfg.model.net.out_channels = (
-                        self.cfg.data.max_num_particles + 1
-                    )
+                    if self.cfg.dist.diff:
+                        self.cfg.model.net.out_channels = (
+                            self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
+                        )
+                    else:
+                        self.cfg.model.net.out_channels = (
+                            self.cfg.data.max_num_particles + 1
+                        )
             elif self.cfg.modelname == "GATr":
-                if self.cfg.dist.type == "GammaMixture":
+                if self.cfg.dist.single_mult:
+                    self.cfg.model.net.out_mv_channels = 1
+                elif self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "GaussianMixture":
@@ -216,8 +225,18 @@ class MultiplicityExperiment(BaseExperiment):
             predicted_dist, label = self._get_predicted_dist_and_label(batch)
         params = predicted_dist.params.cpu().detach()
         if self.cfg.dist.diff:
-            loss = self.loss(predicted_dist, label - batch.det_mult)
-            sample = (batch.det_mult + predicted_dist.sample()).cpu().detach()
+            if self.cfg.dist.type == "Categorical":
+                loss = self.loss(
+                    predicted_dist, label - batch.det_mult - self.cfg.data.diff[0]
+                )
+                sample = (
+                    (batch.det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
+                    .cpu()
+                    .detach()
+                )
+            else:
+                loss = self.loss(predicted_dist, label - batch.det_mult)
+                sample = (batch.det_mult + predicted_dist.sample()).cpu().detach()
         else:
             loss = self.loss(predicted_dist, label)
             sample = predicted_dist.sample().cpu().detach()
@@ -263,7 +282,7 @@ class MultiplicityExperiment(BaseExperiment):
                 self.cfg.data,
             )
             output = self.model(embedding)
-        output = torch.round(output).to(dtype=torch.int)
+        output = torch.exp(output).squeeze().to(dtype=torch.int64)
         if self.cfg.dist.diff:
             output = torch.clamp(
                 output, min=self.cfg.data.diff[0], max=self.cfg.data.diff[1]

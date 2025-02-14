@@ -59,6 +59,7 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 xrange=xrange,
                 distribution_label=cfg.dist.type,
                 diff=cfg.dist.diff,
+                diff_min=cfg.data.diff[0],
             )
 
         if cfg.plotting.histogram:
@@ -305,7 +306,7 @@ def plot_param_histograms(
 
 
 def plot_distributions(
-    file, params, samples, xrange, distribution_label, diff, n_plots=5
+    file, params, samples, xrange, distribution_label, diff, diff_min, n_plots=5
 ):
 
     with PdfPages(file) as pdf:
@@ -320,8 +321,12 @@ def plot_distributions(
         fig, ax = plt.subplots(figsize=(6, 4))
         if distribution_label == "Categorical":
             bins = np.arange(xrange[0], xrange[1] + 1)
-            for logits in params:
-                ax.step(bins, logits[bins], linewidth=0.5)
+            if diff:
+                for logits in params:
+                    ax.step(bins, logits[bins - diff_min] / logits.sum(), linewidth=0.5)
+            else:
+                for logits in params:
+                    ax.step(bins, logits[bins] / logits.sum(), linewidth=0.5)
         else:
             x = (
                 torch.linspace(xrange[0], xrange[1], 1000)
@@ -340,12 +345,20 @@ def plot_distributions(
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 4))
             if distribution == CategoricalDistribution:
-                ax.step(
-                    bins,
-                    params[i][bins],
-                    label="Predicted distribution",
-                    color=colors[3],
-                )
+                if diff:
+                    ax.step(
+                        bins,
+                        params[i][bins - diff_min] / params[i].sum(),
+                        label="Predicted distribution",
+                        color=colors[3],
+                    )
+                else:
+                    ax.step(
+                        bins,
+                        params[i][bins] / params[i].sum(),
+                        label="Predicted distribution",
+                        color=colors[3],
+                    )
             else:
                 x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1)
                 dist = distribution(params[i].unsqueeze(0))

@@ -201,25 +201,24 @@ class BaseExperiment:
             else:
                 run_name = self.cfg.run_name
 
-            run_dir = os.path.join(
-                self.cfg.base_dir, "runs", self.cfg.exp_name, run_name
-            )
             run_idx = 0
             LOGGER.info(f"Creating new experiment {self.cfg.exp_name}/{run_name}")
 
         else:
             run_name = self.cfg.run_name
-            run_idx = self.cfg.run_idx + 1
+            run_idx = self.cfg.warm_start_idx + 1
             LOGGER.info(
                 f"Warm-starting from existing experiment {self.cfg.exp_name}/{run_name} for run {run_idx}"
             )
+
+        run_dir = os.path.join(self.cfg.base_dir, "runs", self.cfg.exp_name, run_name)
 
         with open_dict(self.cfg):
             self.cfg.run_idx = run_idx
             if not self.warm_start:
                 self.cfg.warm_start_idx = 0
-                self.cfg.run_name = run_name
-                self.cfg.run_dir = run_dir
+            self.cfg.run_name = run_name
+            self.cfg.run_dir = run_dir
 
             # only use mlflow if save=True
             self.cfg.use_mlflow = (
