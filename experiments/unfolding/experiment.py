@@ -22,18 +22,17 @@ class UnfoldingExperiment(BaseExperiment):
 
         # dynamically set wrapper properties
         self.modeltype = "CFM"
-        self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
 
         with open_dict(self.cfg):
-
+            self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
             # dynamically set channel dimensions
-            if self.modelname == "ConditionalGATr":
+            if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
                 self.cfg.model.net.condition_s_channels = 0
-                if self.cfg.data.save_pid:
+                if self.cfg.data.pid_raw:
                     self.cfg.model.net.in_s_channels += 1
                     self.cfg.model.net.condition_s_channels += 1
-                if self.cfg.data.pid_encoding:
+                elif self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_s_channels += 6
                     self.cfg.model.net.condition_s_channels += 6
                 if self.cfg.data.add_scalar_features:
@@ -51,10 +50,10 @@ class UnfoldingExperiment(BaseExperiment):
                         self.cfg.model.net.condition_mv_channels += 1
                 self.cfg.model.cfg_data = self.cfg.data
 
-            elif self.modelname == "ConditionalTransformer":
+            elif self.cfg.modelname == "ConditionalTransformer":
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net.condition_channels = 4
-                if self.cfg.data.save_pid:
+                if self.cfg.data.pid_raw:
                     self.cfg.model.net.in_channels += 1
                     self.cfg.model.net.condition_channels += 1
                 if self.cfg.data.pid_encoding:
@@ -70,74 +69,7 @@ class UnfoldingExperiment(BaseExperiment):
         self._init_data(ZplusJetDataset, data_path)
 
     def _init_data(self, Dataset, data_path):
-        LOGGER.info(f"Creating {Dataset.__name__} from {data_path}")
-        t0 = time.time()
-
-        data = energyflow.zjets_delphes.load(
-            "Herwig",
-            num_data=self.cfg.data.length,
-            pad=True,
-            cache_dir=data_path,
-            include_keys=["particles", "jets", "mults"],
-        )
-
-        data["sim_particles"] = torch.tensor(data["sim_particles"])
-        data["sim_jets"] = torch.tensor(data["sim_jets"])
-        data["gen_particles"] = torch.tensor(data["gen_particles"])
-        data["gen_jets"] = torch.tensor(data["gen_jets"])
-        data["sim_mults"] = torch.tensor(data["sim_mults"])
-        data["gen_mults"] = torch.tensor(data["gen_mults"])
-
-        # undo dataset preprocessing
-        data["sim_particles"][..., 1:3] = data["sim_particles"][..., 1:3] + data[
-            "sim_jets"
-        ][..., 1:3].unsqueeze(1)
-        data["gen_particles"][..., 1:3] = data["gen_particles"][..., 1:3] + data[
-            "gen_jets"
-        ][..., 1:3].unsqueeze(1)
-
-        train_idx = round(self.cfg.data.split[0] * data["sim_particles"].shape[0])
-        val_idx = train_idx + round(
-            self.cfg.data.split[1] * data["sim_particles"].shape[0]
-        )
-
-        # compute mean and std
-        # train_det_particles = data["sim_particles"][0:train_idx]
-        # n_train_det = torch.sum(data["sim_mults"][0:train_idx])
-        train_gen_particles = data["gen_particles"][0:train_idx]
-        n_train_gen = torch.sum(data["gen_mults"][0:train_idx])
-
-        # train_det_mean = train_det_particles.sum(0, 1) / n_train_det
-        # train_det_std = torch.sqrt(
-        #     ((train_det_particles - train_det_mean) ** 2).sum(0, 1) / n_train_det
-        # )
-        train_gen_mean = train_gen_particles.sum(dim=[0, 1]) / n_train_gen
-        train_gen_std = torch.sqrt(
-            ((train_gen_particles - train_gen_mean.view(1, 1, 4)) ** 2).sum(dim=[0, 1])
-            / n_train_gen
-        )
-        # remove it for the fixed mass
-        # train_det_mean[..., 3] = 0.0
-        # train_det_std[..., 3] = 1.0
-        train_gen_mean[..., 3] = 0.0
-        train_gen_std[..., 3] = 1.0
-
-        with open_dict(self.cfg):
-            # self.cfg.data.train_det_mean = train_det_mean.unsqueeze(0)
-            # self.cfg.data.train_det_std = train_det_std.unsqueeze(0)
-            self.cfg.data.train_gen_mean = [mean.item() for mean in train_gen_mean]
-            self.cfg.data.train_gen_std = [std.item() for std in train_gen_std]
-
-        self.train_dataset = ZplusJetDataset(self.cfg.data)
-        self.test_dataset = ZplusJetDataset(self.cfg.data)
-        self.val_dataset = ZplusJetDataset(self.cfg.data)
-
-        self.train_dataset.load_data(data, (0, train_idx))
-        LOGGER.info(f"Loaded {len(self.train_dataset)} training events")
-        self.test_dataset.load_data(data, (train_idx, val_idx))
-        LOGGER.info(f"Loaded {len(self.test_dataset)} testing events")
-        self.val_dataset.load_data(data, (val_idx, data["sim_particles"].shape[0]))
-        LOGGER.info(f"Loaded {len(self.val_dataset)} validation events")
+        self.dataset = Dataset(data_path, self.cfg)
 
         # initialize cfm (might require data)
         self.model.init_physics(
@@ -146,7 +78,7 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.data.train_gen_mean,
             self.cfg.data.train_gen_std,
             self.cfg.data.base_type,
-            self.cfg.data.onshell_mass,
+            self.cfg.data.mass,
             self.device,
         )
         self.model.init_distribution()
@@ -155,19 +87,19 @@ class UnfoldingExperiment(BaseExperiment):
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
-            dataset=self.train_dataset,
+            dataset=self.dataset.train_data_list,
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
             collate_fn=collate,
         )
         self.test_loader = DataLoader(
-            dataset=self.test_dataset,
+            dataset=self.dataset.test_data_list,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
             collate_fn=collate,
         )
         self.val_loader = DataLoader(
-            dataset=self.val_dataset,
+            dataset=self.dataset.val_data_list,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
             collate_fn=collate,

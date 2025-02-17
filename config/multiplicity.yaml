@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_tr_final
+exp_name: mult_gatr_final
 
 seed: 42
 
@@ -57,6 +57,6 @@ plotting:
  diff: true
 
 defaults:
- - model: tr_multiplicity
+ - model: gatr_multiplicity
  - default
  - _self_

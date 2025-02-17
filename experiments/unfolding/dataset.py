@@ -4,7 +4,17 @@ import energyflow
 from torch_geometric.data import Data, Batch
 
 from experiments.logger import LOGGER
-from experiments.unfolding.utils import jetmomenta_to_fourmomenta, ensure_angle
+from experiments.unfolding.utils import (
+    jetmomenta_to_fourmomenta,
+    ensure_angle,
+    pid_encoding,
+)
+from experiments.unfolding.transforms import (
+    Pt_to_LogPt,
+    PtPhiEtaE_to_PtPhiEtaM2,
+    EPPP_to_PtPhiEtaE,
+    EPPP_to_PPPM2,
+)
 
 
 class ZplusJetDataset(torch.utils.data.Dataset):
@@ -75,10 +85,12 @@ class ZplusJetDataset(torch.utils.data.Dataset):
             )
             det_particles = (det_particles - det_mean) / det_std
 
-            gen_mean, gen_std = self.prepare_standardize(
-                gen_particles[:train_idx], gen_mults[:train_idx]
-            )
-            gen_particles = (gen_particles - gen_mean) / gen_std
+        gen_mean, gen_std = self.prepare_standardize(
+            gen_particles[:train_idx], gen_mults[:train_idx]
+        )
+        # gen_particles = (gen_particles - gen_mean) / gen_std
+        self.train_gen_mean = gen_mean
+        self.train_gen_std = gen_std
 
         self.train_data_list = zip(
             self.create_data_list(
@@ -115,14 +127,17 @@ class ZplusJetDataset(torch.utils.data.Dataset):
             ),
         )
 
-    def prepare_standardize(self, particles, mults):
+    def prepare_standardize(self, particles, mults, coords=None):
         mask = torch.arange(particles.shape[1])[None, :] < mults[:, None]
         flattened_particles = particles[mask]
 
-        if self.cfg.modelname == "GATr":
+        if self.cfg.modelname == "ConditionalGATr":
+            if coords == "StandardLogPtPhiEta":
+                transform = Pt_to_LogPt(self.cfg.data.pt_min, self.cfg.data.units)
+                flattened_particles = transform._forward(flattened_particles)
             mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
             std = flattened_particles.std().unsqueeze(0).expand(1, 4)
-        elif self.cfg.modelname == "Transformer":
+        elif self.cfg.modelname == "ConditionalTransformer":
             mean = flattened_particles.mean(dim=0, keepdim=True)
             mean[..., -1] = 0
             std = flattened_particles.std(dim=0, keepdim=True)
@@ -155,53 +170,3 @@ def collate(data_list):
     gen_batch = Batch.from_data_list([data[0] for data in data_list])
     det_batch = Batch.from_data_list([data[1] for data in data_list])
     return gen_batch, det_batch
-
-
-float_to_pid = {
-    0.0: 22,  # photon
-    0.1: 211,  # pi+
-    0.2: -211,  # pi-
-    0.3: 130,  # K0_L
-    0.4: 11,  # e-
-    0.5: -11,  # e+
-    0.6: 13,  # mu-
-    0.7: -13,  # mu+
-    0.8: 321,  # K+
-    0.9: -321,  # K-
-    1.0: 2212,  # proton
-    1.1: -2212,  # anti-proton
-    1.2: 2112,  # neutron
-    1.3: -2112,  # anti-neutron
-}
-
-
-def single_pid_encoding(pid):
-    if pid in [211, -11, -13, 321, 2212]:
-        charge = 1
-    elif pid in [-211, 11, 13, -321, -2212]:
-        charge = -1
-    else:
-        charge = 0
-    abs_pid = abs(pid)
-    vector = [
-        charge,  # Charge
-        1 if abs_pid == 11 else 0,  # Electron
-        1 if abs_pid == 13 else 0,  # Muon
-        1 if abs_pid == 22 else 0,  # Photon
-        1 if abs_pid in [211, 321, 2212] else 0,  # Charged Hadron
-        1 if abs_pid in [130, 2112, 0] else 0,  # Neutral Hadron
-    ]
-    return vector
-
-
-def pid_encoding(float_pids, cfg) -> torch.Tensor:
-    vectors = []
-    for float_pid in float_pids:
-        if float_pid.item() not in float_to_pid:
-            raise ValueError(f"Unknown PID: {float_pid}")
-        pid = float_to_pid[float_pid.item()]
-        vectors.append(single_pid_encoding(pid))
-    vectors = torch.tensor(vectors)
-    if cfg.save_pid:
-        vectors = torch.cat([vectors, float_pids.unsqueeze(-1)], dim=-1)
-    return vectors

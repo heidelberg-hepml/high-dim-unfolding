@@ -11,9 +11,10 @@ data:
  length: 100000
  split: [0.8, 0.1, 0.1]
  dtype: float32
- save_pid: true
+ standardize: true
+ pid_raw: false
  pid_encoding: true
- onshell_mass: 0.1
+ mass: 0.1
  max_num_particles: 152
  beam_reference: xyplane
  two_beams: true
@@ -27,7 +28,6 @@ data:
  base_type: 2
  pt_min: 0.0
  units: 1.0
- rescale_data: false
 
 cfm:
  embed_t_dim: 8
