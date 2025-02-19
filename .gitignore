@@ -16,6 +16,7 @@ logs/
 *~
 
 *.png
+*.pdf
 *.pt
 *.npz
 *.npy
