@@ -264,6 +264,8 @@ class MultiplicityExperiment(BaseExperiment):
 
         params = torch.clamp(output, min=min_arg, max=max_arg)  # avoid inf and 0
         params = torch.exp(params)  # ensure positive params
+        if self.distribution == "Categorical":
+            params = torch.nn.functional.softmax(params, dim=-1)
 
         predicted_dist = self.distribution(params)  # batch of mixtures
 

@@ -59,7 +59,7 @@ class GammaMixture(D.MixtureSameFamily):
 
 class CategoricalDistribution(D.Categorical):
     def __init__(self, logits):
-        logits = logits/logits.sum(-1, keepdim=True)
+        #logits = logits/logits.sum(-1, keepdim=True)
         super().__init__(logits=logits)
         self.params = logits
 
