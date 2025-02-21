@@ -129,21 +129,26 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
     dtype = float_pids.dtype
 
     # Pre-compute all possible encodings as a lookup table
-    pid_lookup = torch.zeros((14, 6), dtype=dtype, device=device)
-    pid_lookup[0] = torch.tensor([0, 0, 0, 1, 0, 0], dtype=dtype)  # photon (0.0)
-    pid_lookup[1] = torch.tensor([1, 0, 0, 0, 1, 0], dtype=dtype)  # pi+ (0.1)
-    pid_lookup[2] = torch.tensor([-1, 0, 0, 0, 1, 0], dtype=dtype)  # pi- (0.2)
-    pid_lookup[3] = torch.tensor([0, 0, 0, 0, 0, 1], dtype=dtype)  # K0_L (0.3)
-    pid_lookup[4] = torch.tensor([-1, 1, 0, 0, 0, 0], dtype=dtype)  # e- (0.4)
-    pid_lookup[5] = torch.tensor([1, 1, 0, 0, 0, 0], dtype=dtype)  # e+ (0.5)
-    pid_lookup[6] = torch.tensor([-1, 0, 1, 0, 0, 0], dtype=dtype)  # mu- (0.6)
-    pid_lookup[7] = torch.tensor([1, 0, 1, 0, 0, 0], dtype=dtype)  # mu+ (0.7)
-    pid_lookup[8] = torch.tensor([1, 0, 0, 0, 1, 0], dtype=dtype)  # K+ (0.8)
-    pid_lookup[9] = torch.tensor([-1, 0, 0, 0, 1, 0], dtype=dtype)  # K- (0.9)
-    pid_lookup[10] = torch.tensor([1, 0, 0, 0, 1, 0], dtype=dtype)  # proton (1.0)
-    pid_lookup[11] = torch.tensor([-1, 0, 0, 0, 1, 0], dtype=dtype)  # anti-proton (1.1)
-    pid_lookup[12] = torch.tensor([0, 0, 0, 0, 0, 1], dtype=dtype)  # neutron (1.2)
-    pid_lookup[13] = torch.tensor([0, 0, 0, 0, 0, 1], dtype=dtype)  # anti-neutron (1.3)
+    pid_lookup = torch.tensor(
+        [
+            [0, 0, 0, 1, 0, 0],  # photon (0.0)
+            [1, 0, 0, 0, 1, 0],  # pi+ (0.1)
+            [-1, 0, 0, 0, 1, 0],  # pi- (0.2)
+            [0, 0, 0, 0, 0, 1],  # K0_L (0.3)
+            [-1, 1, 0, 0, 0, 0],  # e- (0.4)
+            [1, 1, 0, 0, 0, 0],  # e+ (0.5)
+            [-1, 0, 1, 0, 0, 0],  # mu- (0.6)
+            [1, 0, 1, 0, 0, 0],  # mu+ (0.7)
+            [1, 0, 0, 0, 1, 0],  # K+ (0.8)
+            [-1, 0, 0, 0, 1, 0],  # K- (0.9)
+            [1, 0, 0, 0, 1, 0],  # proton (1.0)
+            [-1, 0, 0, 0, 1, 0],  # anti-proton (1.1)
+            [0, 0, 0, 0, 0, 1],  # neutron (1.2)
+            [0, 0, 0, 0, 0, 1],  # anti-neutron (1.3)
+        ],
+        dtype=dtype,
+        device=device,
+    )
 
     # Get shape for reshaping
     original_shape = list(float_pids.shape)

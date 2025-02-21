@@ -89,13 +89,16 @@ class MultiplicityDataset:
         )
 
     def prepare_standardize(self, det_particles, det_mults):
+        # remove the padding
         mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
         flattened_particles = det_particles[mask]
 
         if self.cfg.modelname == "GATr":
+            # For GATr, same standardization for all components
             self.mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
             self.std = flattened_particles.std().unsqueeze(0).expand(1, 4)
         elif self.cfg.modelname == "Transformer":
+            # Otherwise, standardization done separately for each component
             self.mean = flattened_particles.mean(dim=0, keepdim=True)
             self.mean[..., -1] = 0
             self.std = flattened_particles.std(dim=0, keepdim=True)

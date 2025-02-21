@@ -34,10 +34,6 @@ class MultiplicityExperiment(BaseExperiment):
             self.loss = lambda dist, target: smooth_cross_entropy(
                 dist, target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness
             ).mean()
-        if self.cfg.dist.single_mult:
-            self.loss = lambda dist, target: torch.nn.MSELoss()(
-                dist.sample(target.shape).to(torch.float32), target.to(torch.float32)
-            )
 
     def init_physics(self):
 
@@ -49,9 +45,7 @@ class MultiplicityExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += 1
                 elif self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
-                if self.cfg.dist.single_mult:
-                    self.cfg.model.net.out_channels = 1
-                elif self.cfg.dist.type == "GammaMixture":
+                if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "GaussianMixture":
@@ -68,9 +62,7 @@ class MultiplicityExperiment(BaseExperiment):
                             self.cfg.data.max_num_particles + 1
                         )
             elif self.cfg.modelname == "GATr":
-                if self.cfg.dist.single_mult:
-                    self.cfg.model.net.out_mv_channels = 1
-                elif self.cfg.dist.type == "GammaMixture":
+                if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "GaussianMixture":
@@ -190,9 +182,8 @@ class MultiplicityExperiment(BaseExperiment):
                 params.append(batch_metrics["params"])
                 samples.append(batch_metrics["samples"])
         loss = torch.tensor(loss).detach().cpu()
-        LOGGER.info(
-            f"Loss on {title} dataset: mean {loss.mean():.4f} , std between batches {loss.std():.4f}"
-        )
+        LOGGER.info(f"Loss on {title} dataset: {loss.mean():.4f}")
+
         metrics["loss"] = loss.mean()
         metrics["params"] = torch.cat(params)
         metrics["samples"] = torch.cat(samples)
@@ -219,16 +210,15 @@ class MultiplicityExperiment(BaseExperiment):
         plot_mixer(self.cfg, plot_path, plot_dict)
 
     def _batch_loss(self, batch):
-        if self.cfg.dist.single_mult:
-            predicted_dist, label = self._get_predicted_mult_and_label(batch)
-        else:
-            predicted_dist, label = self._get_predicted_dist_and_label(batch)
+        predicted_dist, label = self._get_predicted_dist_and_label(batch)
         params = predicted_dist.params.cpu().detach()
         if self.cfg.dist.diff:
             if self.cfg.dist.type == "Categorical":
+                # Rescale to have only positive indices
                 loss = self.loss(
                     predicted_dist, label - batch.det_mult - self.cfg.data.diff[0]
                 )
+                # Rescale back to original range
                 sample = (
                     (batch.det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
                     .cpu()
@@ -270,35 +260,6 @@ class MultiplicityExperiment(BaseExperiment):
         predicted_dist = self.distribution(params)  # batch of mixtures
 
         return predicted_dist, batch.label
-
-    def _get_predicted_mult_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
-        batch = batch.to(self.device)
-        if self.cfg.modelname == "Transformer":
-            input = torch.cat([batch.x, batch.scalars], dim=-1)
-            output = self.model(input, batch.batch)
-        elif self.cfg.modelname == "GATr":
-            embedding = embed_data_into_ga(
-                batch.x,
-                batch.scalars,
-                batch.ptr,
-                self.cfg.data,
-            )
-            output = self.model(embedding)
-        output = torch.exp(output).squeeze().to(dtype=torch.int64)
-        if self.cfg.dist.diff:
-            output = torch.clamp(
-                output, min=self.cfg.data.diff[0], max=self.cfg.data.diff[1]
-            )
-            logits = torch.nn.functional.one_hot(
-                output, num_classes=self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
-            )
-        else:
-            output = torch.clamp(output, min=0, max=self.cfg.data.max_num_particles)
-            logits = torch.nn.functional.one_hot(
-                output, num_classes=self.cfg.data.max_num_particles + 1
-            )
-        dist = CategoricalDistribution(logits=logits)
-        return dist, batch.label
 
     def _init_metrics(self):
         return {"params": [], "samples": []}
