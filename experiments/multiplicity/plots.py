@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
 import torch
 from matplotlib.backends.backend_pdf import PdfPages
@@ -17,9 +18,9 @@ plt.rcParams["text.latex.preamble"] = (
     r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath} \usepackage{siunitx}"
 )
 
-FONTSIZE = 14
-FONTSIZE_LEGEND = 13
-FONTSIZE_TICK = 12
+FONTSIZE = 18
+FONTSIZE_LEGEND = FONTSIZE
+FONTSIZE_TICK = FONTSIZE
 TICKLABELSIZE = 10
 
 colors = ["black", "#0343DE", "#A52A2A", "darkorange"]
@@ -82,6 +83,16 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 - plot_dict["results_test"]["samples"][:, 2].numpy(),
                 xlabel=r"\text{Multiplicity difference}",
                 xrange=[-15, 40],
+                model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
+            )
+        if cfg.plotting.corr:
+            file = f"{plot_path}/correlations.pdf"
+            plot_correlations(
+                file,
+                plot_dict["results_train"]["samples"][:, 2].numpy(),
+                plot_dict["results_train"]["samples"][:, 0].numpy(),
+                plot_dict["results_train"]["samples"][:, 1].numpy(),
+                range=[0, 50],
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
 
@@ -363,7 +374,7 @@ def plot_distributions(
                 x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1)
                 dist = distribution(params[i].unsqueeze(0))
                 density = dist.log_prob(x).exp().detach().numpy()
-                ax.plot(x, density, label=f"Predicted distribution", color=colors[3])
+                ax.plot(x, density, label=f"Predicted\ndistribution", color=colors[3])
             if diff:
                 ax.axvline(
                     samples[i, 1] - samples[i, 2],
@@ -375,13 +386,13 @@ def plot_distributions(
                 ax.axvline(
                     samples[i, 1],
                     c=colors[1],
-                    label="Particle-level multiplicity",
+                    label="Particle-level\nmultiplicity",
                     linestyle="dashed",
                 )
                 ax.axvline(
                     samples[i, 2],
                     c=colors[2],
-                    label="Detector-level multiplicity",
+                    label="Detector-level\nmultiplicity",
                     linestyle="dashed",
                 )
             ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
@@ -389,3 +400,44 @@ def plot_distributions(
             ax.set_ylabel("Probability", fontsize=FONTSIZE)
             ax.set_ylim((0, 0.15))
             pdf.savefig(fig, bbox_inches="tight")
+
+
+def plot_correlations(
+    file,
+    det_mult,
+    predicted_gen_mult,
+    true_gen_mult,
+    range,
+    model_label
+):
+    with PdfPages(file) as pdf:
+        fig, ax = plt.subplots(figsize=(6, 6))
+        bins = np.arange(range[0], range[1]+1)
+        hist = ax.hist2d(
+            det_mult,
+            true_gen_mult,
+            bins=bins,
+            norm=mcolors.LogNorm(),
+            rasterized=True
+        )
+        vmin, vmax = hist[-1].get_clim()
+        ax.set_xlabel("Detector-level multiplicity", fontsize=FONTSIZE)
+        ax.set_ylabel("Particle-level multiplicity", fontsize=FONTSIZE)
+        ax.set_title('Truth', fontsize=FONTSIZE)
+        ax.grid(False)
+        pdf.savefig(fig, bbox_inches="tight")
+
+        fig, ax = plt.subplots(figsize=(6, 6))
+        bins = np.arange(range[0], range[1]+1)
+        ax.hist2d(
+            det_mult,
+            predicted_gen_mult,
+            bins=bins,
+            norm=mcolors.LogNorm(vmax=vmax, vmin=vmin),
+            rasterized=True
+        )
+        ax.set_xlabel("Detector-level multiplicity", fontsize=FONTSIZE)
+        ax.set_ylabel("Particle-level multiplicity", fontsize=FONTSIZE)
+        ax.set_title(model_label, fontsize=FONTSIZE)
+        ax.grid(False)
+        pdf.savefig(fig, bbox_inches="tight")
