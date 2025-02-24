@@ -1,8 +1,6 @@
 exp_type: multiplicity
 exp_name: mult_gatr_final
 
-seed: 42
-
 use_mlflow: false
 
 data:
@@ -15,7 +13,6 @@ data:
  standardize: true
  max_num_particles: 152
  diff: [-53, 78]
- pid_raw: false
  pid_encoding: true
  beam_reference: xyplane
  two_beams: true
@@ -30,7 +27,6 @@ dist:
  type: GaussianMixture
  n_components: 5
  diff: true
- single_mult: false
 
 loss:
  type: cross_entropy

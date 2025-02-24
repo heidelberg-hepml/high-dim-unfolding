@@ -108,7 +108,8 @@ def get_mass(fourmomenta, eps=EPS2):
 
 def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
     """
-    Convert float PIDs to one-hot encoded tensor representation.
+    Convert float PIDs to one-hot encoded 6-dimensional representation,
+    as introduced in https://doi.org/10.1103/PhysRevD.101.056019
 
     Parameters
     ----------

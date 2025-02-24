@@ -17,7 +17,11 @@ from experiments.multiplicity.distributions import (
     smooth_cross_entropy,
 )
 from experiments.multiplicity.plots import plot_mixer
-from experiments.multiplicity.utils import jetmomenta_to_fourmomenta
+from experiments.multiplicity.utils import (
+    ensure_angle,
+    jetmomenta_to_fourmomenta,
+    pid_encoding,
+)
 from experiments.multiplicity.embedding import embed_data_into_ga
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -41,10 +45,10 @@ class MultiplicityExperiment(BaseExperiment):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
-                if self.cfg.data.pid_raw:
-                    self.cfg.model.net.in_channels += 1
-                elif self.cfg.data.pid_encoding:
+                if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
+                if self.cfg.data.add_scalar_features:
+                    self.cfg.model.net.in_channels += 7
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -70,24 +74,21 @@ class MultiplicityExperiment(BaseExperiment):
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "Categorical":
                     self.distribution = CategoricalDistribution
-                    self.cfg.model.net.out_mv_channels = (
-                        self.cfg.data.max_num_particles + 1
-                    )
-
-                # no global token for the embedding
-                self.cfg.data.include_global_token = False
-                self.cfg.data.num_global_tokens = 0
+                    if self.cfg.dist.diff:
+                        self.cfg.model.net.out_channels = (
+                            self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
+                        )
+                    else:
+                        self.cfg.model.net.out_channels = (
+                            self.cfg.data.max_num_particles + 1
+                        )
 
                 # scalar channels
                 self.cfg.model.net.in_s_channels = 0
-                if self.cfg.data.pid_raw:
-                    self.cfg.model.net.in_s_channels += 1
-                elif self.cfg.data.pid_encoding:
+                if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_s_channels += 6
                 if self.cfg.data.add_scalar_features:
                     self.cfg.model.net.in_s_channels += 7
-                if self.cfg.data.include_global_token:
-                    self.cfg.model.net.in_s_channels += self.cfg.data.num_global_tokens
 
                 # mv channels for beam_reference and time_reference
                 self.cfg.model.net.in_mv_channels = 1
@@ -116,25 +117,100 @@ class MultiplicityExperiment(BaseExperiment):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating MultiplicityDataset from {data_path}")
         t0 = time.time()
-        dataset = MultiplicityDataset(data_path=data_path, cfg=self.cfg)
+        self._init_data(data_path)
         LOGGER.info(f"Created MultiplicityDataset in {time.time() - t0:.2f} seconds")
-        self.data_train = dataset.train_data_list
-        self.data_val = dataset.val_data_list
-        self.data_test = dataset.test_data_list
+
+    def _init_data(self, data_path):
+        data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=self.cfg.data.length,
+            pad=True,
+            cache_dir=data_path,
+            include_keys=["particles", "mults", "jets"],
+        )
+
+        split = self.cfg.data.split
+        size = len(self.data["sim_particles"])
+        train_idx = int(split[0] * size)
+        val_idx = int(split[1] * size)
+
+        det_particles = torch.tensor(self.data["sim_particles"], dtype=self.dtype)
+        det_jets = torch.tensor(self.data["sim_jets"], dtype=self.dtype)
+        det_mults = torch.tensor(self.data["sim_mults"], dtype=torch.int)
+        gen_mults = torch.tensor(self.data["gen_mults"], dtype=torch.int)
+
+        # undo the dataset scaling
+        det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
+        det_particles[..., 2] = ensure_angle(det_particles[..., 2])
+        det_particles[..., 0] = det_particles[..., 0] * 100
+
+        # swap eta and phi for consistency
+        det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
+
+        # save pids before replacing with mass
+        det_pids = det_particles[..., 3].clone().unsqueeze(-1)
+        if self.cfg.data.pid_encoding:
+            det_pids = pid_encoding(det_pids)
+        det_particles[..., 3] = self.cfg.data.mass
+
+        if self.cfg.modelname == "GATr":
+            det_particles = jetmomenta_to_fourmomenta(det_particles)
+
+        if self.cfg.data.standardize:
+            mask = (
+                torch.arange(det_particles.shape[1])[None, :]
+                < det_mults[:train_idx, None]
+            )
+            flattened_particles = det_particles[:train_idx][mask]
+
+            if self.cfg.modelname == "GATr":
+                # For GATr, same standardization for all components
+                mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
+                std = flattened_particles.std().unsqueeze(0).expand(1, 4)
+            elif self.cfg.modelname == "Transformer":
+                # Otherwise, standardization done separately for each component
+                mean = flattened_particles.mean(dim=0, keepdim=True)
+                mean[..., -1] = 0
+                std = flattened_particles.std(dim=0, keepdim=True)
+                std[..., -1] = 1
+            det_particles = (det_particles - mean) / std
+
+        self.train_data = MultiplicityDataset(self.cfg.data.pid_encoding, self.dtype)
+        self.val_data = MultiplicityDataset(self.cfg.data.pid_encoding, self.dtype)
+        self.test_data = MultiplicityDataset(self.cfg.data.pid_encoding, self.dtype)
+
+        self.train_data.create_data_list(
+            det_particles[:train_idx],
+            det_pids[:train_idx],
+            det_mults[:train_idx],
+            gen_mults[:train_idx],
+        )
+        self.val_data.create_data_list(
+            det_particles[train_idx : train_idx + val_idx],
+            det_pids[train_idx : train_idx + val_idx],
+            det_mults[train_idx : train_idx + val_idx],
+            gen_mults[train_idx : train_idx + val_idx],
+        )
+        self.test_data.create_data_list(
+            det_particles[train_idx + val_idx :],
+            det_pids[train_idx + val_idx :],
+            det_mults[train_idx + val_idx :],
+            gen_mults[train_idx + val_idx :],
+        )
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
-            dataset=self.data_train,
+            dataset=self.train_data,
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
         )
         self.val_loader = DataLoader(
-            dataset=self.data_val,
+            dataset=self.val_data,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
         )
         self.test_loader = DataLoader(
-            dataset=self.data_test,
+            dataset=self.test_data,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
         )
@@ -181,8 +257,8 @@ class MultiplicityExperiment(BaseExperiment):
                 loss.append(batch_loss)
                 params.append(batch_metrics["params"])
                 samples.append(batch_metrics["samples"])
-        loss = torch.tensor(loss).detach().cpu()
-        LOGGER.info(f"Loss on {title} dataset: {loss.mean():.4f}")
+        loss = torch.tensor(loss)  # .detach().cpu()
+        LOGGER.info(f"NLL on {title} dataset: {loss.mean():.4f}")
 
         metrics["loss"] = loss.mean()
         metrics["params"] = torch.cat(params)
