@@ -40,32 +40,7 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
 
     # add extra scalar channels
     if cfg_data.add_scalar_features:
-        log_pt = get_pt(fourmomenta).unsqueeze(-1).log()
-        log_energy = fourmomenta[..., 0].unsqueeze(-1).log()
-
-        batch = get_batch_from_ptr(ptr)
-        jet = scatter(fourmomenta, index=batch, dim=0, reduce="sum").index_select(
-            0, batch
-        )
-        log_pt_rel = (get_pt(fourmomenta).log() - get_pt(jet).log()).unsqueeze(-1)
-        log_energy_rel = (fourmomenta[..., 0].log() - jet[..., 0].log()).unsqueeze(-1)
-        phi_4, phi_jet = get_phi(fourmomenta), get_phi(jet)
-        dphi = ensure_angle(phi_4 - phi_jet).unsqueeze(-1)
-        eta_4, eta_jet = get_eta(fourmomenta), get_eta(jet)
-        deta = -(eta_4 - eta_jet).unsqueeze(-1)
-        dr = torch.sqrt(dphi**2 + deta**2)
-        scalar_features = [
-            log_pt,
-            log_energy,
-            log_pt_rel,
-            log_energy_rel,
-            dphi,
-            deta,
-            dr,
-        ]
-        for i, feature in enumerate(scalar_features):
-            mean, factor = cfg_data.scalar_features_preprocessing[i]
-            scalar_features[i] = (feature - mean) * factor
+        scalar_features = compute_scalar_features(fourmomenta, scalars, ptr, cfg_data)
         scalars = torch.cat(
             (scalars, *scalar_features),
             dim=-1,
@@ -123,71 +98,39 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
         spurions = spurions.unsqueeze(0).repeat(multivectors.shape[0], 1, 1)
         multivectors = torch.cat((multivectors, spurions), dim=-2)
 
-    # global tokens
-    num_global_tokens = cfg_data.num_global_tokens
-    if cfg_data.include_global_token and num_global_tokens > 0:
-        # prepend global tokens to the token list
-        global_idxs = torch.stack(
-            [ptr[:-1] + i for i in range(num_global_tokens)], dim=0
-        ) + num_global_tokens * torch.arange(batchsize, device=ptr.device)
-        global_idxs = global_idxs.permute(1, 0).flatten()
-        is_global = torch.zeros(
-            multivectors.shape[0] + batchsize * num_global_tokens,
-            dtype=torch.bool,
-            device=multivectors.device,
-        )
-        is_global[global_idxs] = True
-        multivectors_buffer = multivectors.clone()
-        multivectors = torch.zeros(
-            is_global.shape[0],
-            *multivectors.shape[1:],
-            dtype=multivectors.dtype,
-            device=multivectors.device,
-        )
-        multivectors[~is_global] = multivectors_buffer
-        scalars_buffer = scalars.clone()
-        scalars = torch.zeros(
-            multivectors.shape[0],
-            scalars.shape[1] + num_global_tokens,
-            dtype=scalars.dtype,
-            device=scalars.device,
-        )
-        token_idx = one_hot(torch.arange(num_global_tokens, device=scalars.device))
-        token_idx = token_idx.repeat(batchsize, 1)
-        scalars[~is_global] = torch.cat(
-            (
-                scalars_buffer,
-                torch.zeros(
-                    scalars_buffer.shape[0],
-                    token_idx.shape[1],
-                    dtype=scalars.dtype,
-                    device=scalars.device,
-                ),
-            ),
-            dim=-1,
-        )
-        scalars[is_global] = torch.cat(
-            (
-                torch.zeros(
-                    token_idx.shape[0],
-                    scalars_buffer.shape[1],
-                    dtype=scalars.dtype,
-                    device=scalars.device,
-                ),
-                token_idx,
-            ),
-            dim=-1,
-        )
-        ptr[1:] = ptr[1:] + (arange + 1) * num_global_tokens
-    else:
-        is_global = None
-
     # return dict
     batch = get_batch_from_ptr(ptr)
     embedding = {
         "mv": multivectors,
         "s": scalars,
-        "is_global": is_global,
         "batch": batch,
     }
     return embedding
+
+
+def compute_scalar_features(fourmomenta, ptr, cfg_data):
+    log_pt = get_pt(fourmomenta).unsqueeze(-1).log()
+    log_energy = fourmomenta[..., 0].unsqueeze(-1).log()
+
+    batch = get_batch_from_ptr(ptr)
+    jet = scatter(fourmomenta, index=batch, dim=0, reduce="sum").index_select(0, batch)
+    log_pt_rel = (get_pt(fourmomenta).log() - get_pt(jet).log()).unsqueeze(-1)
+    log_energy_rel = (fourmomenta[..., 0].log() - jet[..., 0].log()).unsqueeze(-1)
+    phi_4, phi_jet = get_phi(fourmomenta), get_phi(jet)
+    dphi = ensure_angle(phi_4 - phi_jet).unsqueeze(-1)
+    eta_4, eta_jet = get_eta(fourmomenta), get_eta(jet)
+    deta = -(eta_4 - eta_jet).unsqueeze(-1)
+    dr = torch.sqrt(dphi**2 + deta**2)
+    scalar_features = [
+        log_pt,
+        log_energy,
+        log_pt_rel,
+        log_energy_rel,
+        dphi,
+        deta,
+        dr,
+    ]
+    for i, feature in enumerate(scalar_features):
+        mean, factor = cfg_data.scalar_features_preprocessing[i]
+        scalar_features[i] = (feature - mean) * factor
+    return scalar_features

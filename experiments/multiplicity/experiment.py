@@ -22,7 +22,10 @@ from experiments.multiplicity.utils import (
     jetmomenta_to_fourmomenta,
     pid_encoding,
 )
-from experiments.multiplicity.embedding import embed_data_into_ga
+from experiments.multiplicity.embedding import (
+    embed_data_into_ga,
+    compute_scalar_features,
+)
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 from gatr.interface import get_num_spurions
@@ -317,7 +320,14 @@ class MultiplicityExperiment(BaseExperiment):
     def _get_predicted_dist_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
         batch = batch.to(self.device)
         if self.cfg.modelname == "Transformer":
-            input = torch.cat([batch.x, batch.scalars], dim=-1)
+            if self.cfg.data.add_scalar_features:
+                scalar_features = compute_scalar_features(
+                    batch.x, batch.ptr, self.cfg.data
+                )
+                scalars = torch.cat([batch.scalars, scalar_features], dim=-1)
+            else:
+                scalars = batch.scalars
+            input = torch.cat([batch.x, scalars], dim=-1)
             output = self.model(input, batch.batch)
         elif self.cfg.modelname == "GATr":
             embedding = embed_data_into_ga(
