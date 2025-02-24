@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 
-import random
 import os, time
 import zipfile
 import logging
@@ -201,24 +200,25 @@ class BaseExperiment:
             else:
                 run_name = self.cfg.run_name
 
+            run_dir = os.path.join(
+                self.cfg.base_dir, "runs", self.cfg.exp_name, run_name
+            )
             run_idx = 0
             LOGGER.info(f"Creating new experiment {self.cfg.exp_name}/{run_name}")
 
         else:
             run_name = self.cfg.run_name
-            run_idx = self.cfg.warm_start_idx + 1
+            run_idx = self.cfg.run_idx + 1
             LOGGER.info(
                 f"Warm-starting from existing experiment {self.cfg.exp_name}/{run_name} for run {run_idx}"
             )
-
-        run_dir = os.path.join(self.cfg.base_dir, "runs", self.cfg.exp_name, run_name)
 
         with open_dict(self.cfg):
             self.cfg.run_idx = run_idx
             if not self.warm_start:
                 self.cfg.warm_start_idx = 0
-            self.cfg.run_name = run_name
-            self.cfg.run_dir = run_dir
+                self.cfg.run_name = run_name
+                self.cfg.run_dir = run_dir
 
             # only use mlflow if save=True
             self.cfg.use_mlflow = (
@@ -228,9 +228,8 @@ class BaseExperiment:
         # set seed
         if self.cfg.seed is not None:
             LOGGER.info(f"Using seed {self.cfg.seed}")
-            torch.manual_seed(self.cfg.seed)
+            torch.random.manual_seed(self.cfg.seed)
             np.random.seed(self.cfg.seed)
-            random.seed(self.cfg.seed)
 
         return run_name
 
@@ -650,14 +649,13 @@ class BaseExperiment:
                 for key, value in metric.items():
                     metrics[key].append(value)
         val_loss = np.mean(losses)
-        LOGGER.info(f"Validation loss: {val_loss:.4f}")
         self.val_loss.append(val_loss)
-        # for key, values in metrics.items():
-        #     self.val_metrics[key].append(np.mean(values))
-        # if self.cfg.use_mlflow:
-        #     log_mlflow("val.loss", val_loss, step=step)
-        #     for key, values in self.val_metrics.items():
-        #         log_mlflow(f"val.{key}", values[-1], step=step)
+        for key, values in metrics.items():
+            self.val_metrics[key].append(np.mean(values))
+        if self.cfg.use_mlflow:
+            log_mlflow("val.loss", val_loss, step=step)
+            for key, values in self.val_metrics.items():
+                log_mlflow(f"val.{key}", values[-1], step=step)
         return val_loss
 
     def _save_config(self, filename, to_mlflow=False):
