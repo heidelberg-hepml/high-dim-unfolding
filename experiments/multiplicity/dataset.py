@@ -24,18 +24,11 @@ class MultiplicityDataset:
         # create list of torch_geometric.data.Data objects
         self.data_list = []
         for i in range(det_particles.shape[0]):
-
-            if self.cfg.data.pid_encoding:
-                scalars = det_pids[i, : det_mults[i]]
-            else:
-                scalars = torch.zeros((det_mults[i], 0), dtype=self.dtype)
-
-            # store standardized pt, phi, eta, mass
+            # remove padding
+            scalars = det_pids[i, : det_mults[i]]
             det_event = det_particles[i, : det_mults[i]]
 
-            label = labels[i]
-
             graph = Data(
-                x=det_event, scalars=scalars, label=gen_mults, det_mult=det_mults[i]
+                x=det_event, scalars=scalars, label=gen_mults[i], det_mult=det_mults[i]
             )
             self.data_list.append(graph)

@@ -1,5 +1,4 @@
 import torch
-from torch.nn.functional import one_hot
 from torch_geometric.utils import scatter
 
 from experiments.multiplicity.utils import (
@@ -8,8 +7,10 @@ from experiments.multiplicity.utils import (
     get_phi,
     get_eta,
     ensure_angle,
+    jetmomenta_to_fourmomenta
 )
 from gatr.interface import embed_vector, embed_spurions
+from experiments.logger import LOGGER
 
 
 def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
@@ -40,11 +41,15 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
 
     # add extra scalar channels
     if cfg_data.add_scalar_features:
-        scalar_features = compute_scalar_features(fourmomenta, scalars, ptr, cfg_data)
+        scalar_features = compute_scalar_features_from_fourmomenta(fourmomenta, ptr, cfg_data)
         scalars = torch.cat(
             (scalars, *scalar_features),
             dim=-1,
         )
+
+    if torch.isnan(scalars).any():
+        nan_indices = torch.nonzero(torch.isnan(scalars))
+        raise ValueError(f"NaN values found in scalars: {scalars[0]}")
 
     # embed fourmomenta into multivectors
     if cfg_data.units is not None:
@@ -108,7 +113,7 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
     return embedding
 
 
-def compute_scalar_features(fourmomenta, ptr, cfg_data):
+def compute_scalar_features_from_fourmomenta(fourmomenta, ptr, cfg_data):
     log_pt = get_pt(fourmomenta).unsqueeze(-1).log()
     log_energy = fourmomenta[..., 0].unsqueeze(-1).log()
 
@@ -134,3 +139,8 @@ def compute_scalar_features(fourmomenta, ptr, cfg_data):
         mean, factor = cfg_data.scalar_features_preprocessing[i]
         scalar_features[i] = (feature - mean) * factor
     return scalar_features
+
+
+def compute_scalar_features_from_jetmomenta(jetmomenta, ptr, cfg_data):
+    fourmomenta = jetmomenta_to_fourmomenta(jetmomenta)
+    return compute_scalar_features_from_fourmomenta(fourmomenta, ptr, cfg_data)

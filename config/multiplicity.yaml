@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_gatr_final
+exp_name: mult_test
 
 use_mlflow: false
 

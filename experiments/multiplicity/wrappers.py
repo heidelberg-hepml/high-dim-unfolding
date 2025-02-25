@@ -49,17 +49,13 @@ class MultiplicityGATrWrapper(nn.Module):
             multivector_outputs,
             scalar_outputs,
             embedding["batch"],
-            embedding["is_global"],
         )
 
         return params
 
-    def extract_from_ga(self, multivector, scalars, batch_idx, is_global):
+    def extract_from_ga(self, multivector, scalars, batch_idx):
         outputs = extract_scalar(multivector)[0, :, :, 0]
-        if self.aggregation is not None:
-            params = self.aggregation(outputs, index=batch_idx)
-        else:
-            params = outputs[is_global]
+        params = self.aggregation(outputs, index=batch_idx)
         return params
 
 

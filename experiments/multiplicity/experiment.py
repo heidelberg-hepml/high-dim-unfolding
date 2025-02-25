@@ -1,5 +1,3 @@
-import numpy as np
-import einops
 import torch
 from torch_geometric.loader import DataLoader
 import energyflow
@@ -24,7 +22,7 @@ from experiments.multiplicity.utils import (
 )
 from experiments.multiplicity.embedding import (
     embed_data_into_ga,
-    compute_scalar_features,
+    compute_scalar_features_from_jetmomenta,
 )
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -78,11 +76,11 @@ class MultiplicityExperiment(BaseExperiment):
                 elif self.cfg.dist.type == "Categorical":
                     self.distribution = CategoricalDistribution
                     if self.cfg.dist.diff:
-                        self.cfg.model.net.out_channels = (
+                        self.cfg.model.net.out_mv_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
                         )
                     else:
-                        self.cfg.model.net.out_channels = (
+                        self.cfg.model.net.out_mv_channels = (
                             self.cfg.data.max_num_particles + 1
                         )
 
@@ -133,14 +131,14 @@ class MultiplicityExperiment(BaseExperiment):
         )
 
         split = self.cfg.data.split
-        size = len(self.data["sim_particles"])
+        size = len(data["sim_particles"])
         train_idx = int(split[0] * size)
         val_idx = int(split[1] * size)
 
-        det_particles = torch.tensor(self.data["sim_particles"], dtype=self.dtype)
-        det_jets = torch.tensor(self.data["sim_jets"], dtype=self.dtype)
-        det_mults = torch.tensor(self.data["sim_mults"], dtype=torch.int)
-        gen_mults = torch.tensor(self.data["gen_mults"], dtype=torch.int)
+        det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
+        det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
+        det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
+        gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
 
         # undo the dataset scaling
         det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
@@ -151,9 +149,11 @@ class MultiplicityExperiment(BaseExperiment):
         det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
 
         # save pids before replacing with mass
-        det_pids = det_particles[..., 3].clone().unsqueeze(-1)
         if self.cfg.data.pid_encoding:
+            det_pids = det_particles[..., 3].clone().unsqueeze(-1)
             det_pids = pid_encoding(det_pids)
+        else:
+            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
         det_particles[..., 3] = self.cfg.data.mass
 
         if self.cfg.modelname == "GATr":
@@ -168,7 +168,8 @@ class MultiplicityExperiment(BaseExperiment):
 
             if self.cfg.modelname == "GATr":
                 # For GATr, same standardization for all components
-                mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
+                # mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
+                mean = torch.zeros(1, 4, dtype=self.dtype)
                 std = flattened_particles.std().unsqueeze(0).expand(1, 4)
             elif self.cfg.modelname == "Transformer":
                 # Otherwise, standardization done separately for each component
@@ -260,7 +261,7 @@ class MultiplicityExperiment(BaseExperiment):
                 loss.append(batch_loss)
                 params.append(batch_metrics["params"])
                 samples.append(batch_metrics["samples"])
-        loss = torch.tensor(loss)  # .detach().cpu()
+        loss = torch.tensor(loss)
         LOGGER.info(f"NLL on {title} dataset: {loss.mean():.4f}")
 
         metrics["loss"] = loss.mean()
@@ -321,10 +322,13 @@ class MultiplicityExperiment(BaseExperiment):
         batch = batch.to(self.device)
         if self.cfg.modelname == "Transformer":
             if self.cfg.data.add_scalar_features:
-                scalar_features = compute_scalar_features(
+                scalar_features = compute_scalar_features_from_jetmomenta(
                     batch.x, batch.ptr, self.cfg.data
                 )
-                scalars = torch.cat([batch.scalars, scalar_features], dim=-1)
+                scalars = torch.cat(
+                    (batch.scalars, *scalar_features),
+                    dim=-1,
+                )
             else:
                 scalars = batch.scalars
             input = torch.cat([batch.x, scalars], dim=-1)
