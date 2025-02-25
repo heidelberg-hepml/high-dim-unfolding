@@ -1,13 +1,16 @@
 import torch
 from torch import nn
 
-from experiments.unfolding.helpers import (
+from experiments.unfolding.utils import (
     unpack_last,
     EPS1,
     EPS2,
     CUTOFF,
     stable_arctanh,
-    stay_positive,
+    get_pt,
+    get_phi,
+    get_eta,
+    get_mass,
 )
 
 
@@ -113,12 +116,12 @@ class EPPP_to_PPPM2(BaseTransform):
         E, px, py, pz = unpack_last(eppp)
 
         m2 = E**2 - (px**2 + py**2 + pz**2)
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
         px, py, pz, m2 = unpack_last(pppm2)
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
 
         E = torch.sqrt(m2 + (px**2 + py**2 + pz**2))
         return torch.stack((E, px, py, pz), dim=-1)
@@ -154,8 +157,8 @@ class EPPP_to_EPhiPtPz(BaseTransform):
     def _forward(self, eppp):
         E, px, py, pz = unpack_last(eppp)
 
-        pt = torch.sqrt(px**2 + py**2)
-        phi = torch.arctan2(py, px)
+        pt = get_pt(eppp)
+        phi = get_phi(eppp)
         return torch.stack((E, phi, pt, pz), dim=-1)
 
     def _inverse(self, ephiptpz):
@@ -210,10 +213,9 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
     def _forward(self, eppp):
         E, px, py, pz = unpack_last(eppp)
 
-        pt = torch.sqrt(px**2 + py**2)
-        phi = torch.arctan2(py, px)
-        p_abs = torch.sqrt(pt**2 + pz**2)
-        eta = stable_arctanh(pz / p_abs)  # torch.arctanh(pz / p_abs)
+        pt = get_pt(eppp)
+        phi = get_phi(eppp)
+        eta = get_eta(eppp)
         eta = eta.clamp(min=-CUTOFF, max=CUTOFF)
         assert torch.isfinite(eta).all()
 
@@ -279,13 +281,13 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
 
         p_abs = pt * torch.cosh(eta)
         m2 = E**2 - p_abs**2
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _inverse(self, ptphietam2):
         pt, phi, eta, m2 = unpack_last(ptphietam2)
 
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
         eta = eta.clamp(min=-CUTOFF, max=CUTOFF)
         p_abs = pt * torch.cosh(eta)
         E = torch.sqrt(m2 + p_abs**2)
@@ -424,18 +426,21 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, mean, std):
-        assert mean.shape == (1, 4)
-        assert std.shape == (1, 4)
-        self.mean = mean
-        self.std = std
+    def __init__(self, dims_fixed=[]):
+        self.dims_fixed = dims_fixed
+
+    def init_fit(self, x):
+        self.mean = torch.mean(x, dim=0, keepdim=True)
+        self.std = torch.std(x, dim=0, keepdim=True)
+        self.mean[:, self.dims_fixed] = 0
+        self.std[:, self.dims_fixed] = 1
 
     def _forward(self, x):
-        xunit = (x - self.mean) / self.std
+        xunit = (x - self.mean.to(x.device)) / self.std.to(x.device)
         return xunit
 
     def _inverse(self, xunit):
-        x = xunit * self.std + self.mean
+        x = xunit * self.std.to(xunit.device) + self.mean.to(xunit.device)
         return x
 
     def _jac_forward(self, x, xunit):

@@ -179,9 +179,9 @@ class MultiplicityExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        self.train_data = MultiplicityDataset(self.cfg.data.pid_encoding, self.dtype)
-        self.val_data = MultiplicityDataset(self.cfg.data.pid_encoding, self.dtype)
-        self.test_data = MultiplicityDataset(self.cfg.data.pid_encoding, self.dtype)
+        self.train_data = MultiplicityDataset(self.dtype)
+        self.val_data = MultiplicityDataset(self.dtype)
+        self.test_data = MultiplicityDataset(self.dtype)
 
         self.train_data.create_data_list(
             det_particles[:train_idx],

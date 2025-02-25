@@ -9,8 +9,7 @@ EPS = 1e-5
 
 class MultiplicityDataset:
 
-    def __init__(self, pid_encoding, dtype):
-        self.pid_encoding = pid_encoding
+    def __init__(self, dtype):
         self.dtype = dtype
 
     def __len__(self):

@@ -10,6 +10,11 @@ import energyflow
 
 from experiments.base_experiment import BaseExperiment
 from experiments.unfolding.dataset import ZplusJetDataset, collate
+from experiments.unfolding.utils import (
+    ensure_angle,
+    jetmomenta_to_fourmomenta,
+    pid_encoding,
+)
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -69,37 +74,139 @@ class UnfoldingExperiment(BaseExperiment):
         self._init_data(ZplusJetDataset, data_path)
 
     def _init_data(self, Dataset, data_path):
-        self.dataset = Dataset(data_path, self.cfg)
+        data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=self.cfg.data.length,
+            pad=True,
+            cache_dir=data_path,
+            include_keys=["particles", "mults", "jets"],
+        )
+
+        split = self.cfg.data.split
+        size = len(data["sim_particles"])
+        train_idx = int(split[0] * size)
+        val_idx = int(split[1] * size)
+
+        det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
+        det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
+        det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
+
+        gen_particles = torch.tensor(data["gen_particles"], dtype=self.dtype)
+        gen_jets = torch.tensor(data["gen_jets"], dtype=self.dtype)
+        gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
+
+        # undo the dataset scaling
+        det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
+        det_particles[..., 2] = ensure_angle(det_particles[..., 2])
+        det_particles[..., 0] = det_particles[..., 0] * 100
+
+        gen_particles[..., 1:3] = gen_particles[..., 1:3] + gen_jets[:, None, 1:3]
+        gen_particles[..., 2] = ensure_angle(gen_particles[..., 2])
+        gen_particles[..., 0] = gen_particles[..., 0] * 100
+
+        # swap eta and phi for consistency
+        det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
+        gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
+
+        # save pids before replacing with mass
+        if self.cfg.data.pid_encoding:
+            det_pids = det_particles[..., 3].clone().unsqueeze(-1)
+            det_pids = pid_encoding(det_pids)
+            gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
+            gen_pids = pid_encoding(gen_pids)
+        else:
+            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
+            gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
+
+        det_particles[..., 3] = self.cfg.data.mass
+        gen_particles[..., 3] = self.cfg.data.mass
+
+        det_particles = jetmomenta_to_fourmomenta(det_particles)
+        gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+
+        if self.cfg.data.standardize:
+            mask = (
+                torch.arange(det_particles.shape[1])[None, :]
+                < det_mults[:train_idx, None]
+            )
+            flattened_particles = det_particles[:train_idx][mask]
+
+            if self.cfg.modelname == "ConditionalGATr":
+                # For GATr, same standardization for all components
+                # mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
+                mean = torch.zeros(1, 4, dtype=self.dtype)
+                std = flattened_particles.std().unsqueeze(0).expand(1, 4)
+            elif self.cfg.modelname == "ConditionalTransformer":
+                # Otherwise, standardization done separately for each component
+                mean = flattened_particles.mean(dim=0, keepdim=True)
+                mean[..., -1] = 0
+                std = flattened_particles.std(dim=0, keepdim=True)
+                std[..., -1] = 1
+            det_particles = (det_particles - mean) / std
+
+        self.train_data = ZplusJetDataset(self.dtype)
+        self.val_data = ZplusJetDataset(self.dtype)
+        self.test_data = ZplusJetDataset(self.dtype)
+
+        self.train_data.create_data_list(
+            det_particles[:train_idx],
+            det_pids[:train_idx],
+            det_mults[:train_idx],
+            gen_particles[:train_idx],
+            gen_pids[:train_idx],
+            gen_mults[:train_idx],
+        )
+        self.val_data.create_data_list(
+            det_particles[train_idx : train_idx + val_idx],
+            det_pids[train_idx : train_idx + val_idx],
+            det_mults[train_idx : train_idx + val_idx],
+            gen_particles[train_idx : train_idx + val_idx],
+            gen_pids[train_idx : train_idx + val_idx],
+            gen_mults[train_idx : train_idx + val_idx],
+        )
+        self.test_data.create_data_list(
+            det_particles[train_idx + val_idx :],
+            det_pids[train_idx + val_idx :],
+            det_mults[train_idx + val_idx :],
+            gen_particles[train_idx + val_idx :],
+            gen_pids[train_idx + val_idx :],
+            gen_mults[train_idx + val_idx :],
+        )
 
         # initialize cfm (might require data)
         self.model.init_physics(
             self.cfg.data.units,
             self.cfg.data.pt_min,
-            self.cfg.data.train_gen_mean,
-            self.cfg.data.train_gen_std,
             self.cfg.data.base_type,
             self.cfg.data.mass,
             self.device,
         )
         self.model.init_distribution()
         self.model.init_coordinates()
+        mask = (
+            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
+        )
+        fit_data = gen_particles[:train_idx][mask]
+        self.model.coordinates.init_fit(fit_data)
+        if hasattr(self.model, "distribution"):
+            self.model.distribution.coordinates.init_fit(fit_data)
         self.model.init_geometry()
 
     def _init_dataloader(self):
         self.train_loader = DataLoader(
-            dataset=self.dataset.train_data_list,
+            dataset=self.train_data,
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
             collate_fn=collate,
         )
         self.test_loader = DataLoader(
-            dataset=self.dataset.test_data_list,
+            dataset=self.test_data,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
             collate_fn=collate,
         )
         self.val_loader = DataLoader(
-            dataset=self.dataset.val_data_list,
+            dataset=self.val_data,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
             collate_fn=collate,

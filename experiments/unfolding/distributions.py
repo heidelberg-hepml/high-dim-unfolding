@@ -26,9 +26,11 @@ class OnShellDistribution(BaseDistribution):
     def __init__(
         self,
         onshell_mass,
+        pt_min,
         units,
     ):
         self.onshell_mass = torch.tensor(onshell_mass)
+        self.pt_min = pt_min
         self.units = units
 
     def sample(self, shape, device, dtype, generator=None):
@@ -71,9 +73,9 @@ class NaivePPP(OnShellDistribution):
 
 
 class StandardPPP(OnShellDistribution):
-    def __init__(self, pt_min, mean, std, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coordinates = c.StandardPPPLogM2(mean=mean, std=std)
+        self.coordinates = c.StandardPPPLogM2()
 
     def propose(self, shape, device, dtype, generator=None):
         eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
@@ -93,9 +95,9 @@ class StandardPPP(OnShellDistribution):
 class StandardLogPtPhiEta(OnShellDistribution):
     """Base distribution 4: phi uniform; eta, log(pt) and log(mass) from fitted normal"""
 
-    def __init__(self, pt_min, mean, std, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coordinates = c.StandardLogPtPhiEtaLogM2(pt_min, self.units, mean, std)
+        self.coordinates = c.StandardLogPtPhiEtaLogM2(self.pt_min, self.units)
 
     def propose(self, shape, device, dtype, generator=None):
         """Base distribution for precisesiast: pt, eta gaussian; phi uniform; mass shifted gaussian"""

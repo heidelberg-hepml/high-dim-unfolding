@@ -122,9 +122,11 @@ class CFM(nn.Module):
         # construct target trajectories
         x0_straight = self.coordinates.fourmomenta_to_x(x0_fourmomenta)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
+
         vp_straight = self.get_velocity(xt_straight, t, batch)
 
         # evaluate conditional flow matching objective
@@ -295,7 +297,7 @@ class EventCFM(CFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def init_physics(self, units, pt_min, mean, std, base_type, onshell_mass, device):
+    def init_physics(self, units, pt_min, base_type, onshell_mass, device):
         """
         Pass physics information to the CFM class
 
@@ -315,20 +317,13 @@ class EventCFM(CFM):
         """
         self.units = units
         self.pt_min = pt_min
-        self.mean = torch.tensor(mean).unsqueeze(0).to(device)
-        self.std = torch.tensor(std).unsqueeze(0).to(device)
         self.base_type = base_type
         self.onshell_mass = onshell_mass
 
-        # same preprocessing for all multiplicities
-        self.prep_params = {}
-
     def init_distribution(self):
         args = [
-            self.pt_min,
-            self.mean,
-            self.std,
             self.onshell_mass,
+            self.pt_min,
             self.units,
         ]
         if self.base_type == 1:
@@ -351,7 +346,7 @@ class EventCFM(CFM):
         elif coordinates_label == "PPPLogM2":
             coordinates = c.PPPLogM2()
         elif coordinates_label == "StandardPPPLogM2":
-            coordinates = c.StandardPPPLogM2(self.mean, self.std)
+            coordinates = c.StandardPPPLogM2()
         elif coordinates_label == "EPhiPtPz":
             coordinates = c.EPhiPtPz()
         elif coordinates_label == "PtPhiEtaE":
@@ -370,8 +365,6 @@ class EventCFM(CFM):
             coordinates = c.StandardLogPtPhiEtaLogM2(
                 self.pt_min,
                 self.units,
-                self.mean,
-                self.std,
             )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")

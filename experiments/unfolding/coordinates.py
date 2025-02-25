@@ -16,6 +16,14 @@ class BaseCoordinates:
         self.contains_mass = False
         self.transforms = []
 
+    def init_fit(self, fourmomenta):
+        # only does something for StandardNormal()
+        # requires that StandardNormal() comes last in self.transforms
+        x = fourmomenta.clone()
+        for transform in self.transforms[:-1]:
+            x = transform.forward(x)
+        self.transforms[-1].init_fit(x)
+
     def fourmomenta_to_x(self, a_in):
         assert torch.isfinite(a_in).all()
         a = a_in.to(dtype=DTYPE)
@@ -131,13 +139,13 @@ class PPPLogM2(BaseCoordinates):
 
 class StandardPPPLogM2(BaseCoordinates):
     # fitted (px, py, pz, log(m^2))
-    def __init__(self, mean, std):
+    def __init__(self):
         super().__init__()
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PPPM2(),
             tr.M2_to_LogM2(),
-            tr.StandardNormal(mean, std),
+            tr.StandardNormal([3]),
         ]
 
 
@@ -191,7 +199,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, units, mean, std):
+    def __init__(self, pt_min, units):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -200,5 +208,5 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.Pt_to_LogPt(pt_min, units),
             tr.M2_to_LogM2(),
-            tr.StandardNormal(mean, std),
+            tr.StandardNormal([3]),
         ]
