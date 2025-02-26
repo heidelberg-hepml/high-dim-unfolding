@@ -1,7 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_tr_debug
-
-seed: 42
+exp_name: mult_test
 
 use_mlflow: false
 
@@ -10,21 +8,33 @@ data:
  dataset: zplusjets
  length: -1
  split: [0.8, 0.1, 0.1]
- rescale_data: false
+ units: 1.
+ mass: 0.1
+ standardize: true
  max_num_particles: 152
+ diff: [-53, 78]
+ pid_encoding: true
  beam_reference: xyplane
  two_beams: true
  beam_token: true
  add_time_reference: true
  add_xzplane: false
  add_yzplane: false
- add_pid: false
  add_scalar_features: false
+ scalar_features_preprocessing: # following weaver defaults
+ - [1.7, 0.7] # log_pt
+ - [2.0, 0.7] # log_energy
+ - [-4.7, 0.7] # log_pt_rel
+ - [-4.7, 0.7] # log_energy_rel
+ - [0, 1] # dphi
+ - [0, 1] # deta
+ - [0.2, 4] # dr
  reinsert_channels: false
 
 dist: 
- type: GammaMixture
- n_components: 3
+ type: GaussianMixture
+ n_components: 5
+ diff: true
 
 loss:
  type: cross_entropy
@@ -32,11 +42,12 @@ loss:
 
 train: true
 training:
- iterations: 10000
+ iterations: 100000
  batchsize: 128
  lr: 1e-3
  validate_every_n_steps: 5000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
@@ -44,9 +55,13 @@ evaluation:
 
 plot: true
 plotting:
- n_distributions: 128
+ histogram: true
+ distributions: true
+ n_distributions: 30
+ diff: true
+ corr: false
 
 defaults:
- - model: tr_multiplicity
+ - model: gatr_multiplicity
  - default
  - _self_

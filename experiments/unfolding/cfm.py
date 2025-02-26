@@ -3,16 +3,15 @@ from torch import nn
 from torch.autograd import grad
 
 from torchdiffeq import odeint
-from experiments.eventgen.distributions import (
+from experiments.unfolding.distributions import (
     BaseDistribution,
-    NaivePPPM2,
-    NaivePPPLogM2,
-    StandardPPPLogM2,
-    StandardLogPtPhiEtaLogM2,
+    NaivePPP,
+    StandardPPP,
+    StandardLogPtPhiEta,
 )
-from experiments.eventgen.utils import GaussianFourierProjection
-import experiments.eventgen.coordinates as c
-from experiments.eventgen.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
+from experiments.unfolding.utils import TimeEmbedding
+import experiments.unfolding.coordinates as c
+from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.logger import LOGGER
 
 
@@ -21,20 +20,19 @@ def hutchinson_trace(x_out, x_in):
     noise = torch.randint_like(x_in, low=0, high=2).float() * 2 - 1.0
     x_out_noise = torch.sum(x_out * noise)
     gradient = grad(x_out_noise, x_in)[0].detach()
-    return torch.sum(gradient * noise, dim=[1, 2])
+    return torch.sum(gradient * noise, dim=-1)
 
 
 def autograd_trace(x_out, x_in):
     # Standard way of calculating trace of the Jacobian, needs O(n) calls to autograd
     trJ = 0.0
-    for i in range(x_out.shape[1]):
-        for j in range(x_out.shape[2]):
-            trJ += (
-                grad(x_out[:, i, j].sum(), x_in, retain_graph=True)[0]
-                .contiguous()[:, i, j]
-                .contiguous()
-                .detach()
-            )
+    for i in range(x_out.shape[-1]):
+        trJ += (
+            grad(x_out[..., i].sum(), x_in, retain_graph=True)[0]
+            .contiguous()[..., i]
+            .contiguous()
+            .detach()
+        )
     return trJ.contiguous()
 
 
@@ -51,11 +49,8 @@ class CFM(nn.Module):
         odeint={"method": "dopri5", "atol": 1e-5, "rtol": 1e-5, "options": None},
     ):
         super().__init__()
-        self.t_embedding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
-            ),
-            nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
+        self.t_embedding = TimeEmbedding(
+            embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
         )
         self.trace_fn = hutchinson_trace if cfm.hutchinson else autograd_trace
         self.odeint = odeint
@@ -86,13 +81,12 @@ class CFM(nn.Module):
         )
         return fourmomenta
 
-    def get_velocity(self, x, t, ijet):
+    def get_velocity(self, x, t):
         """
         Parameters
         ----------
-        x : torch.tensor with shape (batchsize, n_particles, 4)
-        t : torch.tensor with shape (batchsize, 1, 1)
-        ijet: int
+        x : torch.tensor with shape (batchsize, 4)
+        t : torch.tensor with shape (batchsize, 1)
         """
         # implemented by architecture-specific subclasses
         raise NotImplementedError
@@ -101,25 +95,22 @@ class CFM(nn.Module):
         # default: do nothing
         return v
 
-    def batch_loss(self, x0_fourmomenta, ijet):
+    def batch_loss(self, batch):
         """
         Construct the conditional flow matching objective
 
         Parameters
         ----------
-        x0_fourmomenta : torch.tensor with shape (batchsize, n_particles, 4)
+        batch : tuple of Batch graphs
             Target space particles in fourmomenta space
-        ijet: int
-            Process information (eg ttbar+0j vs ttbar+1j)
-            Only used in transformer architectures, ignored for MLP and GAP
 
         Returns
         -------
         loss : torch.tensor with shape (1)
         """
+        x0_fourmomenta = batch[0].x
         t = torch.rand(
             x0_fourmomenta.shape[0],
-            1,
             1,
             dtype=x0_fourmomenta.dtype,
             device=x0_fourmomenta.device,
@@ -131,10 +122,12 @@ class CFM(nn.Module):
         # construct target trajectories
         x0_straight = self.coordinates.fourmomenta_to_x(x0_fourmomenta)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
-        vp_straight = self.get_velocity(xt_straight, t, ijet=ijet)
+
+        vp_straight = self.get_velocity(xt_straight, t, batch)
 
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(
@@ -145,37 +138,34 @@ class CFM(nn.Module):
         ]
         return distance, distance_particlewise
 
-    def sample(self, ijet, shape, device, dtype):
+    def sample(self, batch, device, dtype):
         """
         Sample from CFM model
         Solve an ODE using a NN-parametrized velocity field
 
         Parameters
         ----------
-        ijet : int
-            Process information (eg ttbar+0j vs ttbar+1j)
-            Only used in transformer architectures
-        shape : List[int]
-            Shape of events that should be generated
+        batch : tuple of Batch graphs
         device : torch.device
         dtype : torch.dtype
 
         Returns
         -------
-        x0_fourmomenta : torch.tensor with shape shape = (batchsize, n_particles, 4)
+        x0_fourmomenta : torch.tensor with shape shape = (batchsize, 4)
             Generated events
         """
 
         def velocity(t, xt_straight):
             xt_straight = self.geometry._handle_periodic(xt_straight)
             t = t * torch.ones(
-                shape[0], 1, 1, dtype=xt_straight.dtype, device=xt_straight.device
+                shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
             )
-            vt_straight = self.get_velocity(xt_straight, t, ijet=ijet)
+            vt_straight = self.get_velocity(xt_straight, t, batch)
             vt_straight = self.handle_velocity(vt_straight)
             return vt_straight
 
         # sample fourmomenta from base distribution
+        shape = batch[0].x.shape
         x1_fourmomenta = self.sample_base(shape, device, dtype)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
 
@@ -191,7 +181,7 @@ class CFM(nn.Module):
         # (MLP sometimes returns nan for single events,
         # and all components of the event are nan...
         # just sample another event in this case)
-        mask = torch.isfinite(x0_straight).all(dim=[1, 2])
+        mask = torch.isfinite(x0_straight).all(dim=-1)
         if (~mask).any():
             mask2 = torch.isfinite(x0_straight)
             x0_straight = x0_straight[mask, ...]
@@ -202,9 +192,9 @@ class CFM(nn.Module):
 
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
-        return x0_fourmomenta
+        return x0_fourmomenta, batch[0].ptr
 
-    def log_prob(self, x0_fourmomenta, ijet):
+    def log_prob(self, batch):
         """
         Evaluate log_prob for existing target samples in a CFM model
         Solve ODE involving the trace of the velocity field, this is more expensive than normal sampling
@@ -215,17 +205,16 @@ class CFM(nn.Module):
 
         Parameters
         ----------
-        x0_fourmomenta : torch.tensor with shape (batchsize, n_particles, 4)
-            Target space particles in fourmomenta space
-        ijet: int
-            Process information (eg ttbar+0j vs ttbar+1j)
-            Only used in transformer architectures
+
+        batch : tuple of Batch graphs
 
         Returns
         -------
         log_prob_fourmomenta : torch.tensor with shape (batchsize)
             log_prob of each event in x0, evaluated in fourmomenta space
         """
+
+        x0_fourmomenta = batch[0].x
 
         def net_wrapper(t, state):
             with torch.set_grad_enabled(True):
@@ -239,7 +228,7 @@ class CFM(nn.Module):
                     dtype=xt_straight.dtype,
                     device=xt_straight.device,
                 )
-                vt_straight = self.get_velocity(xt_straight, t, ijet=ijet)
+                vt_straight = self.get_velocity(xt_straight, t, batch)
                 vt_straight = self.handle_velocity(vt_straight)
                 dlogp_dt_straight = -self.trace_fn(vt_straight, xt_straight).unsqueeze(
                     -1
@@ -268,7 +257,7 @@ class CFM(nn.Module):
         # the infamous nan remover
         # (MLP sometimes returns nan for single events,
         # just remove these events from the log_prob computation)
-        mask = torch.isfinite(x1_straight).all(dim=[1, 2])
+        mask = torch.isfinite(x1_straight).all(dim=-1)
         if (~mask).any():
             mask2 = torch.isfinite(x1_straight)
             logdetjac_cfm_straight = logdetjac_cfm_straight[mask]
@@ -308,18 +297,7 @@ class EventCFM(CFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def init_physics(
-        self,
-        units,
-        pt_min,
-        delta_r_min,
-        onshell_list,
-        onshell_mass,
-        virtual_components,
-        base_type,
-        use_pt_min,
-        use_delta_r_min,
-    ):
+    def init_physics(self, units, pt_min, base_type, onshell_mass, device):
         """
         Pass physics information to the CFM class
 
@@ -332,56 +310,28 @@ class EventCFM(CFM):
         pt_min: List[float]
             Minimum pt value for each particle
             Hard-coded in EventGenerationExperiment
-        delta_r_min: float
-            Minimum delta_r value
-            We do not support different minimum delta_r for each particle yet
-            Hard-coded in EventGenerationExperiment
-        onshell_list: List[int]
-            Indices of the onshell particles
-            Hard-coded in EventGenerationExperiment
-        onshell_mass: List[float]
-            Masses of the onshell particles in the same order as in onshell_list
-            Hard-coded in EventGenerationExperiment
-        virtual_components: List[List[int]]
-            Indices of the virtual particles
+        mean: Torch.Tensor
+        std: Torch.Tensor
         base_type: int
             Which base distribution to use
-        use_delta_r_min: bool
-            Whether the base distribution should have delta_r cuts
-        use_pt_min: bool
-            Whether the base distribution should have pt cuts
         """
         self.units = units
         self.pt_min = pt_min
-        self.delta_r_min = delta_r_min
-        self.onshell_list = onshell_list
-        self.onshell_mass = onshell_mass
-        self.virtual_components = virtual_components
         self.base_type = base_type
-        self.use_delta_r_min = use_delta_r_min
-        self.use_pt_min = use_pt_min
-
-        # same preprocessing for all multiplicities
-        self.prep_params = {}
+        self.onshell_mass = onshell_mass
 
     def init_distribution(self):
         args = [
-            self.onshell_list,
             self.onshell_mass,
-            self.units,
-            self.delta_r_min,
             self.pt_min,
-            self.use_delta_r_min,
-            self.use_pt_min,
+            self.units,
         ]
         if self.base_type == 1:
-            self.distribution = NaivePPPM2(*args)
+            self.distribution = NaivePPP(*args)
         elif self.base_type == 2:
-            self.distribution = NaivePPPLogM2(*args)
+            self.distribution = StandardPPP(*args)
         elif self.base_type == 3:
-            self.distribution = StandardPPPLogM2(*args)
-        elif self.base_type == 4:
-            self.distribution = StandardLogPtPhiEtaLogM2(*args)
+            self.distribution = StandardLogPtPhiEta(*args)
         else:
             raise ValueError(f"base_type={self.base_type} not implemented")
 
@@ -396,7 +346,7 @@ class EventCFM(CFM):
         elif coordinates_label == "PPPLogM2":
             coordinates = c.PPPLogM2()
         elif coordinates_label == "StandardPPPLogM2":
-            coordinates = c.StandardPPPLogM2(self.onshell_list)
+            coordinates = c.StandardPPPLogM2()
         elif coordinates_label == "EPhiPtPz":
             coordinates = c.EPhiPtPz()
         elif coordinates_label == "PtPhiEtaE":
@@ -444,6 +394,6 @@ class EventCFM(CFM):
 
     def handle_velocity(self, v):
         if self.coordinates.contains_mass:
-            # manually set mass velocity of onshell events to zero
-            v[..., self.onshell_list, 3] = 0.0
+            # manually set mass velocity to zero
+            v[..., 3] = 0.0
         return v

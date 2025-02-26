@@ -1,0 +1,73 @@
+exp_type: unfolding
+exp_name: unfolding_debug
+
+seed: 42
+
+use_mlflow: false
+
+data:
+ data_dir: data/
+ dataset: zplusjets
+ length: 100000
+ split: [0.8, 0.1, 0.1]
+ dtype: float32
+ standardize: true
+ pid_raw: false
+ pid_encoding: true
+ mass: 0.1
+ max_num_particles: 152
+ beam_reference: xyplane
+ two_beams: true
+ beam_token: true
+ add_time_reference: true
+ add_xzplane: false
+ add_yzplane: false
+ add_pid: false
+ add_scalar_features: false
+ reinsert_channels: false
+ base_type: 2
+ pt_min: 0.0
+ units: 1.0
+
+cfm:
+ embed_t_dim: 8
+ embed_t_scale: 30.
+ hutchinson: true
+ coordinates: StandardLogPtPhiEtaLogM2
+ geometry:
+  type: simple
+  periodic: true
+ transforms_float64: false
+
+odeint:
+ method: rk4
+ rtol: 1e-5
+ atol: 1e-5
+ options:
+  step_size: 0.01
+
+train: true
+training:
+ iterations: 100000
+ batchsize: 128
+ lr: 1e-3
+ validate_every_n_steps: 5000
+ force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ clip_grad_norm: 5.
+
+evaluate: true
+evaluation:
+ batchsize: 128
+ classifier: false
+ sample: true
+ n_batches: 500
+ eval_loss: ["train"]
+
+plot: false
+plotting:
+ n_distributions: 128
+
+defaults:
+ - model: cond_tr_unfolding
+ - default
+ - _self_

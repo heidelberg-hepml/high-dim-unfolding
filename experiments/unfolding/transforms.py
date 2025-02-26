@@ -1,13 +1,16 @@
 import torch
 from torch import nn
 
-from experiments.eventgen.helpers import (
+from experiments.unfolding.utils import (
     unpack_last,
     EPS1,
     EPS2,
     CUTOFF,
     stable_arctanh,
-    stay_positive,
+    get_pt,
+    get_phi,
+    get_eta,
+    get_mass,
 )
 
 
@@ -113,12 +116,12 @@ class EPPP_to_PPPM2(BaseTransform):
         E, px, py, pz = unpack_last(eppp)
 
         m2 = E**2 - (px**2 + py**2 + pz**2)
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
         px, py, pz, m2 = unpack_last(pppm2)
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
 
         E = torch.sqrt(m2 + (px**2 + py**2 + pz**2))
         return torch.stack((E, px, py, pz), dim=-1)
@@ -154,8 +157,8 @@ class EPPP_to_EPhiPtPz(BaseTransform):
     def _forward(self, eppp):
         E, px, py, pz = unpack_last(eppp)
 
-        pt = torch.sqrt(px**2 + py**2)
-        phi = torch.arctan2(py, px)
+        pt = get_pt(eppp)
+        phi = get_phi(eppp)
         return torch.stack((E, phi, pt, pz), dim=-1)
 
     def _inverse(self, ephiptpz):
@@ -210,10 +213,9 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
     def _forward(self, eppp):
         E, px, py, pz = unpack_last(eppp)
 
-        pt = torch.sqrt(px**2 + py**2)
-        phi = torch.arctan2(py, px)
-        p_abs = torch.sqrt(pt**2 + pz**2)
-        eta = stable_arctanh(pz / p_abs)  # torch.arctanh(pz / p_abs)
+        pt = get_pt(eppp)
+        phi = get_phi(eppp)
+        eta = get_eta(eppp)
         eta = eta.clamp(min=-CUTOFF, max=CUTOFF)
         assert torch.isfinite(eta).all()
 
@@ -279,13 +281,13 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
 
         p_abs = pt * torch.cosh(eta)
         m2 = E**2 - p_abs**2
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _inverse(self, ptphietam2):
         pt, phi, eta, m2 = unpack_last(ptphietam2)
 
-        m2 = stay_positive(m2)
+        m2 = torch.abs(m2)
         eta = eta.clamp(min=-CUTOFF, max=CUTOFF)
         p_abs = pt * torch.cosh(eta)
         E = torch.sqrt(m2 + p_abs**2)
@@ -300,9 +302,7 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_pt = torch.stack((one, zero, zero, -2 * pt * torch.cosh(eta) ** 2), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
-        jac_eta = torch.stack(
-            (zero, zero, one, -(pt**2) * torch.sinh(2 * eta)), dim=-1
-        )
+        jac_eta = torch.stack((zero, zero, one, -(pt**2) * torch.sinh(2 * eta)), dim=-1)
         jac_E = torch.stack((zero, zero, zero, 2 * E), dim=-1)
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_E), dim=-1)
@@ -371,7 +371,7 @@ class Pt_to_LogPt(BaseTransform):
         self.pt_min = torch.tensor(pt_min) / units
 
     def get_dpt(self, pt):
-        return torch.clamp(pt - self.pt_min[: pt.shape[-1]].to(pt.device), min=EPS2)
+        return torch.clamp(pt - self.pt_min.to(pt.device), min=EPS2)
 
     def _forward(self, ptx):
         pt, x1, x2, x3 = unpack_last(ptx)
@@ -381,11 +381,7 @@ class Pt_to_LogPt(BaseTransform):
 
     def _inverse(self, logptx):
         logpt, x1, x2, x3 = unpack_last(logptx)
-        pt = (
-            logpt.clamp(max=CUTOFF).exp()
-            + self.pt_min[: logpt.shape[-1]].to(logpt.device)
-            - EPS1
-        )
+        pt = logpt.clamp(max=CUTOFF).exp() + self.pt_min.to(logpt.device) - EPS1
         return torch.stack((pt, x1, x2, x3), dim=-1)
 
     def _jac_forward(self, ptx, logptx):
@@ -430,67 +426,34 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, dims_fixed=[], onshell_list=None):
+    def __init__(self, dims_fixed=[]):
         self.dims_fixed = dims_fixed
-        self.onshell_list = onshell_list
 
-    def init_fit(self, xs):
-        n_particles = [x.shape[-2] for x in xs]
-        assert len(n_particles) == len(
-            set(n_particles)
-        ), f"n_particles should have unique elements, but n_particles={n_particles}"
-        self.params = {n_p: {"mean": None, "std": None} for n_p in n_particles}
-        for i, n_p in enumerate(n_particles):
-            assert len(xs[i].shape) == 3
-            self.params[n_p]["mean"] = xs[i].mean(dim=0)
-            std = xs[i].std(dim=0)
-            if self.onshell_list is not None:
-                std[self.onshell_list, 3] = 1.0
-            assert torch.isfinite(std).all()
-            self.params[n_p]["std"] = std
-
-            # do not fit some distributions
-            self.params[n_p]["mean"][..., self.dims_fixed] = 0.0
-            self.params[n_p]["std"][..., self.dims_fixed] = 1.0
-
-    def init_unit(self, n_particles):
-        # initialize to zero mean and unit std
-        # only for debugging and tests
-        self.params = {n_p: {"mean": None, "std": None} for n_p in n_particles}
-        for i, n_p in enumerate(n_particles):
-            self.params[n_p]["mean"] = torch.zeros(n_p, 4)
-            self.params[n_p]["std"] = torch.ones(n_p, 4)
-
-    def get_mean_std(self, x):
-        params = self.params[x.shape[-2]]
-        return params["mean"].to(x.device, dtype=x.dtype), params["std"].to(
-            x.device, dtype=x.dtype
-        )
+    def init_fit(self, x):
+        self.mean = torch.mean(x, dim=0, keepdim=True)
+        self.std = torch.std(x, dim=0, keepdim=True)
+        self.mean[:, self.dims_fixed] = 0
+        self.std[:, self.dims_fixed] = 1
 
     def _forward(self, x):
-        mean, std = self.get_mean_std(x)
-        xunit = (x - mean) / std
+        xunit = (x - self.mean.to(x.device)) / self.std.to(x.device)
         return xunit
 
     def _inverse(self, xunit):
-        mean, std = self.get_mean_std(xunit)
-        x = xunit * std + mean
+        x = xunit * self.std.to(xunit.device) + self.mean.to(xunit.device)
         return x
 
     def _jac_forward(self, x, xunit):
-        std = self.get_mean_std(x)[1]
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        jac[..., torch.arange(4), torch.arange(4)] = 1 / std.unsqueeze(0)
+        jac[..., torch.arange(4), torch.arange(4)] = 1 / self.std.unsqueeze(0)
         return jac
 
     def _jac_inverse(self, xunit, x):
-        std = self.get_mean_std(x)[1]
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        jac[..., torch.arange(4), torch.arange(4)] = std.unsqueeze(0)
+        jac[..., torch.arange(4), torch.arange(4)] = self.std.unsqueeze(0)
         return jac
 
     def _detjac_forward(self, x, xunit):
-        std = self.get_mean_std(x)[1]
-        detjac = 1 / torch.prod(std, dim=-1)
+        detjac = 1 / torch.prod(self.std, dim=-1)
         detjac = detjac.unsqueeze(0).expand(x.shape[0], x.shape[1])
         return detjac

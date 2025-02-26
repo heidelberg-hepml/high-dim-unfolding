@@ -1,192 +1,219 @@
 import numpy as np
 import torch
+from torch_geometric.loader import DataLoader
 
 import os, time
 from omegaconf import open_dict
 from hydra.utils import instantiate
 from tqdm import trange, tqdm
+import energyflow
 
 from experiments.base_experiment import BaseExperiment
-from experiments.eventgen.dataset import EventDataset, EventDataLoader
-from experiments.eventgen.helpers import ensure_onshell
-import experiments.eventgen.plotter as plotter
+from experiments.unfolding.dataset import ZplusJetDataset, collate
+from experiments.unfolding.utils import (
+    ensure_angle,
+    jetmomenta_to_fourmomenta,
+    pid_encoding,
+)
+import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 
+from experiments.unfolding.plots import plot_kinematics
 
-class EventGenerationExperiment(BaseExperiment):
+
+class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
-        self.define_process_specifics()
 
         # dynamically set wrapper properties
-        self.modeltype = (
-            "GPT" if self.cfg.model._target_.rsplit(".", 1)[-1] == "JetGPT" else "CFM"
-        )
-        self.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
-        n_particles = self.n_hard_particles + max(self.cfg.data.n_jets)
-        n_datasets = len(self.cfg.data.n_jets)
+        self.modeltype = "CFM"
+
         with open_dict(self.cfg):
-            # preparation for joint training
-            if self.modelname in ["GATr", "Transformer"]:
-                self.cfg.model.process_token_channels = n_datasets
-                self.cfg.model.type_token_channels = n_particles
-            else:
-                # no joint training possible
-                assert len(self.cfg.data.n_jets) == 1
-
+            self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
             # dynamically set channel dimensions
-            if self.modelname == "GATr":
-                self.cfg.model.net.in_s_channels = (
-                    n_particles + n_datasets + self.cfg.cfm.embed_t_dim
-                )
-            elif self.modelname == "Transformer":
-                self.cfg.model.net.in_channels = (
-                    4 + n_datasets + n_particles + self.cfg.cfm.embed_t_dim
-                )
-            elif self.modelname == "GAP":
-                self.cfg.model.net.in_mv_channels = n_particles
-                self.cfg.model.net.out_mv_channels = n_particles
+            if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.out_s_channels = n_particles * 4
-            elif self.modelname == "MLP":
-                self.cfg.model.net.in_shape = 4 * n_particles + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.out_shape = 4 * n_particles
-
-            # extra treatment for lorentz-symmetry breaking inputs in equivariant models
-            if self.modelname in ["GATr", "GAP"]:
-                if self.cfg.model.beam_reference is not None:
-                    self.cfg.model.net.in_mv_channels += (
+                self.cfg.model.net.condition_s_channels = 0
+                if self.cfg.data.pid_raw:
+                    self.cfg.model.net.in_s_channels += 1
+                    self.cfg.model.net.condition_s_channels += 1
+                elif self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_s_channels += 6
+                    self.cfg.model.net.condition_s_channels += 6
+                if self.cfg.data.add_scalar_features:
+                    self.cfg.model.net.condition_s_channels += 7
+                if not self.cfg.data.beam_token:
+                    self.cfg.model.net.condition_mv_channels += (
                         2
                         if (
-                            self.cfg.model.two_beams
-                            and self.cfg.model.beam_reference != "xyplane"
+                            self.cfg.data.two_beams
+                            and self.cfg.data.beam_reference != "xyplane"
                         )
                         else 1
                     )
-                if self.cfg.model.add_time_reference:
-                    self.cfg.model.net.in_mv_channels += 1
+                    if self.cfg.data.add_time_reference:
+                        self.cfg.model.net.condition_mv_channels += 1
+                self.cfg.model.cfg_data = self.cfg.data
+
+            elif self.cfg.modelname == "ConditionalTransformer":
+                self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
+                self.cfg.model.net.condition_channels = 4
+                if self.cfg.data.pid_raw:
+                    self.cfg.model.net.in_channels += 1
+                    self.cfg.model.net.condition_channels += 1
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
+                    self.cfg.model.net.condition_channels += 6
 
             # copy model-specific parameters
-            if self.modeltype == "CFM":
-                self.cfg.model.odeint = self.cfg.odeint
-                self.cfg.model.cfm = self.cfg.cfm
-            elif self.modeltype == "GPT":
-                assert (
-                    self.cfg.exp_type == "ttbar"
-                ), "JetGPT only implemented for exp_type=ttbar, not exp_type={self.cfg.exp_type}"
-                self.cfg.model.gpt = self.cfg.gpt
-                if self.cfg.model.n_gauss is None:
-                    self.cfg.model.n_gauss = self.cfg.model.net.hidden_channels // 3
-                max_idx = 4 * n_particles
-                self.cfg.model.net.in_channels = 1 + max_idx + n_datasets
-                self.cfg.model.net.out_channels = 3 * self.cfg.model.n_gauss
-            else:
-                raise ValueError(f"modeltype={self.modeltype} not implemented")
+            self.cfg.model.odeint = self.cfg.odeint
+            self.cfg.model.cfm = self.cfg.cfm
 
     def init_data(self):
-        LOGGER.info(f"Working with {self.cfg.data.n_jets} extra jets")
+        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
+        self._init_data(ZplusJetDataset, data_path)
 
-        # load all datasets and organize them in lists
-        self.events_raw = []
-        for n_jets in self.cfg.data.n_jets:
-            # load data
-            data_path = eval(f"self.cfg.data.data_path_{n_jets}j")
-            assert os.path.exists(data_path), f"data_path {data_path} does not exist"
-            data_raw = np.load(data_path)
-            LOGGER.info(f"Loaded data with shape {data_raw.shape} from {data_path}")
-
-            # bring data into correct shape
-            if self.cfg.data.subsample is not None:
-                assert self.cfg.data.subsample < data_raw.shape[0]
-                LOGGER.info(
-                    f"Reducing the size of the dataset from {data_raw.shape[0]} to {self.cfg.data.subsample}"
-                )
-                data_raw = data_raw[: self.cfg.data.subsample, :]
-            data_raw = data_raw.reshape(data_raw.shape[0], data_raw.shape[1] // 4, 4)
-            data_raw = torch.tensor(data_raw, dtype=self.dtype)
-
-            # collect everything
-            self.events_raw.append(data_raw)
-
-        # change global units
-        self.model.init_physics(
-            self.units,
-            self.pt_min,
-            self.delta_r_min,
-            self.onshell_list,
-            self.onshell_mass,
-            self.virtual_components,
-            self.cfg.data.base_type,
-            self.cfg.data.use_pt_min,
-            self.cfg.data.use_delta_r_min,
+    def _init_data(self, Dataset, data_path):
+        data = energyflow.zjets_delphes.load(
+            "Herwig",
+            num_data=self.cfg.data.length,
+            pad=True,
+            cache_dir=data_path,
+            include_keys=["particles", "mults", "jets"],
         )
 
-        # preprocessing
-        self.events_prepd = []
-        for ijet in range(len(self.cfg.data.n_jets)):
-            # preprocess data
-            self.events_raw[ijet] = ensure_onshell(
-                self.events_raw[ijet],
-                self.onshell_list,
-                self.onshell_mass,
+        split = self.cfg.data.split
+        size = len(data["sim_particles"])
+        train_idx = int(split[0] * size)
+        val_idx = int(split[1] * size)
+
+        det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
+        det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
+        det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
+
+        gen_particles = torch.tensor(data["gen_particles"], dtype=self.dtype)
+        gen_jets = torch.tensor(data["gen_jets"], dtype=self.dtype)
+        gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
+
+        # undo the dataset scaling
+        det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
+        det_particles[..., 2] = ensure_angle(det_particles[..., 2])
+        det_particles[..., 0] = det_particles[..., 0] * 100
+
+        gen_particles[..., 1:3] = gen_particles[..., 1:3] + gen_jets[:, None, 1:3]
+        gen_particles[..., 2] = ensure_angle(gen_particles[..., 2])
+        gen_particles[..., 0] = gen_particles[..., 0] * 100
+
+        # swap eta and phi for consistency
+        det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
+        gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
+
+        # save pids before replacing with mass
+        if self.cfg.data.pid_encoding:
+            det_pids = det_particles[..., 3].clone().unsqueeze(-1)
+            det_pids = pid_encoding(det_pids)
+            gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
+            gen_pids = pid_encoding(gen_pids)
+        else:
+            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
+            gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
+
+        det_particles[..., 3] = self.cfg.data.mass
+        gen_particles[..., 3] = self.cfg.data.mass
+
+        det_particles = jetmomenta_to_fourmomenta(det_particles)
+        gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+
+        if self.cfg.data.standardize:
+            mask = (
+                torch.arange(det_particles.shape[1])[None, :]
+                < det_mults[:train_idx, None]
             )
-            data_prepd = self.model.preprocess(self.events_raw[ijet])
-            self.events_prepd.append(data_prepd)
+            flattened_particles = det_particles[:train_idx][mask]
+
+            if self.cfg.modelname == "ConditionalGATr":
+                # For GATr, same standardization for all components
+                # mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
+                mean = torch.zeros(1, 4, dtype=self.dtype)
+                std = flattened_particles.std().unsqueeze(0).expand(1, 4)
+            elif self.cfg.modelname == "ConditionalTransformer":
+                # Otherwise, standardization done separately for each component
+                mean = flattened_particles.mean(dim=0, keepdim=True)
+                mean[..., -1] = 0
+                std = flattened_particles.std(dim=0, keepdim=True)
+                std[..., -1] = 1
+            det_particles = (det_particles - mean) / std
+
+        self.train_data = ZplusJetDataset(self.dtype)
+        self.val_data = ZplusJetDataset(self.dtype)
+        self.test_data = ZplusJetDataset(self.dtype)
+
+        self.train_data.create_data_list(
+            det_particles[:train_idx],
+            det_pids[:train_idx],
+            det_mults[:train_idx],
+            gen_particles[:train_idx],
+            gen_pids[:train_idx],
+            gen_mults[:train_idx],
+        )
+        self.val_data.create_data_list(
+            det_particles[train_idx : train_idx + val_idx],
+            det_pids[train_idx : train_idx + val_idx],
+            det_mults[train_idx : train_idx + val_idx],
+            gen_particles[train_idx : train_idx + val_idx],
+            gen_pids[train_idx : train_idx + val_idx],
+            gen_mults[train_idx : train_idx + val_idx],
+        )
+        self.test_data.create_data_list(
+            det_particles[train_idx + val_idx :],
+            det_pids[train_idx + val_idx :],
+            det_mults[train_idx + val_idx :],
+            gen_particles[train_idx + val_idx :],
+            gen_pids[train_idx + val_idx :],
+            gen_mults[train_idx + val_idx :],
+        )
 
         # initialize cfm (might require data)
+        self.model.init_physics(
+            self.cfg.data.units,
+            self.cfg.data.pt_min,
+            self.cfg.data.base_type,
+            self.cfg.data.mass,
+            self.device,
+        )
         self.model.init_distribution()
         self.model.init_coordinates()
-        fit_data = [x / self.units for x in self.events_raw]
+        mask = (
+            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
+        )
+        fit_data = gen_particles[:train_idx][mask]
         self.model.coordinates.init_fit(fit_data)
         if hasattr(self.model, "distribution"):
             self.model.distribution.coordinates.init_fit(fit_data)
         self.model.init_geometry()
 
     def _init_dataloader(self):
-        assert sum(self.cfg.data.train_test_val) <= 1
-
-        # seperate data into train, test and validation subsets for each dataset
-        self.data_raw, self.data_prepd = [], []
-        for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-            n_data = self.events_raw[ijet].shape[0]
-            split_val = int(n_data * self.cfg.data.train_test_val[::-1][0])
-            split_test = int(n_data * sum(self.cfg.data.train_test_val[::-1][:2]))
-            split_train = int(n_data * sum(self.cfg.data.train_test_val[::-1]))
-
-            data_raw = {
-                "val": self.events_raw[ijet][0:split_val],
-                "tst": self.events_raw[ijet][split_val:split_test],
-                "trn": self.events_raw[ijet][split_test:split_train],
-            }
-            data_prepd = {
-                "val": self.events_prepd[ijet][0:split_val],
-                "tst": self.events_prepd[ijet][split_val:split_test],
-                "trn": self.events_prepd[ijet][split_test:split_train],
-            }
-            self.data_raw.append(data_raw)
-            self.data_prepd.append(data_prepd)
-
-        # create dataloaders
-        self.train_loader = EventDataLoader(
-            dataset=EventDataset([x["trn"] for x in self.data_prepd], dtype=self.dtype),
+        self.train_loader = DataLoader(
+            dataset=self.train_data,
             batch_size=self.cfg.training.batchsize,
             shuffle=True,
+            collate_fn=collate,
         )
-
-        self.test_loader = EventDataLoader(
-            dataset=EventDataset([x["tst"] for x in self.data_prepd], dtype=self.dtype),
+        self.test_loader = DataLoader(
+            dataset=self.test_data,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
+            collate_fn=collate,
         )
-
-        self.val_loader = EventDataLoader(
-            dataset=EventDataset([x["val"] for x in self.data_prepd], dtype=self.dtype),
+        self.val_loader = DataLoader(
+            dataset=self.val_data,
             batch_size=self.cfg.evaluation.batchsize,
             shuffle=False,
+            collate_fn=collate,
         )
 
         LOGGER.info(
-            f"Constructed dataloaders with train_test_val={self.cfg.data.train_test_val}, "
+            f"Constructed dataloaders with "
             f"train_batches={len(self.train_loader)}, test_batches={len(self.test_loader)}, val_batches={len(self.val_loader)}, "
             f"batch_size={self.cfg.training.batchsize} (training), {self.cfg.evaluation.batchsize} (evaluation)"
         )
@@ -200,8 +227,13 @@ class EventGenerationExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         if self.cfg.evaluation.sample:
-            self._sample_events()
-            loaders["gen"] = self.sample_loader
+            samples, samples_ptr, targets, targets_ptr = self._sample_events(
+                loaders["train"], self.cfg.evaluation.n_batches
+            )
+            plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
+            os.makedirs(plot_path, exist_ok=True)
+            plot_kinematics(plot_path, samples, targets)
+
         else:
             LOGGER.info("Skip sampling")
 
@@ -213,84 +245,19 @@ class EventGenerationExperiment(BaseExperiment):
         for key in self.cfg.evaluation.eval_loss:
             if key in loaders.keys():
                 self._evaluate_loss_single(loaders[key], key)
-        for key in self.cfg.evaluation.eval_log_prob:
-            if key == "gen":
-                # log_probs of generated events are not interesting
-                # + they are not well-defined, because generated events might be in regions
-                # that are not included in the base distribution (because of pt_min, delta_r_min)
-                continue
-            self._evaluate_log_prob_single(loaders[key], key)
 
-    def _evaluate_classifier_metric(self, ijet, n_jets):
-        assert self.cfg.evaluation.sample, "need samples for classifier evaluation"
-
-        # initiate
-        with open_dict(self.cfg):
-            num_particles = self.n_hard_particles + n_jets
-            self.cfg.classifier.net.in_shape = 4 * num_particles
-            if self.cfg.classifier.cfg_preprocessing.add_delta_r:
-                self.cfg.classifier.net.in_shape += (
-                    num_particles * (num_particles - 1) // 2
-                )
-            if self.cfg.classifier.cfg_preprocessing.add_virtual:
-                self.cfg.classifier.net.in_shape += 4 * len(self.virtual_components)
-        classifier_factory = instantiate(self.cfg.classifier, _partial_=True)
-        classifier = classifier_factory(experiment=self, device=self.device)
-
-        data_true = self.events_raw[ijet]
-        data_fake = self.data_raw[ijet]["gen"]
-        LOGGER.info(
-            f"Classifier generated data true/fake has shape {tuple(data_true.shape)}/{tuple(data_fake.shape)}"
-        )
-
-        # preprocessing
-        cls_params = {"mean": None, "std": None}
-        data_true, cls_params = classifier.preprocess(data_true, cls_params)
-        data_fake = classifier.preprocess(data_fake, cls_params)[0]
-        data_true = classifier.train_test_val_split(data_true)
-        data_fake = classifier.train_test_val_split(data_fake)
-        classifier.init_data(data_true, data_fake)
-
-        # do things
-        classifier.train()
-        classifier.evaluate()
-
-        # save weighted events
-        if self.cfg.evaluation.save_samples and self.cfg.save:
-            events_true = classifier.train_test_val_split(self.events_raw[ijet])["tst"]
-            events_fake = classifier.train_test_val_split(self.data_raw[ijet]["gen"])[
-                "tst"
-            ]
-            weights_true = classifier.results["weights"]["true"]
-            weights_fake = classifier.results["weights"]["fake"]
-            os.makedirs(os.path.join(self.cfg.run_dir, "samples"), exist_ok=True)
-            filename = os.path.join(
-                self.cfg.run_dir,
-                "samples",
-                f"samples_weighted_{self.cfg.run_idx}_{n_jets}j",
-            )
-            np.savez(
-                filename,
-                events_true=events_true,
-                events_fake=events_fake,
-                weights_true=weights_true,
-                weights_fake=weights_fake,
-            )
-        return classifier
+    def _evaluate_classifier_metric(self):
+        pass
 
     def _evaluate_loss_single(self, loader, title):
         self.model.eval()
         losses = []
-        mses = {f"{n_jets}j": [] for n_jets in self.cfg.data.n_jets}
         LOGGER.info(f"Starting to evaluate loss for model on {title} dataset")
         t0 = time.time()
         for i, data in enumerate(loader):
             loss = 0.0
-            for ijet, data_single in enumerate(data):
-                x0 = data_single.to(self.device)
-                loss_single = self.model.batch_loss(x0, ijet)[0]
-                loss += loss_single / len(self.cfg.data.n_jets)
-                mses[f"{self.cfg.data.n_jets[ijet]}j"].append(loss_single.cpu().item())
+            data[0], data[1] = data[0].to(self.device), data[1].to(self.device)
+            loss = self.model.batch_loss(data)[0]
             losses.append(loss.cpu().item())
         dt = time.time() - t0
         LOGGER.info(
@@ -299,229 +266,64 @@ class EventGenerationExperiment(BaseExperiment):
 
         if self.cfg.use_mlflow:
             log_mlflow(f"eval.{title}.loss", np.mean(losses))
-            for key, values in mses.items():
-                log_mlflow(f"eval.{title}.{key}.mse", np.mean(values))
 
     def _evaluate_log_prob_single(self, loader, title):
-        self.model.eval()
-        self.NLLs = {f"{n_jets}j": [] for n_jets in self.cfg.data.n_jets}
-        LOGGER.info(f"Starting to evaluate log_prob for model on {title} dataset")
-        t0 = time.time()
-        for i, data in enumerate(tqdm(loader)):
-            for ijet, data_single in enumerate(data):
-                x0 = data_single.to(self.device)
-                NLL = -self.model.log_prob(x0, ijet).squeeze().cpu()
-                self.NLLs[f"{self.cfg.data.n_jets[ijet]}j"].extend(
-                    NLL.squeeze().numpy().tolist()
-                )
-        dt = time.time() - t0
-        LOGGER.info(
-            f"Finished evaluating log_prob for {title} dataset after {dt/60:.2f}min"
-        )
-        for key, values in self.NLLs.items():
-            LOGGER.info(f"NLL_{key} = {np.mean(values)}")
-            if self.cfg.use_mlflow:
-                log_mlflow(f"eval.{title}.{key}.NLL", np.mean(values))
+        pass
 
-    def _sample_events(self):
-        self.model.eval()
+    def _sample_events(self, loader, n_batches):
+        samples = torch.empty((0, 4), device=self.device)
+        targets = torch.empty((0, 4), device=self.device)
+        samples_ptr = torch.zeros((1,), device=self.device)
+        targets_ptr = torch.zeros((1,), device=self.device)
+        it = iter(loader)
+        for i in range(n_batches):
+            batch = next(it)
+            batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
+            batch = (batch[0], batch[1])
 
-        for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-            sample = []
-            shape = (self.cfg.evaluation.batchsize, self.n_hard_particles + n_jets, 4)
-            n_batches = (
-                1 + (self.cfg.evaluation.nsamples - 1) // self.cfg.evaluation.batchsize
-            )
-            LOGGER.info(
-                f"Starting to generate {self.cfg.evaluation.nsamples} {n_jets}j events"
-            )
-            t0 = time.time()
-            for i in trange(n_batches, desc="Sampled batches"):
-                x_t = self.model.sample(
-                    ijet,
-                    shape,
-                    self.device,
-                    self.dtype,
-                )
-                sample.append(x_t)
-            t1 = time.time()
-            LOGGER.info(
-                f"Finished generating {n_jets}j events after {t1-t0:.2f}s = {(t1-t0)/60:.2f}min"
+            target = batch[0].x
+            target_ptr = batch[0].ptr
+            targets = torch.cat([targets, target], dim=0)
+            targets_ptr = torch.cat(
+                [
+                    targets_ptr,
+                    torch.tensor(target_ptr[1:]) + targets_ptr[-1],
+                ],
+                dim=0,
             )
 
-            samples = torch.cat(sample, dim=0)[
-                : self.cfg.evaluation.nsamples, ...
-            ].cpu()
-            self.data_prepd[ijet]["gen"] = samples
-
-            samples_raw = self.model.undo_preprocess(samples)
-            self.data_raw[ijet]["gen"] = samples_raw
-
-            m2 = samples_raw[..., 0] ** 2 - (samples_raw[..., 1:] ** 2).sum(dim=-1)
-            LOGGER.info(
-                f"Fraction of events with m2<0: {(m2<0).float().mean():.4f} (flip m2->-m2 for these events)"
+            sample, ptr = self.model.sample(
+                batch,
+                self.device,
+                self.dtype,
+            )
+            samples = torch.cat([samples, sample], dim=0)
+            samples_ptr = torch.cat(
+                [samples_ptr, torch.tensor(ptr[1:]) + samples_ptr[-1]], dim=0
             )
 
-            if self.cfg.evaluation.save_samples and self.cfg.save:
-                os.makedirs(os.path.join(self.cfg.run_dir, "samples"), exist_ok=True)
-                filename = os.path.join(
-                    self.cfg.run_dir,
-                    "samples",
-                    f"samples_{self.cfg.run_idx}_{n_jets}j.npy",
-                )
-                np.save(filename, samples_raw)
-
-        self.sample_loader = torch.utils.data.DataLoader(
-            dataset=EventDataset([x["gen"] for x in self.data_prepd], dtype=self.dtype),
-            batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
-        )
+        return samples, samples_ptr, targets, targets_ptr
 
     def plot(self):
-        path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
-        os.makedirs(os.path.join(path), exist_ok=True)
-        LOGGER.info(f"Creating plots in {path}")
-
-        self.plot_titles = [
-            r"${%s}+{%s}j$" % (self.plot_title, n_jets)
-            for n_jets in self.cfg.data.n_jets
-        ]
-        kwargs = {
-            "exp": self,
-            "model_label": self.modelname,
-        }
-
-        if self.cfg.train:
-            filename = os.path.join(path, "training.pdf")
-            plotter.plot_losses(filename=filename, **kwargs)
-
-        if not self.cfg.evaluate:
-            return
-
-        # set correct masses
-        if self.cfg.evaluation.sample:
-            for label in ["trn", "tst", "gen"]:
-                for ijet in range(len(self.cfg.data.n_jets)):
-                    self.data_raw[ijet][label] = ensure_onshell(
-                        self.data_raw[ijet][label],
-                        self.onshell_list,
-                        self.onshell_mass,
-                    )
-
-        # If specified, collect weights from classifier
-        if self.cfg.evaluation.classifier and self.cfg.plotting.reweighted:
-            weights = {
-                ijet: self.classifiers[ijet].weights_fake.squeeze()
-                for ijet, n_jets in enumerate(self.cfg.data.n_jets)
-            }
-        else:
-            weights = {ijet: None for ijet, n_jets in enumerate(self.cfg.data.n_jets)}
-
-        # can manually create a mask
-        if self.cfg.plotting.create_mask:
-            mask_dict = {}
-            for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-                # create your mask here
-                assert weights[ijet] is not None
-                mask_dict[ijet] = {"condition": "w<0.5", "mask": weights[ijet] < 0.5}
-            weights[ijet] = None
-        else:
-            mask_dict = {ijet: None for ijet, n_jets in enumerate(self.cfg.data.n_jets)}
-
-        if (
-            self.cfg.plotting.log_prob
-            and len(self.cfg.evaluation.eval_log_prob) > 0
-            and self.cfg.evaluate
-        ):
-            filename = os.path.join(path, "neg_log_prob.pdf")
-            plotter.plot_log_prob(filename=filename, **kwargs)
-
-        if self.cfg.evaluation.classifier and self.cfg.evaluate:
-            filename = os.path.join(path, "classifier.pdf")
-            plotter.plot_classifier(filename=filename, **kwargs)
-
-        if self.cfg.evaluation.sample:
-            if self.cfg.plotting.fourmomenta:
-                filename = os.path.join(path, "fourmomenta.pdf")
-                plotter.plot_fourmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.jetmomenta:
-                filename = os.path.join(path, "jetmomenta.pdf")
-                plotter.plot_jetmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.preprocessed:
-                filename = os.path.join(path, "preprocessed.pdf")
-                plotter.plot_preprocessed(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.virtual and len(self.virtual_components) > 0:
-                filename = os.path.join(path, "virtual.pdf")
-                plotter.plot_virtual(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.delta:
-                filename = os.path.join(path, "delta.pdf")
-                plotter.plot_delta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.deta_dphi:
-                filename = os.path.join(path, "deta_dphi.pdf")
-                plotter.plot_deta_dphi(filename=filename, **kwargs)
+        pass
 
     def _init_loss(self):
         # loss defined manually within the model
         pass
 
-    def _batch_loss(self, data):
-
-        # average over contributions from different datasets
-        loss = 0.0
-        mse = []
-        component_mse = []
-        for ijet, x0 in enumerate(data):
-            x0 = x0.to(self.device)
-            mse_single, component_mse_single = self.model.batch_loss(x0, ijet)
-            loss += mse_single / len(self.cfg.data.n_jets)
-            mse.append(mse_single.cpu().item())
-            component_mse.append([x.cpu().item() for x in component_mse_single])
+    def _batch_loss(self, batch):
+        batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
+        loss, component_loss = self.model.batch_loss(batch)
+        mse = loss.cpu().item()
+        component_mse = [x.cpu().item() for x in component_loss]
         assert torch.isfinite(loss).all()
-
-        metrics = {
-            f"{n_jets}j.mse": mse[ijet]
-            for (ijet, n_jets) in enumerate(self.cfg.data.n_jets)
-        }
+        metrics = {"mse": mse}
         for k in range(4):
-            for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-                metrics[f"{n_jets}j.mse_{k}"] = component_mse[ijet][k]
+            metrics[f"mse_{k}"] = component_mse[k]
         return loss, metrics
 
     def _init_metrics(self):
-        metrics = {f"{n_jets}j.mse": [] for n_jets in self.cfg.data.n_jets}
+        metrics = {"mse": []}
         for k in range(4):
-            for n_jets in self.cfg.data.n_jets:
-                metrics[f"{n_jets}j.mse_{k}"] = []
+            metrics[f"mse_{k}"] = []
         return metrics
-
-    def define_process_specifics(self):
-        self.plot_title = None
-        self.n_hard_particles = None
-        self.n_jets_max = None
-        self.onshell_list = None
-        self.onshell_mass = None
-        self.units = None
-        self.pt_min = None
-        self.delta_r_min = None
-        self.obs_names_index = None
-        self.fourmomentum_ranges = None
-        self.jetmomentum_ranges = None
-        self.virtual_components = None
-        self.virtual_names = None
-        self.virtual_ranges = None
-        raise NotImplementedError

@@ -22,10 +22,12 @@ import experiments.logger
 from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER
 from experiments.mlflow import log_mlflow
 
-from gatr.layers import MLPConfig, SelfAttentionConfig
+from gatr.layers import MLPConfig, SelfAttentionConfig, CrossAttentionConfig
 
 cs = ConfigStore.instance()
 cs.store(name="base_attention", node=SelfAttentionConfig)
+cs.store(name="base_attention_condition", node=SelfAttentionConfig)
+cs.store(name="base_cross_attention", node=CrossAttentionConfig)
 cs.store(name="base_mlp", node=MLPConfig)
 
 # set to 'True' to debug autograd issues (slows down code)
@@ -580,9 +582,11 @@ class BaseExperiment:
         grad_norm = (
             torch.nn.utils.clip_grad_norm_(
                 self.model.parameters(),
-                self.cfg.training.clip_grad_norm
-                if self.cfg.training.clip_grad_norm is not None
-                else float("inf"),
+                (
+                    self.cfg.training.clip_grad_norm
+                    if self.cfg.training.clip_grad_norm is not None
+                    else float("inf")
+                ),
                 error_if_nonfinite=False,
             )
             .cpu()
@@ -645,14 +649,13 @@ class BaseExperiment:
                 for key, value in metric.items():
                     metrics[key].append(value)
         val_loss = np.mean(losses)
-        LOGGER.info(f"Validation loss: {val_loss:.4f}")
         self.val_loss.append(val_loss)
-        # for key, values in metrics.items():
-        #     self.val_metrics[key].append(np.mean(values))
-        # if self.cfg.use_mlflow:
-        #     log_mlflow("val.loss", val_loss, step=step)
-        #     for key, values in self.val_metrics.items():
-        #         log_mlflow(f"val.{key}", values[-1], step=step)
+        for key, values in metrics.items():
+            self.val_metrics[key].append(np.mean(values))
+        if self.cfg.use_mlflow:
+            log_mlflow("val.loss", val_loss, step=step)
+            for key, values in self.val_metrics.items():
+                log_mlflow(f"val.{key}", values[-1], step=step)
         return val_loss
 
     def _save_config(self, filename, to_mlflow=False):
