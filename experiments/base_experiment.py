@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.distributed as dist
 
 import os, time
 import zipfile
@@ -19,7 +20,7 @@ import gatr.layers.mlp.mlp
 import gatr.primitives.linear
 from experiments.misc import get_device, flatten_dict
 import experiments.logger
-from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER
+from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER, RankFilter
 from experiments.mlflow import log_mlflow
 
 from gatr.layers import MLPConfig, SelfAttentionConfig, CrossAttentionConfig
@@ -36,8 +37,11 @@ MIN_STEP_SKIP = 1000
 
 
 class BaseExperiment:
-    def __init__(self, cfg):
+    def __init__(self, cfg, rank=0, world_size=1):
         self.cfg = cfg
+        self.rank = rank
+        self.world_size = world_size
+        self.is_master = rank == 0
 
     def __call__(self):
         # pass all exceptions to the logger
@@ -75,9 +79,10 @@ class BaseExperiment:
         t0 = time.time()
 
         # save config
-        LOGGER.debug(OmegaConf.to_yaml(self.cfg))
-        self._save_config("config.yaml", to_mlflow=True)
-        self._save_config(f"config_{self.cfg.run_idx}.yaml")
+        if self.is_master:
+            LOGGER.debug(OmegaConf.to_yaml(self.cfg))
+            self._save_config("config.yaml", to_mlflow=True)
+            self._save_config(f"config_{self.cfg.run_idx}.yaml")
 
         self.init_physics()
         self.init_geometric_algebra()
@@ -139,8 +144,9 @@ class BaseExperiment:
         )
         if self.cfg.use_mlflow:
             log_mlflow("num_parameters", float(num_parameters), step=0)
+        modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
         LOGGER.info(
-            f"Instantiated model {type(self.model.net).__name__} with {num_parameters} learnable parameters"
+            f"Instantiated model {modelname} with {num_parameters} learnable parameters"
         )
 
         if self.cfg.ema:
@@ -173,6 +179,13 @@ class BaseExperiment:
         self.model.to(self.device, dtype=self.dtype)
         if self.ema is not None:
             self.ema.to(self.device)
+
+        if self.world_size > 1:
+            self.model.net = torch.nn.parallel.DistributedDataParallel(
+                self.model.net,
+                device_ids=[self.rank],
+                find_unused_parameters=True,  # avoid warnings for GATr models that have unused weights in linear_out
+            )
 
     def _init(self):
         run_name = self._init_experiment()
@@ -219,6 +232,9 @@ class BaseExperiment:
                 self.cfg.warm_start_idx = 0
                 self.cfg.run_name = run_name
                 self.cfg.run_dir = run_dir
+
+            # only save main process
+            self.cfg.save = self.cfg.save and self.is_master
 
             # only use mlflow if save=True
             self.cfg.use_mlflow = (
@@ -328,12 +344,16 @@ class BaseExperiment:
         # add new handlers to logger
         LOGGER.propagate = False  # avoid duplicate log outputs
 
+        # only log the rank==0 process
+        rank_filter = RankFilter(rank=self.rank)
+        LOGGER.addFilter(rank_filter)
+
         experiments.logger.LOGGING_INITIALIZED = True
         LOGGER.debug("Logger initialized")
 
     def _init_backend(self):
         self.device = get_device()
-        LOGGER.info(f"Using device {self.device}")
+        LOGGER.info(f"Using device {self.device}; see {self.world_size} GPUs")
 
         if self.cfg.training.dtype == "float32":
             self.dtype = torch.float32
@@ -496,9 +516,12 @@ class BaseExperiment:
 
         # recycle trainloader
         def cycle(iterable):
+            epoch = 0
             while True:
+                self.train_loader.sampler.set_epoch(epoch)
                 for x in iterable:
                     yield x
+                epoch += 1
 
         iterator = iter(cycle(self.train_loader))
         for step in range(self.cfg.training.iterations):
@@ -607,6 +630,9 @@ class BaseExperiment:
             self.scheduler.step()
 
         # collect metrics
+        if self.world_size > 1:
+            dist.all_reduce(loss, op=dist.ReduceOp.SUM)
+            loss /= self.world_size
         self.train_loss.append(loss.item())
         self.train_lr.append(self.optimizer.param_groups[0]["lr"])
         self.train_grad_norm.append(grad_norm)
@@ -645,6 +671,9 @@ class BaseExperiment:
                 else:
                     loss, metric = self._batch_loss(data)
 
+                if self.world_size > 1:
+                    dist.all_reduce(loss, op=dist.ReduceOp.SUM)
+                    loss /= self.world_size
                 losses.append(loss.cpu().item())
                 for key, value in metric.items():
                     metrics[key].append(value)

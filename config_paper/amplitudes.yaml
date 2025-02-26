@@ -1,0 +1,29 @@
+exp_type: amplitudes
+exp_name: amp
+
+data:
+ dataset : [zgg]
+ data_path : data/
+ subsample : null
+ include_permsym: true
+ train_test_val: [.4, .5, .1]
+
+train: true
+training:
+ iterations: 250000 # MLP, DSI: 2500000; Tr: 1000000; GAP, GATr, CGENN: 250000
+ optimizer: Adam
+ lr: 1e-4
+ batchsize: 256
+ scheduler: null
+ validate_every_n_steps: 1252
+ clip_grad_norm: 1000
+
+plot: true
+plotting:
+ histograms: true
+ delta: true
+ delta_prepd: true
+
+defaults:
+ - model: gatr_amplitudes
+ - default
