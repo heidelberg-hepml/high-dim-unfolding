@@ -95,6 +95,21 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 range=[0, 50],
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
+        if cfg.plotting.components:
+            file = f"{plot_path}/components.pdf"
+            if cfg.dist.diff:
+                xrange = [-15, 40]
+            else:
+                xrange = [0, 85]
+            plot_components(
+                file,
+                plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
+                plot_dict["results_test"]["samples"].numpy(),
+                xrange=xrange,
+                distribution_label=cfg.dist.type,
+                diff=cfg.dist.diff,
+                diff_min=cfg.data.diff[0],
+            )
 
 
 def plot_histogram(
@@ -360,14 +375,14 @@ def plot_distributions(
                     ax.step(
                         bins,
                         params[i][bins - diff_min] / params[i].sum(),
-                        label="Predicted distribution",
+                        label="Predicted\ndistribution",
                         color=colors[3],
                     )
                 else:
                     ax.step(
                         bins,
                         params[i][bins] / params[i].sum(),
-                        label="Predicted distribution",
+                        label="Predicted\ndistribution",
                         color=colors[3],
                     )
             else:
@@ -403,41 +418,84 @@ def plot_distributions(
 
 
 def plot_correlations(
-    file,
-    det_mult,
-    predicted_gen_mult,
-    true_gen_mult,
-    range,
-    model_label
+    file, det_mult, predicted_gen_mult, true_gen_mult, range, model_label
 ):
     with PdfPages(file) as pdf:
         fig, ax = plt.subplots(figsize=(6, 6))
-        bins = np.arange(range[0], range[1]+1)
+        bins = np.arange(range[0], range[1] + 1)
         hist = ax.hist2d(
-            det_mult,
-            true_gen_mult,
-            bins=bins,
-            norm=mcolors.LogNorm(),
-            rasterized=True
+            det_mult, true_gen_mult, bins=bins, norm=mcolors.LogNorm(), rasterized=True
         )
         vmin, vmax = hist[-1].get_clim()
         ax.set_xlabel("Detector-level multiplicity", fontsize=FONTSIZE)
         ax.set_ylabel("Particle-level multiplicity", fontsize=FONTSIZE)
-        ax.set_title('Truth', fontsize=FONTSIZE)
+        ax.set_title("Truth", fontsize=FONTSIZE)
         ax.grid(False)
         pdf.savefig(fig, bbox_inches="tight")
 
         fig, ax = plt.subplots(figsize=(6, 6))
-        bins = np.arange(range[0], range[1]+1)
+        bins = np.arange(range[0], range[1] + 1)
         ax.hist2d(
             det_mult,
             predicted_gen_mult,
             bins=bins,
             norm=mcolors.LogNorm(vmax=vmax, vmin=vmin),
-            rasterized=True
+            rasterized=True,
         )
         ax.set_xlabel("Detector-level multiplicity", fontsize=FONTSIZE)
         ax.set_ylabel("Particle-level multiplicity", fontsize=FONTSIZE)
         ax.set_title(model_label, fontsize=FONTSIZE)
         ax.grid(False)
         pdf.savefig(fig, bbox_inches="tight")
+
+
+def plot_components(
+    file, params, samples, xrange, distribution_label, diff, diff_min, n_plots=5
+):
+
+    with PdfPages(file) as pdf:
+
+        if distribution_label == "GammaMixture":
+            distribution = torch.distributions.Gamma
+        elif distribution_label == "GaussianMixture":
+            distribution = torch.distributions.Normal
+        elif distribution_label == "Categorical":
+            raise NotImplementedError
+
+        for i in range(n_plots):
+            fig, ax = plt.subplots(figsize=(6, 6))
+
+            x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1)
+            for j in range(params.shape[1]):
+                dist = distribution(*params[i, j, :-1])
+                density = dist.log_prob(x).exp().detach().numpy()
+                ax.plot(
+                    x,
+                    density,
+                    label=f"Weigth {params[i, j, -1]/params[i, :, -1].sum():.2f}",
+                )
+            if diff:
+                ax.axvline(
+                    samples[i, 1] - samples[i, 2],
+                    c=colors[1],
+                    label="Truth",
+                    linestyle="dashed",
+                )
+            else:
+                ax.axvline(
+                    samples[i, 1],
+                    c=colors[1],
+                    label="Particle-level\nmultiplicity",
+                    linestyle="dashed",
+                )
+                ax.axvline(
+                    samples[i, 2],
+                    c=colors[2],
+                    label="Detector-level\nmultiplicity",
+                    linestyle="dashed",
+                )
+            ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+            ax.set_xlabel("Multiplicity", fontsize=FONTSIZE)
+            ax.set_ylabel("Probability", fontsize=FONTSIZE)
+            ax.set_ylim((0, 0.4))
+            pdf.savefig(fig, bbox_inches="tight")

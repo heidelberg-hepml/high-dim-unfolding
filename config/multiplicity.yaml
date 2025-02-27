@@ -55,11 +55,13 @@ evaluation:
 
 plot: true
 plotting:
+ loss: true
  histogram: true
  distributions: true
  n_distributions: 30
  diff: true
- corr: false
+ corr: true
+ components: true
 
 defaults:
  - model: gatr_multiplicity

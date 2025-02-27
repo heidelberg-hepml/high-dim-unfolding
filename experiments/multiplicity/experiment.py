@@ -179,23 +179,23 @@ class MultiplicityExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        self.train_data = MultiplicityDataset(self.dtype)
-        self.val_data = MultiplicityDataset(self.dtype)
-        self.test_data = MultiplicityDataset(self.dtype)
+        self.data_train = MultiplicityDataset(self.dtype)
+        self.data_val = MultiplicityDataset(self.dtype)
+        self.data_test = MultiplicityDataset(self.dtype)
 
-        self.train_data.create_data_list(
+        self.data_train.create_data_list(
             det_particles[:train_idx],
             det_pids[:train_idx],
             det_mults[:train_idx],
             gen_mults[:train_idx],
         )
-        self.val_data.create_data_list(
+        self.data_val.create_data_list(
             det_particles[train_idx : train_idx + val_idx],
             det_pids[train_idx : train_idx + val_idx],
             det_mults[train_idx : train_idx + val_idx],
             gen_mults[train_idx : train_idx + val_idx],
         )
-        self.test_data.create_data_list(
+        self.data_test.create_data_list(
             det_particles[train_idx + val_idx :],
             det_pids[train_idx + val_idx :],
             det_mults[train_idx + val_idx :],
@@ -203,20 +203,38 @@ class MultiplicityExperiment(BaseExperiment):
         )
 
     def _init_dataloader(self):
-        self.train_loader = DataLoader(
-            dataset=self.train_data,
-            batch_size=self.cfg.training.batchsize,
+        train_sampler = torch.utils.data.DistributedSampler(
+            self.data_train,
+            num_replicas=self.world_size,
+            rank=self.rank,
             shuffle=True,
         )
+        self.train_loader = DataLoader(
+            dataset=self.data_train,
+            batch_size=self.cfg.training.batchsize,
+            sampler=train_sampler,
+        )
+        val_sampler = torch.utils.data.DistributedSampler(
+            self.data_val,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
         self.val_loader = DataLoader(
-            dataset=self.val_data,
+            dataset=self.data_val,
             batch_size=self.cfg.evaluation.batchsize,
+            sampler=val_sampler,
+        )
+        test_sampler = torch.utils.data.DistributedSampler(
+            self.data_test,
+            num_replicas=self.world_size,
+            rank=self.rank,
             shuffle=False,
         )
         self.test_loader = DataLoader(
-            dataset=self.test_data,
+            dataset=self.data_test,
             batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
+            sampler=test_sampler,
         )
 
         LOGGER.info(
