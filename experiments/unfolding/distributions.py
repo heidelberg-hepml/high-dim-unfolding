@@ -41,9 +41,9 @@ class OnShellDistribution(BaseDistribution):
             self.onshell_mass.to(device, dtype=dtype).expand(fourmomenta.shape[:-1])
             / self.units
         )
-        fourmomenta[..., 0] = torch.sqrt(onshell_mass**2 + torch.sum(
-            fourmomenta[..., 1:] ** 2, dim=-1
-        ))
+        fourmomenta[..., 0] = torch.sqrt(
+            onshell_mass**2 + torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
+        )
         return fourmomenta
 
     def propose(self, shape, device, dtype, generator=None):
@@ -75,7 +75,7 @@ class NaivePPP(OnShellDistribution):
 class StandardPPP(OnShellDistribution):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coordinates = c.StandardPPPLogM2()
+        self.coordinates = c.StandardPPPM2()
 
     def propose(self, shape, device, dtype, generator=None):
         eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)

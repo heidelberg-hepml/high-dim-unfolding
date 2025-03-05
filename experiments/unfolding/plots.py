@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+from experiments.unfolding.coordinates import LogPtPhiEtaLogM2
+
 # load fonts
 import matplotlib.font_manager as font_manager
 
@@ -389,16 +391,34 @@ def simple_histogram(
     plt.close()
 
 
-def plot_kinematics(path, samples, targets):
+def plot_kinematics(path, samples, targets, base):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
     labels = ["Energy", "p_x", "p_y", "p_z"]
-    xrange = [[0,200], [-100,100], [-100,100], [-100,100]]
+    xrange = [[0, 200], [-100, 100], [-100, 100], [-100, 100]]
     for i, ax in enumerate(axs.flatten()):
         bins = np.linspace(xrange[i][0], xrange[i][1], 100)
-        ax.hist(samples[:, i].cpu(), bins=bins, range=None, label="samples")
-        ax.hist(targets[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="targets")
+        ax.hist(samples[:, i].cpu(), bins=bins, range=None, label="samples", density=True, histtype="step")
+        ax.hist(targets[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="targets", density=True, histtype="step")
+        ax.hist(base[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="base", density=True, histtype="step")
         ax.set_xlabel(labels[i], fontsize=FONTSIZE)
         ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     plt.tight_layout()
     plt.savefig(path + "/kinematics.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
+    coords = LogPtPhiEtaLogM2(pt_min=0., units=1.)
+    samples = coords.fourmomenta_to_x(samples)
+    targets = coords.fourmomenta_to_x(targets)
+    base = coords.fourmomenta_to_x(base)
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["log pt", "phi", "eta", "log m2"]
+    xrange = [[-10, 10], [-np.pi, np.pi], [-3, 3], [-5, -4.2]]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
+        ax.hist(samples[:, i].cpu(), bins=bins, range=None, label="samples", density=True, histtype="step")
+        ax.hist(targets[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="targets", density=True, histtype="step")
+        ax.hist(base[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="base", density=True, histtype="step")
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics_alt.pdf", format="pdf", bbox_inches="tight")
     plt.close()

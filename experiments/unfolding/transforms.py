@@ -6,11 +6,9 @@ from experiments.unfolding.utils import (
     EPS1,
     EPS2,
     CUTOFF,
-    stable_arctanh,
     get_pt,
     get_phi,
     get_eta,
-    get_mass,
 )
 
 MASS = 0.1
@@ -441,9 +439,9 @@ class StandardNormal(BaseTransform):
         self.mean[:, self.dims_fixed] = 0
         self.std[:, self.dims_fixed] = 1
 
-    def init_unit(self, device):
-        self.mean = torch.zeros(1, 4, device=device)
-        self.std = torch.ones(1, 4, device=device)
+    def init_unit(self, device, dtype):
+        self.mean = torch.zeros(1, 4, device=device, dtype=dtype)
+        self.std = torch.ones(1, 4, device=device, dtype=dtype)
 
     def _forward(self, x):
         xunit = (x - self.mean.to(x.device)) / self.std.to(x.device)

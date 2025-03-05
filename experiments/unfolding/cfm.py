@@ -162,12 +162,14 @@ class CFM(nn.Module):
             )
             vt_straight = self.get_velocity(xt_straight, t, batch)
             vt_straight = self.handle_velocity(vt_straight)
+            vt_straight = self.geometry._handle_periodic(vt_straight)
             return vt_straight
 
         # sample fourmomenta from base distribution
         shape = batch[0].x.shape
         x1_fourmomenta = self.sample_base(shape, device, dtype)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+        x1_straight = self.geometry._handle_periodic(x1_straight)
 
         # solve ODE in straight space
         x0_straight = odeint(
@@ -176,6 +178,7 @@ class CFM(nn.Module):
             torch.tensor([1.0, 0.0], device=x1_straight.device),
             **self.odeint,
         )[-1]
+        x0_straight = self.geometry._handle_periodic(x0_straight)
 
         # the infamous nan remover
         # (MLP sometimes returns nan for single events,

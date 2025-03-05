@@ -119,7 +119,7 @@ def get_pt(fourmomenta):
 
 
 def get_phi(fourmomenta):
-    return torch.arctan2(fourmomenta[..., 2], fourmomenta[..., 1])
+    return ensure_angle(torch.arctan2(fourmomenta[..., 2], fourmomenta[..., 1]))
 
 
 def get_eta(fourmomenta):

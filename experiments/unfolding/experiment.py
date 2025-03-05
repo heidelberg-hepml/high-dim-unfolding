@@ -118,8 +118,8 @@ class UnfoldingExperiment(BaseExperiment):
             det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
             gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
 
-        det_particles[..., 3] = self.cfg.data.mass
-        gen_particles[..., 3] = self.cfg.data.mass
+        det_particles[..., 3] = self.cfg.data.mass ** 2
+        gen_particles[..., 3] = self.cfg.data.mass ** 2
 
         DatasetCoordinates = PtPhiEtaM2()
         det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
@@ -145,9 +145,9 @@ class UnfoldingExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        self.train_data = ZplusJetDataset(self.dtype)
-        self.val_data = ZplusJetDataset(self.dtype)
-        self.test_data = ZplusJetDataset(self.dtype)
+        self.train_data = Dataset(self.dtype)
+        self.val_data = Dataset(self.dtype)
+        self.test_data = Dataset(self.dtype)
 
         self.train_data.create_data_list(
             det_particles[:train_idx],
@@ -246,12 +246,12 @@ class UnfoldingExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         if self.cfg.evaluation.sample:
-            samples, samples_ptr, targets, targets_ptr = self._sample_events(
-                loaders["train"], self.cfg.evaluation.n_batches
+            samples, samples_ptr, targets, targets_ptr, base_samples = (
+                self._sample_events(loaders["train"], self.cfg.evaluation.n_batches)
             )
             plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
             os.makedirs(plot_path, exist_ok=True)
-            plot_kinematics(plot_path, samples, targets)
+            plot_kinematics(plot_path, samples, targets, base_samples)
 
         else:
             LOGGER.info("Skip sampling")
@@ -292,6 +292,7 @@ class UnfoldingExperiment(BaseExperiment):
     def _sample_events(self, loader, n_batches):
         samples = torch.empty((0, 4), device=self.device)
         targets = torch.empty((0, 4), device=self.device)
+        base_samples = torch.empty((0, 4), device=self.device)
         samples_ptr = torch.zeros((1,), device=self.device)
         targets_ptr = torch.zeros((1,), device=self.device)
         it = iter(loader)
@@ -305,22 +306,24 @@ class UnfoldingExperiment(BaseExperiment):
             targets = torch.cat([targets, target], dim=0)
             targets_ptr = torch.cat(
                 [
-                    targets_ptr, target_ptr[1:] + targets_ptr[-1],
+                    targets_ptr,
+                    target_ptr[1:] + targets_ptr[-1],
                 ],
                 dim=0,
             )
-
             sample, ptr = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
             samples = torch.cat([samples, sample], dim=0)
-            samples_ptr = torch.cat(
-                [samples_ptr, ptr[1:] + samples_ptr[-1]], dim=0
+            base_sample = self.model.sample_base(
+                samples.shape, samples.device, samples.dtype
             )
+            base_samples = torch.cat([base_samples, base_sample], dim=0)
+            samples_ptr = torch.cat([samples_ptr, ptr[1:] + samples_ptr[-1]], dim=0)
 
-        return samples, samples_ptr, targets, targets_ptr
+        return samples, samples_ptr, targets, targets_ptr, base_samples
 
     def plot(self):
         pass
