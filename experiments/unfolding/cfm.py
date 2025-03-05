@@ -173,7 +173,7 @@ class CFM(nn.Module):
         x0_straight = odeint(
             velocity,
             x1_straight,
-            torch.tensor([1.0, 0.0]),
+            torch.tensor([1.0, 0.0], device=x1_straight.device),
             **self.odeint,
         )[-1]
 

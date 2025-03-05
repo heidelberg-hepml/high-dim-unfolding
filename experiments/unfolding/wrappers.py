@@ -34,6 +34,7 @@ def xformers_sa_mask(batch, batch_condition=None, materialize=False):
         bincounts_condition = torch.bincount(batch_condition).tolist()
     else:
         bincounts_condition = bincounts
+        batch_condition = batch
     mask = BlockDiagonalMask.from_seqlens(bincounts, bincounts_condition)
     if materialize:
         # materialize mask to torch.tensor (only for testing purposes)

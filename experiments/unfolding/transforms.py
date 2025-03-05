@@ -13,6 +13,8 @@ from experiments.unfolding.utils import (
     get_mass,
 )
 
+MASS = 0.1
+
 
 class BaseTransform(nn.Module):
     """
@@ -117,12 +119,13 @@ class EPPP_to_PPPM2(BaseTransform):
 
         m2 = E**2 - (px**2 + py**2 + pz**2)
         m2 = torch.abs(m2)
+
+        #m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
         px, py, pz, m2 = unpack_last(pppm2)
         m2 = torch.abs(m2)
-
         E = torch.sqrt(m2 + (px**2 + py**2 + pz**2))
         return torch.stack((E, px, py, pz), dim=-1)
 
@@ -282,6 +285,7 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         p_abs = pt * torch.cosh(eta)
         m2 = E**2 - p_abs**2
         m2 = torch.abs(m2)
+        #m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _inverse(self, ptphietam2):
@@ -368,6 +372,7 @@ class M2_to_LogM2(BaseTransform):
 
 class Pt_to_LogPt(BaseTransform):
     def __init__(self, pt_min, units):
+        super().__init__()
         self.pt_min = torch.tensor(pt_min) / units
 
     def get_dpt(self, pt):
@@ -427,6 +432,7 @@ class StandardNormal(BaseTransform):
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
     def __init__(self, dims_fixed=[]):
+        super().__init__()
         self.dims_fixed = dims_fixed
 
     def init_fit(self, x):
@@ -434,6 +440,10 @@ class StandardNormal(BaseTransform):
         self.std = torch.std(x, dim=0, keepdim=True)
         self.mean[:, self.dims_fixed] = 0
         self.std[:, self.dims_fixed] = 1
+
+    def init_unit(self, device):
+        self.mean = torch.zeros(1, 4, device=device)
+        self.std = torch.ones(1, 4, device=device)
 
     def _forward(self, x):
         xunit = (x - self.mean.to(x.device)) / self.std.to(x.device)

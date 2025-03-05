@@ -12,9 +12,9 @@ from experiments.base_experiment import BaseExperiment
 from experiments.unfolding.dataset import ZplusJetDataset, collate
 from experiments.unfolding.utils import (
     ensure_angle,
-    jetmomenta_to_fourmomenta,
     pid_encoding,
 )
+from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -121,8 +121,9 @@ class UnfoldingExperiment(BaseExperiment):
         det_particles[..., 3] = self.cfg.data.mass
         gen_particles[..., 3] = self.cfg.data.mass
 
-        det_particles = jetmomenta_to_fourmomenta(det_particles)
-        gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+        DatasetCoordinates = PtPhiEtaM2()
+        det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
+        gen_particles = DatasetCoordinates.x_to_fourmomenta(gen_particles)
 
         if self.cfg.data.standardize:
             mask = (
@@ -193,22 +194,40 @@ class UnfoldingExperiment(BaseExperiment):
         self.model.init_geometry()
 
     def _init_dataloader(self):
+        train_sampler = torch.utils.data.DistributedSampler(
+            self.train_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True,
+        )
         self.train_loader = DataLoader(
             dataset=self.train_data,
             batch_size=self.cfg.training.batchsize,
-            shuffle=True,
+            sampler=train_sampler,
             collate_fn=collate,
+        )
+        test_sampler = torch.utils.data.DistributedSampler(
+            self.test_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True,
         )
         self.test_loader = DataLoader(
             dataset=self.test_data,
             batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
+            sampler=test_sampler,
             collate_fn=collate,
+        )
+        val_sampler = torch.utils.data.DistributedSampler(
+            self.val_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True,
         )
         self.val_loader = DataLoader(
             dataset=self.val_data,
             batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
+            sampler=val_sampler,
             collate_fn=collate,
         )
 
@@ -286,8 +305,7 @@ class UnfoldingExperiment(BaseExperiment):
             targets = torch.cat([targets, target], dim=0)
             targets_ptr = torch.cat(
                 [
-                    targets_ptr,
-                    torch.tensor(target_ptr[1:]) + targets_ptr[-1],
+                    targets_ptr, target_ptr[1:] + targets_ptr[-1],
                 ],
                 dim=0,
             )
@@ -299,7 +317,7 @@ class UnfoldingExperiment(BaseExperiment):
             )
             samples = torch.cat([samples, sample], dim=0)
             samples_ptr = torch.cat(
-                [samples_ptr, torch.tensor(ptr[1:]) + samples_ptr[-1]], dim=0
+                [samples_ptr, ptr[1:] + samples_ptr[-1]], dim=0
             )
 
         return samples, samples_ptr, targets, targets_ptr

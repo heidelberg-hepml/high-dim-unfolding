@@ -41,9 +41,9 @@ class OnShellDistribution(BaseDistribution):
             self.onshell_mass.to(device, dtype=dtype).expand(fourmomenta.shape[:-1])
             / self.units
         )
-        fourmomenta[..., 0] = onshell_mass**2 + torch.sum(
+        fourmomenta[..., 0] = torch.sqrt(onshell_mass**2 + torch.sum(
             fourmomenta[..., 1:] ** 2, dim=-1
-        )
+        ))
         return fourmomenta
 
     def propose(self, shape, device, dtype, generator=None):

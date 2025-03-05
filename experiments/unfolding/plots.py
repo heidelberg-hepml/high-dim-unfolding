@@ -392,8 +392,9 @@ def simple_histogram(
 def plot_kinematics(path, samples, targets):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
     labels = ["Energy", "p_x", "p_y", "p_z"]
+    xrange = [[0,200], [-100,100], [-100,100], [-100,100]]
     for i, ax in enumerate(axs.flatten()):
-        bins = np.histogram(targets[:, i].cpu(), bins=100, range=None)[1]
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
         ax.hist(samples[:, i].cpu(), bins=bins, range=None, label="samples")
         ax.hist(targets[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="targets")
         ax.set_xlabel(labels[i], fontsize=FONTSIZE)

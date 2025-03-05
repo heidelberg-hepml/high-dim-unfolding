@@ -58,11 +58,11 @@ def ddp_worker(rank, cfg, world_size):
     elif cfg.exp_type == "ttbar-onshell":
         constructor = ttbarOnshellExperiment
     elif cfg.exp_type == "zmumu":
-        exp = zmumuExperiment
+        constructor = zmumuExperiment
     elif cfg.exp_type == "multiplicity":
-        exp = MultiplicityExperiment
+        constructor = MultiplicityExperiment
     elif cfg.exp_type == "unfolding":
-        exp = UnfoldingExperiment
+        constructor = UnfoldingExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 
