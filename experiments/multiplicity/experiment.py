@@ -262,6 +262,19 @@ class MultiplicityExperiment(BaseExperiment):
                 self.results_train = self._evaluate_single(self.train_loader, "train")
                 self.results_val = self._evaluate_single(self.val_loader, "val")
                 self.results_test = self._evaluate_single(self.test_loader, "test")
+            if self.cfg.evaluation.save != 0:
+                tensor_path = os.path.join(
+                    self.cfg.run_dir, f"tensors_{self.cfg.run_idx}"
+                )
+                os.makedirs(tensor_path, exist_ok=True)
+                torch.save(
+                    self.results_test["samples"][: self.cfg.evaluation.save],
+                    f"{tensor_path}/samples.pt",
+                )
+                torch.save(
+                    self.results_test["params"][: self.cfg.evaluation.save],
+                    f"{tensor_path}/params.pt",
+                )
 
     def _evaluate_single(self, loader, title, step=None):
         LOGGER.info(

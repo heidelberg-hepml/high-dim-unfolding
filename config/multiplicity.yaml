@@ -1,5 +1,5 @@
 exp_type: multiplicity
-exp_name: mult_test
+exp_name: mult_nopid
 
 use_mlflow: false
 
@@ -13,7 +13,7 @@ data:
  standardize: true
  max_num_particles: 152
  diff: [-53, 78]
- pid_encoding: true
+ pid_encoding: false
  beam_reference: xyplane
  two_beams: true
  beam_token: true
@@ -45,13 +45,14 @@ training:
  iterations: 100000
  batchsize: 128
  lr: 1e-3
- validate_every_n_steps: 5000
+ validate_every_n_steps: 5000000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
  scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
  batchsize: 128
+ save: 10
 
 plot: true
 plotting:
@@ -64,6 +65,6 @@ plotting:
  components: true
 
 defaults:
- - model: gatr_multiplicity
+ - model: tr_multiplicity
  - default
  - _self_

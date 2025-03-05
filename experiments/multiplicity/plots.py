@@ -10,6 +10,7 @@ from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
 )
+from experiments.logger import LOGGER
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -108,7 +109,6 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 xrange=xrange,
                 distribution_label=cfg.dist.type,
                 diff=cfg.dist.diff,
-                diff_min=cfg.data.diff[0],
             )
 
 
@@ -449,18 +449,17 @@ def plot_correlations(
         pdf.savefig(fig, bbox_inches="tight")
 
 
-def plot_components(
-    file, params, samples, xrange, distribution_label, diff, diff_min, n_plots=5
-):
+def plot_components(file, params, samples, xrange, distribution_label, diff, n_plots=5):
+
+    if distribution_label == "GammaMixture":
+        distribution = torch.distributions.Gamma
+    elif distribution_label == "GaussianMixture":
+        distribution = torch.distributions.Normal
+    elif distribution_label == "Categorical":
+        LOGGER.info("Not plotting components for categorical distribution")
+        return
 
     with PdfPages(file) as pdf:
-
-        if distribution_label == "GammaMixture":
-            distribution = torch.distributions.Gamma
-        elif distribution_label == "GaussianMixture":
-            distribution = torch.distributions.Normal
-        elif distribution_label == "Categorical":
-            raise NotImplementedError
 
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 6))
