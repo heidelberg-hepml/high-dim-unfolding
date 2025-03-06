@@ -162,14 +162,12 @@ class CFM(nn.Module):
             )
             vt_straight = self.get_velocity(xt_straight, t, batch)
             vt_straight = self.handle_velocity(vt_straight)
-            vt_straight = self.geometry._handle_periodic(vt_straight)
             return vt_straight
 
         # sample fourmomenta from base distribution
         shape = batch[0].x.shape
         x1_fourmomenta = self.sample_base(shape, device, dtype)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
-        x1_straight = self.geometry._handle_periodic(x1_straight)
 
         # solve ODE in straight space
         x0_straight = odeint(
@@ -195,7 +193,7 @@ class CFM(nn.Module):
 
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
-        return x0_fourmomenta, batch[0].ptr
+        return x0_fourmomenta, x1_fourmomenta, batch[0].ptr
 
     def log_prob(self, batch):
         """

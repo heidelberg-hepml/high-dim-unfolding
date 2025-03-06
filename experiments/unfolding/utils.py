@@ -109,8 +109,13 @@ def xformers_sa_mask(batch, materialize=False):
 
 
 def get_batch_from_ptr(ptr):
-    return torch.arange(len(ptr) - 1, device=ptr.device).repeat_interleave(
-        ptr[1:] - ptr[:-1],
+    ptr = ptr.to(torch.int)
+    return (
+        torch.arange(len(ptr) - 1, device=ptr.device)
+        .repeat_interleave(
+            ptr[1:] - ptr[:-1],
+        )
+        .to(torch.int64)
     )
 
 

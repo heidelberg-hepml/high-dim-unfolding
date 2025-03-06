@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
+from torch_geometric.utils import scatter
 
 import os, time
 from omegaconf import open_dict
@@ -10,10 +11,7 @@ import energyflow
 
 from experiments.base_experiment import BaseExperiment
 from experiments.unfolding.dataset import ZplusJetDataset, collate
-from experiments.unfolding.utils import (
-    ensure_angle,
-    pid_encoding,
-)
+from experiments.unfolding.utils import ensure_angle, pid_encoding, get_batch_from_ptr
 from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
@@ -118,8 +116,8 @@ class UnfoldingExperiment(BaseExperiment):
             det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
             gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
 
-        det_particles[..., 3] = self.cfg.data.mass ** 2
-        gen_particles[..., 3] = self.cfg.data.mass ** 2
+        det_particles[..., 3] = self.cfg.data.mass**2
+        gen_particles[..., 3] = self.cfg.data.mass**2
 
         DatasetCoordinates = PtPhiEtaM2()
         det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
@@ -246,12 +244,25 @@ class UnfoldingExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         if self.cfg.evaluation.sample:
+            LOGGER.info(
+                f"Sampling {self.cfg.evaluation.n_batches} batches for evaluation"
+            )
+            t0 = time.time()
             samples, samples_ptr, targets, targets_ptr, base_samples = (
                 self._sample_events(loaders["train"], self.cfg.evaluation.n_batches)
             )
+            dt = time.time() - t0
+            LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
+            samples_batches = get_batch_from_ptr(samples_ptr)
+            targets_batches = get_batch_from_ptr(targets_ptr)
+            jet_samples = scatter(samples, samples_batches, dim=0, reduce="sum")
+            jet_base_samples = scatter(
+                base_samples, samples_batches, dim=0, reduce="sum"
+            )
+            jet_targets = scatter(targets, targets_batches, dim=0, reduce="sum")
             plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
             os.makedirs(plot_path, exist_ok=True)
-            plot_kinematics(plot_path, samples, targets, base_samples)
+            plot_kinematics(plot_path, jet_samples, jet_targets, jet_base_samples)
 
         else:
             LOGGER.info("Skip sampling")
@@ -280,7 +291,7 @@ class UnfoldingExperiment(BaseExperiment):
             losses.append(loss.cpu().item())
         dt = time.time() - t0
         LOGGER.info(
-            f"Finished evaluating loss for {title} dataset after {dt/60:.2f}min"
+            f"Finished evaluating loss for {title} dataset after {dt/60:.2f}min: {np.mean(losses):.4f}"
         )
 
         if self.cfg.use_mlflow:
@@ -311,15 +322,12 @@ class UnfoldingExperiment(BaseExperiment):
                 ],
                 dim=0,
             )
-            sample, ptr = self.model.sample(
+            sample, base_sample, ptr = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
             samples = torch.cat([samples, sample], dim=0)
-            base_sample = self.model.sample_base(
-                samples.shape, samples.device, samples.dtype
-            )
             base_samples = torch.cat([base_samples, base_sample], dim=0)
             samples_ptr = torch.cat([samples_ptr, ptr[1:] + samples_ptr[-1]], dim=0)
 
