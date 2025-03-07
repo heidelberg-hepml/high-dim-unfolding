@@ -9,7 +9,7 @@ data:
  data_dir: data/
  dataset: zplusjets
  length: 100000
- split: [0.8, 0.1, 0.1]
+ train_test_val: [0.8, 0.1, 0.1]
  standardize: true
  pid_raw: false
  pid_encoding: false
@@ -63,9 +63,12 @@ evaluation:
  n_batches: 5
  eval_loss: ["train"]
 
-plot: false
+plot: true
 plotting:
- n_distributions: 128
+ log_prob: false
+ fourmomenta: true
+ jetmomenta: true
+ preprocessed: true
 
 defaults:
  - model: cond_tr_unfolding

@@ -9,5 +9,6 @@ net:
   hidden_channels: 128
 
   num_blocks: 3
+  num_condition_blocks: 3
   num_heads: 4
   dropout_prob: null

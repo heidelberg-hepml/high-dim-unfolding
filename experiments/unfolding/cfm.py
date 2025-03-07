@@ -108,7 +108,7 @@ class CFM(nn.Module):
         -------
         loss : torch.tensor with shape (1)
         """
-        x0_fourmomenta = batch[0].x
+        x0_fourmomenta = batch.x_gen
         t = torch.rand(
             x0_fourmomenta.shape[0],
             1,
@@ -126,7 +126,6 @@ class CFM(nn.Module):
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
-
         vp_straight = self.get_velocity(xt_straight, t, batch)
 
         # evaluate conditional flow matching objective
@@ -155,6 +154,8 @@ class CFM(nn.Module):
             Generated events
         """
 
+        sample_batch = batch.clone()
+
         def velocity(t, xt_straight):
             xt_straight = self.geometry._handle_periodic(xt_straight)
             t = t * torch.ones(
@@ -165,7 +166,7 @@ class CFM(nn.Module):
             return vt_straight
 
         # sample fourmomenta from base distribution
-        shape = batch[0].x.shape
+        shape = batch.x_gen.shape
         x1_fourmomenta = self.sample_base(shape, device, dtype)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
 
@@ -193,7 +194,10 @@ class CFM(nn.Module):
 
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
-        return x0_fourmomenta, x1_fourmomenta, batch[0].ptr
+
+        sample_batch.x_gen = x0_fourmomenta
+
+        return sample_batch
 
     def log_prob(self, batch):
         """
@@ -215,7 +219,7 @@ class CFM(nn.Module):
             log_prob of each event in x0, evaluated in fourmomenta space
         """
 
-        x0_fourmomenta = batch[0].x
+        x0_fourmomenta = batch.x_gen
 
         def net_wrapper(t, state):
             with torch.set_grad_enabled(True):
