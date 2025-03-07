@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import scatter
+from torch_geometric.data import Batch
 
 import os, time
 from omegaconf import open_dict
@@ -10,7 +11,7 @@ from tqdm import trange, tqdm
 import energyflow
 
 from experiments.base_experiment import BaseExperiment
-from experiments.unfolding.dataset import ZplusJetDataset, collate
+from experiments.unfolding.dataset import ZplusJetDataset
 from experiments.unfolding.utils import ensure_angle, pid_encoding, get_batch_from_ptr
 from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
@@ -68,8 +69,11 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.model.cfm = self.cfg.cfm
 
     def init_data(self):
+        t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
+        LOGGER.info(f"Creating ZplusJetDataset from {data_path}")
         self._init_data(ZplusJetDataset, data_path)
+        LOGGER.info(f"Created ZplusJetDataset in {time.time() - t0:.2f} seconds")
 
     def _init_data(self, Dataset, data_path):
         data = energyflow.zjets_delphes.load(
@@ -80,7 +84,7 @@ class UnfoldingExperiment(BaseExperiment):
             include_keys=["particles", "mults", "jets"],
         )
 
-        split = self.cfg.data.split
+        split = self.cfg.data.train_test_val
         size = len(data["sim_particles"])
         train_idx = int(split[0] * size)
         val_idx = int(split[1] * size)
@@ -191,6 +195,18 @@ class UnfoldingExperiment(BaseExperiment):
             self.model.distribution.coordinates.init_fit(fit_data)
         self.model.init_geometry()
 
+        self.data_raw = {
+            "train": Batch.from_data_list(
+                self.train_data.data_list, follow_batch=["x_gen", "x_det"]
+            ),
+            "val": Batch.from_data_list(
+                self.val_data.data_list, follow_batch=["x_gen", "x_det"]
+            ),
+            "test": Batch.from_data_list(
+                self.test_data.data_list, follow_batch=["x_gen", "x_det"]
+            ),
+        }
+
     def _init_dataloader(self):
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
@@ -200,9 +216,9 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.train_loader = DataLoader(
             dataset=self.train_data,
-            batch_size=self.cfg.training.batchsize,
+            batch_size=self.cfg.training.batchsize // self.world_size,
             sampler=train_sampler,
-            collate_fn=collate,
+            follow_batch=["x_gen", "x_det"],
         )
         test_sampler = torch.utils.data.DistributedSampler(
             self.test_data,
@@ -212,9 +228,9 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.test_loader = DataLoader(
             dataset=self.test_data,
-            batch_size=self.cfg.evaluation.batchsize,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=test_sampler,
-            collate_fn=collate,
+            follow_batch=["x_gen", "x_det"],
         )
         val_sampler = torch.utils.data.DistributedSampler(
             self.val_data,
@@ -224,9 +240,9 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.val_loader = DataLoader(
             dataset=self.val_data,
-            batch_size=self.cfg.evaluation.batchsize,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=val_sampler,
-            collate_fn=collate,
+            follow_batch=["x_gen", "x_det"],
         )
 
         LOGGER.info(
@@ -248,29 +264,15 @@ class UnfoldingExperiment(BaseExperiment):
                 f"Sampling {self.cfg.evaluation.n_batches} batches for evaluation"
             )
             t0 = time.time()
-            samples, samples_ptr, targets, targets_ptr, base_samples = (
-                self._sample_events(loaders["train"], self.cfg.evaluation.n_batches)
-            )
+            self._sample_events(loaders["train"], self.cfg.evaluation.n_batches)
+            loaders["gen"] = self.sample_loader
             dt = time.time() - t0
             LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
-            samples_batches = get_batch_from_ptr(samples_ptr)
-            targets_batches = get_batch_from_ptr(targets_ptr)
-            jet_samples = scatter(samples, samples_batches, dim=0, reduce="sum")
-            jet_base_samples = scatter(
-                base_samples, samples_batches, dim=0, reduce="sum"
-            )
-            jet_targets = scatter(targets, targets_batches, dim=0, reduce="sum")
-            plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
-            os.makedirs(plot_path, exist_ok=True)
-            plot_kinematics(plot_path, jet_samples, jet_targets, jet_base_samples)
-
         else:
             LOGGER.info("Skip sampling")
 
         if self.cfg.evaluation.classifier:
-            self.classifiers = []
-            for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-                self.classifiers.append(self._evaluate_classifier_metric(ijet, n_jets))
+            self.classifier = self._evaluate_classifier_metric()
 
         for key in self.cfg.evaluation.eval_loss:
             if key in loaders.keys():
@@ -285,8 +287,7 @@ class UnfoldingExperiment(BaseExperiment):
         LOGGER.info(f"Starting to evaluate loss for model on {title} dataset")
         t0 = time.time()
         for i, data in enumerate(loader):
-            loss = 0.0
-            data[0], data[1] = data[0].to(self.device), data[1].to(self.device)
+            data = data.to(self.device)
             loss = self.model.batch_loss(data)[0]
             losses.append(loss.cpu().item())
         dt = time.time() - t0
@@ -301,47 +302,106 @@ class UnfoldingExperiment(BaseExperiment):
         pass
 
     def _sample_events(self, loader, n_batches):
-        samples = torch.empty((0, 4), device=self.device)
-        targets = torch.empty((0, 4), device=self.device)
-        base_samples = torch.empty((0, 4), device=self.device)
-        samples_ptr = torch.zeros((1,), device=self.device)
-        targets_ptr = torch.zeros((1,), device=self.device)
+        samples = []
         it = iter(loader)
+        if n_batches > len(loader):
+            n_batches = len(loader)
         for i in range(n_batches):
-            batch = next(it)
-            batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
-            batch = (batch[0], batch[1])
+            batch = next(it).to(self.device)
 
-            target = batch[0].x
-            target_ptr = batch[0].ptr
-            targets = torch.cat([targets, target], dim=0)
-            targets_ptr = torch.cat(
-                [
-                    targets_ptr,
-                    target_ptr[1:] + targets_ptr[-1],
-                ],
-                dim=0,
-            )
-            sample, base_sample, ptr = self.model.sample(
+            sample_batch = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
-            samples = torch.cat([samples, sample], dim=0)
-            base_samples = torch.cat([base_samples, base_sample], dim=0)
-            samples_ptr = torch.cat([samples_ptr, ptr[1:] + samples_ptr[-1]], dim=0)
+            sample_list = sample_batch.to_data_list()
+            samples.extend(sample_batch.to_data_list())
 
-        return samples, samples_ptr, targets, targets_ptr, base_samples
+        self.data_raw["gen"] = Batch.from_data_list(
+            samples, follow_batch=["x_gen", "x_det"]
+        )
+
+        # convert the list of batches into a dataloader loading those predefined batches
+        self.sample_loader = DataLoader(
+            samples,
+            batch_size=self.cfg.evaluation.batchsize,
+            shuffle=False,
+            collate_fn=lambda x: x[0],
+        )
 
     def plot(self):
-        pass
+        path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
+        os.makedirs(os.path.join(path), exist_ok=True)
+        LOGGER.info(f"Creating plots in {path}")
+
+        self.plot_title = "Z+Jet"
+
+        def form_jet(batch):
+            constituents = batch.x_gen
+            batch_idx = batch.x_gen_batch
+            jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
+            return jet.cpu().detach()
+
+        self.obs = {"jet": form_jet}
+        self.obs_ranges = {
+            "jet": {
+                "fourmomenta": [[0, 1000], [-400, 400], [-400, 400], [-750, 750]],
+                "jetmomenta": [[0, 600], [-torch.pi, torch.pi], [-3, 3], [0, 600]],
+                "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
+            }
+        }
+        if self.cfg.modelname == "ConditionalTransformer":
+            model_label = "CondTr"
+        kwargs = {
+            "exp": self,
+            "model_label": model_label,
+        }
+
+        if self.cfg.train:
+            filename = os.path.join(path, "training.pdf")
+            plotter.plot_losses(filename=filename, **kwargs)
+
+        if not self.cfg.evaluate:
+            return
+
+        weights, mask_dict = None, None
+        if (
+            self.cfg.plotting.log_prob
+            and len(self.cfg.evaluation.eval_log_prob) > 0
+            and self.cfg.evaluate
+        ):
+            filename = os.path.join(path, "neg_log_prob.pdf")
+            plotter.plot_log_prob(filename=filename, **kwargs)
+
+        if self.cfg.evaluation.classifier and self.cfg.evaluate:
+            filename = os.path.join(path, "classifier.pdf")
+            plotter.plot_classifier(filename=filename, **kwargs)
+
+        if self.cfg.evaluation.sample:
+            if self.cfg.plotting.fourmomenta:
+                filename = os.path.join(path, "fourmomenta.pdf")
+                plotter.plot_fourmomenta(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+
+            if self.cfg.plotting.jetmomenta:
+                filename = os.path.join(path, "jetmomenta.pdf")
+                plotter.plot_jetmomenta(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+
+            if self.cfg.plotting.preprocessed:
+                filename = os.path.join(path, "preprocessed.pdf")
+                plotter.plot_preprocessed(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
 
     def _init_loss(self):
         # loss defined manually within the model
         pass
 
     def _batch_loss(self, batch):
-        batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
+        batch = batch.to(self.device)
         loss, component_loss = self.model.batch_loss(batch)
         mse = loss.cpu().item()
         component_mse = [x.cpu().item() for x in component_loss]

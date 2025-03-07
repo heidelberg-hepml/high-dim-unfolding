@@ -54,24 +54,23 @@ class ConditionalCFMForGA(EventCFM):
 
     def get_velocity(self, xt, t, batch):
         assert self.coordinates is not None
-        input_batch, condition_batch = batch
 
         fourmomenta = self.coordinates.x_to_fourmomenta(xt)
-        condition_fourmomenta = self.coordinates.x_to_fourmomenta(condition_batch.x)
-        mv, s = self.embed_into_ga(fourmomenta, input_batch.scalars, t)
+        condition_fourmomenta = self.coordinates.x_to_fourmomenta(batch.x_det)
+        mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
         condition_mv, condition_s, condition_batch_indices = (
             embed_into_ga_with_spurions(
                 condition_fourmomenta,
-                condition_batch.scalars,
-                condition_batch.ptr,
+                batch.scalars_det,
+                batch.x_det_ptr,
                 self.cfg_data,
             )
         )
 
-        attention_mask = xformers_sa_mask(input_batch.batch)
+        attention_mask = xformers_sa_mask(batch.x_gen_batch)
         attention_mask_condition = xformers_sa_mask(condition_batch_indices)
         crossattention_mask = xformers_sa_mask(
-            input_batch.batch, condition_batch_indices
+            batch.x_gen_batch, condition_batch_indices
         )
 
         mv_outputs, s_outputs = self.net(
@@ -118,16 +117,15 @@ class ConditionalTransformerCFM(EventCFM):
         self.net = net
 
     def get_velocity(self, xt, t, batch):
-        input_batch, condition_batch = batch
 
         t_embedding = self.t_embedding(t)
 
-        x = torch.cat([xt, input_batch.scalars, t_embedding], dim=-1)
-        condition = torch.cat([condition_batch.x, condition_batch.scalars], dim=-1)
+        x = torch.cat([xt, batch.scalars_gen, t_embedding], dim=-1)
+        condition = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
 
-        attention_mask = xformers_sa_mask(input_batch.batch)
-        attention_mask_condition = xformers_sa_mask(condition_batch.batch)
-        crossattention_mask = xformers_sa_mask(input_batch.batch, condition_batch.batch)
+        attention_mask = xformers_sa_mask(batch.x_gen_batch)
+        attention_mask_condition = xformers_sa_mask(batch.x_det_batch)
+        crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
 
         v = self.net(
             x=x.unsqueeze(0),
