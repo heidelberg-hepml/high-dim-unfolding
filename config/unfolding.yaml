@@ -8,7 +8,7 @@ use_mlflow: false
 data:
  data_dir: data/
  dataset: zplusjets
- length: 100000
+ length: -1
  train_test_val: [0.8, 0.1, 0.1]
  standardize: true
  pid_raw: false
@@ -60,7 +60,7 @@ evaluation:
  batchsize: 128
  classifier: false
  sample: true
- n_batches: 5
+ n_batches: 100
  eval_loss: ["train"]
 
 plot: true

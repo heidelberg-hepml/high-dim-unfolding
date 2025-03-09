@@ -3,6 +3,7 @@ import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import scatter
 from torch_geometric.data import Batch
+import torch_scatter
 
 import os, time
 from omegaconf import open_dict
@@ -350,6 +351,23 @@ class UnfoldingExperiment(BaseExperiment):
                 "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
             }
         }
+
+        def max_pt(batch):
+            constituents = batch.x_gen
+            batch_idx = batch.x_gen_batch
+            _, max_indices = torch_scatter.scatter_max(
+                constituents[:, 0], batch_idx, dim=0
+            )
+            highest_pt = constituents[max_indices]
+            return highest_pt.cpu().detach()
+
+        self.obs["highest p_T"] = max_pt
+        self.obs_ranges["highest p_T"] = {
+            "fourmomenta": [[0, 400], [-200, 200], [-200, 200], [-400, 400]],
+            "jetmomenta": [[0, 200], [-torch.pi, torch.pi], [-3, 3], [0, 0.02]],
+            "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
+        }
+
         if self.cfg.modelname == "ConditionalTransformer":
             model_label = "CondTr"
         kwargs = {
