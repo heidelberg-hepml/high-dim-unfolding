@@ -119,6 +119,14 @@ def get_batch_from_ptr(ptr):
     )
 
 
+def get_ptr_from_batch(batch):
+    return (
+        torch.cat([torch.tensor([0], device=batch.device), torch.bincount(batch)])
+        .cumsum(dim=0)
+        .to(torch.int64)
+    )
+
+
 def get_pt(fourmomenta):
     return torch.sqrt(fourmomenta[..., 1] ** 2 + fourmomenta[..., 2] ** 2)
 

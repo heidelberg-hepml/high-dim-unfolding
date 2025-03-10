@@ -118,7 +118,7 @@ class EPPP_to_PPPM2(BaseTransform):
         m2 = E**2 - (px**2 + py**2 + pz**2)
         m2 = torch.abs(m2)
 
-        #m2 = MASS ** 2 * torch.ones_like(m2)
+        # m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
@@ -283,7 +283,7 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         p_abs = pt * torch.cosh(eta)
         m2 = E**2 - p_abs**2
         m2 = torch.abs(m2)
-        #m2 = MASS ** 2 * torch.ones_like(m2)
+        # m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _inverse(self, ptphietam2):
@@ -453,12 +453,14 @@ class StandardNormal(BaseTransform):
 
     def _jac_forward(self, x, xunit):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        jac[..., torch.arange(4), torch.arange(4)] = 1 / self.std.unsqueeze(0)
+        std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
+        jac[..., torch.arange(4), torch.arange(4)] = 1 / std
         return jac
 
     def _jac_inverse(self, xunit, x):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        jac[..., torch.arange(4), torch.arange(4)] = self.std.unsqueeze(0)
+        std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
+        jac[..., torch.arange(4), torch.arange(4)] = std
         return jac
 
     def _detjac_forward(self, x, xunit):

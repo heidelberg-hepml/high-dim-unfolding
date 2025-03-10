@@ -9,7 +9,7 @@ from experiments.unfolding.distributions import (
     StandardPPP,
     StandardLogPtPhiEta,
 )
-from experiments.unfolding.utils import TimeEmbedding
+from experiments.unfolding.utils import TimeEmbedding, get_pt
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.logger import LOGGER
@@ -59,6 +59,7 @@ class CFM(nn.Module):
         # initialize to base objects, this will be overwritten later
         self.distribution = BaseDistribution()
         self.coordinates = c.BaseCoordinates()
+        self.condition_coordinates = c.BaseCoordinates()
         self.geometry = BaseGeometry()
 
         if cfm.transforms_float64:
@@ -194,6 +195,12 @@ class CFM(nn.Module):
 
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
+
+        _, x_perm = torch.sort(x0_straight[:, 0], dim=0, descending=True)
+        x0_fourmomenta = x0_fourmomenta.take_along_dim(x_perm.unsqueeze(-1), dim=0)
+        index = batch.x_gen_batch.take_along_dim(x_perm, dim=0)
+        index, index_perm = torch.sort(index, dim=0, stable=True)
+        x0_fourmomenta = x0_fourmomenta.take_along_dim(index_perm.unsqueeze(-1), dim=0)
 
         sample_batch.x_gen = x0_fourmomenta
 
@@ -342,6 +349,9 @@ class EventCFM(CFM):
 
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.condition_coordinates = self._init_coordinates(
+            self.cfm.condition_coordinates
+        )
 
     def _init_coordinates(self, coordinates_label):
         if coordinates_label == "Fourmomenta":

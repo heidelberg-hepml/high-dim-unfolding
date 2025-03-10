@@ -13,7 +13,12 @@ import energyflow
 
 from experiments.base_experiment import BaseExperiment
 from experiments.unfolding.dataset import ZplusJetDataset
-from experiments.unfolding.utils import ensure_angle, pid_encoding, get_batch_from_ptr
+from experiments.unfolding.utils import (
+    ensure_angle,
+    pid_encoding,
+    get_batch_from_ptr,
+    get_ptr_from_batch,
+)
 from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
@@ -24,6 +29,8 @@ from experiments.unfolding.plots import plot_kinematics
 
 class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
+
+        self.define_process_specifics()
 
         # dynamically set wrapper properties
         self.modeltype = "CFM"
@@ -148,9 +155,9 @@ class UnfoldingExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        self.train_data = Dataset(self.dtype)
-        self.val_data = Dataset(self.dtype)
-        self.test_data = Dataset(self.dtype)
+        self.train_data = Dataset(self.cfg.data.max_constituents, self.dtype)
+        self.val_data = Dataset(self.cfg.data.max_constituents, self.dtype)
+        self.test_data = Dataset(self.cfg.data.max_constituents, self.dtype)
 
         self.train_data.create_data_list(
             det_particles[:train_idx],
@@ -187,13 +194,20 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.model.init_distribution()
         self.model.init_coordinates()
-        mask = (
+        gen_mask = (
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
-        fit_data = gen_particles[:train_idx][mask]
-        self.model.coordinates.init_fit(fit_data)
+        fit_gen_data = gen_particles[:train_idx][gen_mask]
+        self.model.coordinates.init_fit(fit_gen_data)
         if hasattr(self.model, "distribution"):
-            self.model.distribution.coordinates.init_fit(fit_data)
+            self.model.distribution.coordinates.init_fit(fit_gen_data)
+
+        det_mask = (
+            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
+        )
+        fit_det_data = det_particles[:train_idx][det_mask]
+        self.model.condition_coordinates.init_fit(fit_det_data)
+
         self.model.init_geometry()
 
         self.data_raw = {
@@ -309,13 +323,12 @@ class UnfoldingExperiment(BaseExperiment):
             n_batches = len(loader)
         for i in range(n_batches):
             batch = next(it).to(self.device)
-
+            LOGGER.info(f"ptr in sample func: {batch.x_det_ptr}")
             sample_batch = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
-            sample_list = sample_batch.to_data_list()
             samples.extend(sample_batch.to_data_list())
 
         self.data_raw["gen"] = Batch.from_data_list(
@@ -335,41 +348,10 @@ class UnfoldingExperiment(BaseExperiment):
         os.makedirs(os.path.join(path), exist_ok=True)
         LOGGER.info(f"Creating plots in {path}")
 
-        self.plot_title = "Z+Jet"
-
-        def form_jet(batch):
-            constituents = batch.x_gen
-            batch_idx = batch.x_gen_batch
-            jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
-            return jet.cpu().detach()
-
-        self.obs = {"jet": form_jet}
-        self.obs_ranges = {
-            "jet": {
-                "fourmomenta": [[0, 1000], [-400, 400], [-400, 400], [-750, 750]],
-                "jetmomenta": [[0, 600], [-torch.pi, torch.pi], [-3, 3], [0, 600]],
-                "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
-            }
-        }
-
-        def max_pt(batch):
-            constituents = batch.x_gen
-            batch_idx = batch.x_gen_batch
-            _, max_indices = torch_scatter.scatter_max(
-                constituents[:, 0], batch_idx, dim=0
-            )
-            highest_pt = constituents[max_indices]
-            return highest_pt.cpu().detach()
-
-        self.obs["highest p_T"] = max_pt
-        self.obs_ranges["highest p_T"] = {
-            "fourmomenta": [[0, 400], [-200, 200], [-200, 200], [-400, 400]],
-            "jetmomenta": [[0, 200], [-torch.pi, torch.pi], [-3, 3], [0, 0.02]],
-            "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
-        }
-
         if self.cfg.modelname == "ConditionalTransformer":
             model_label = "CondTr"
+        elif self.cfg.modelname == "ConditionalGATr":
+            model_label = "CondGATr"
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -434,3 +416,57 @@ class UnfoldingExperiment(BaseExperiment):
         for k in range(4):
             metrics[f"mse_{k}"] = []
         return metrics
+
+    def define_process_specifics(self):
+        self.plot_title = "Z+Jet"
+
+        self.obs = {}
+        self.obs_ranges = {}
+
+        if "jet" in self.cfg.evaluation.observables:
+
+            def form_jet(constituents, batch_idx):
+                jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
+                return jet.cpu().detach()
+
+            self.obs["jet"] = form_jet
+            self.obs_ranges["jet"] = {
+                "fourmomenta": [[0, 1000], [-400, 400], [-400, 400], [-750, 750]],
+                "jetmomenta": [[0, 600], [-torch.pi, torch.pi], [-3, 3], [0, 600]],
+                "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
+            }
+
+        if "highest p_T" in self.cfg.evaluation.observables:
+
+            def max_pt(constituents, batch_idx):
+                _, max_indices = torch_scatter.scatter_max(
+                    constituents[:, 0], batch_idx, dim=0
+                )
+                highest_pt = constituents[max_indices]
+                return highest_pt.cpu().detach()
+
+            self.obs["highest p_T"] = max_pt
+            self.obs_ranges["highest p_T"] = {
+                "fourmomenta": [[0, 400], [-200, 200], [-200, 200], [-400, 400]],
+                "jetmomenta": [[0, 200], [-torch.pi, torch.pi], [-3, 3], [0, 0.02]],
+                "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
+            }
+
+        if self.cfg.data.max_constituents > 0:
+            for i in range(self.cfg.data.max_constituents):
+
+                def select_pt(i):
+                    def ith_pt(constituents, index):
+                        batch_ptr = get_ptr_from_batch(index)
+                        idx = batch_ptr + i
+                        selected_constituents = constituents[idx[:-1]]
+                        return selected_constituents.cpu().detach()
+
+                    return ith_pt
+
+                self.obs[str(i + 1) + " highest p_T"] = select_pt(i)
+                self.obs_ranges[str(i + 1) + " highest p_T"] = {
+                    "fourmomenta": [[0, 400], [-200, 200], [-200, 200], [-400, 400]],
+                    "jetmomenta": [[0, 200], [-torch.pi, torch.pi], [-3, 3], [0, 0.02]],
+                    "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
+                }

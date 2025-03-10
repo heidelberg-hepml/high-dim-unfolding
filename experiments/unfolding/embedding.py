@@ -3,10 +3,11 @@ from torch.nn.functional import one_hot
 from torch_geometric.utils import scatter
 
 from experiments.unfolding.utils import get_batch_from_ptr, get_pt, get_phi, get_eta
+from experiments.logger import LOGGER
 from gatr.interface import embed_vector, embed_spurions
 
 
-def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
+def embed_into_ga_with_spurions(fourmomenta, scalars, batch_ptr, cfg_data):
     """
     Embed data into geometric algebra representation
     We use torch_geometric sparse representations to be more memory efficient
@@ -29,6 +30,7 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
         Embedded data
         Includes keys for multivectors, scalars, and ptr
     """
+    ptr = batch_ptr.clone()
     batchsize = len(ptr) - 1
     arange = torch.arange(batchsize, device=fourmomenta.device)
 
@@ -98,6 +100,7 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, ptr, cfg_data):
             dtype=multivectors.dtype,
             device=multivectors.device,
         )
+
         multivectors[~insert_spurion] = multivectors_buffer
         multivectors[insert_spurion] = spurions.repeat(batchsize, 1).unsqueeze(-2)
         scalars_buffer = scalars.clone()

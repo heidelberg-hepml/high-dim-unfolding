@@ -10,6 +10,7 @@ from experiments.unfolding.plots import (
     plot_calibration,
     simple_histogram,
     plot_roc,
+    plot_correlations,
 )
 
 from experiments.unfolding.coordinates import PtPhiEtaM2
@@ -133,9 +134,13 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             extract = exp.obs[name]
-            train = extract(exp.data_raw["train"])
-            test = extract(exp.data_raw["test"])
-            model = extract(exp.data_raw["gen"])
+            det_lvl = extract(
+                exp.data_raw["gen"].x_det, exp.data_raw["gen"].x_det_batch
+            )
+            part_lvl = extract(
+                exp.data_raw["train"].x_gen, exp.data_raw["train"].x_gen_batch
+            )[: len(det_lvl)]
+            model = extract(exp.data_raw["gen"].x_gen, exp.data_raw["gen"].x_gen_batch)
             obs_names = [
                 "E_{" + name + "}",
                 "p_{x," + name + "}",
@@ -149,8 +154,8 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 logy = False
                 plot_histogram(
                     file=file,
-                    train=train[..., channel],
-                    test=test[..., channel],
+                    train=part_lvl[..., channel],
+                    test=det_lvl[..., channel],
                     model=model[..., channel],
                     title=exp.plot_title,
                     xlabel=xlabel,
@@ -159,6 +164,16 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     model_label=model_label,
                     weights=weights,
                     mask_dict=mask_dict,
+                )
+                plot_correlations(
+                    file=file,
+                    det=det_lvl[..., channel],
+                    part=part_lvl[..., channel],
+                    gen=model[..., channel],
+                    title=exp.plot_title,
+                    label=xlabel,
+                    range=xrange,
+                    model_label=model_label,
                 )
 
 
@@ -169,9 +184,16 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             extract = exp.obs[name]
-            train = coords.fourmomenta_to_x(extract(exp.data_raw["train"]))
-            test = coords.fourmomenta_to_x(extract(exp.data_raw["test"]))
-            model = coords.fourmomenta_to_x(extract(exp.data_raw["gen"]))
+            det_lvl = extract(
+                exp.data_raw["gen"].x_det, exp.data_raw["gen"].x_det_batch
+            )
+            part_lvl = extract(
+                exp.data_raw["train"].x_gen, exp.data_raw["train"].x_gen_batch
+            )[: len(det_lvl)]
+            model = extract(exp.data_raw["gen"].x_gen, exp.data_raw["gen"].x_gen_batch)
+            part_lvl = coords.fourmomenta_to_x(part_lvl)
+            det_lvl = coords.fourmomenta_to_x(det_lvl)
+            model = coords.fourmomenta_to_x(model)
             obs_names = [
                 "p_{T," + name + "}",
                 "\phi_{" + name + "}",
@@ -185,8 +207,8 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 logy = False
                 plot_histogram(
                     file=file,
-                    train=train[..., channel],
-                    test=test[..., channel],
+                    train=part_lvl[..., channel],
+                    test=det_lvl[..., channel],
                     model=model[..., channel],
                     title=exp.plot_title,
                     xlabel=xlabel,
@@ -196,18 +218,37 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     weights=weights,
                     mask_dict=mask_dict,
                 )
+                plot_correlations(
+                    file=file,
+                    det=det_lvl[..., channel],
+                    part=part_lvl[..., channel],
+                    gen=model[..., channel],
+                    title=exp.plot_title,
+                    label=xlabel,
+                    range=xrange,
+                    model_label=model_label,
+                )
 
 
 def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
 
     coords = exp.model.coordinates
+    det_lvl_coords = exp.model.condition_coordinates
 
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             extract = exp.obs[name]
-            train = coords.fourmomenta_to_x(extract(exp.data_raw["train"]))
-            test = coords.fourmomenta_to_x(extract(exp.data_raw["test"]))
-            model = coords.fourmomenta_to_x(extract(exp.data_raw["gen"]))
+            det_lvl = extract(
+                exp.data_raw["gen"].x_det, exp.data_raw["gen"].x_det_batch
+            )
+            part_lvl = extract(
+                exp.data_raw["train"].x_gen, exp.data_raw["train"].x_gen_batch
+            )[: len(det_lvl)]
+            model = extract(exp.data_raw["gen"].x_gen, exp.data_raw["gen"].x_gen_batch)
+            part_lvl = coords.fourmomenta_to_x(part_lvl)
+            det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl)
+            model = coords.fourmomenta_to_x(model)
+
             obs_names = [
                 r"\text{"
                 + coords.__class__.__name__
@@ -225,8 +266,8 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 logy = False
                 plot_histogram(
                     file=file,
-                    train=train[..., channel],
-                    test=test[..., channel],
+                    train=part_lvl[..., channel],
+                    test=det_lvl[..., channel],
                     model=model[..., channel],
                     title=exp.plot_title,
                     xlabel=xlabel,
@@ -235,4 +276,14 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                     model_label=model_label,
                     weights=weights,
                     mask_dict=mask_dict,
+                )
+                plot_correlations(
+                    file=file,
+                    det=det_lvl[..., channel],
+                    part=part_lvl[..., channel],
+                    gen=model[..., channel],
+                    title=exp.plot_title,
+                    label=xlabel,
+                    range=xrange,
+                    model_label=model_label,
                 )

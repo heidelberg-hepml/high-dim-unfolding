@@ -3,6 +3,7 @@ import numpy as np
 
 from experiments.unfolding.cfm import EventCFM
 from experiments.unfolding.embedding import embed_into_ga_with_spurions
+from experiments.unfolding.utils import get_ptr_from_batch
 from gatr.interface import embed_vector, extract_vector
 from experiments.logger import LOGGER
 
@@ -56,7 +57,8 @@ class ConditionalCFMForGA(EventCFM):
         assert self.coordinates is not None
 
         fourmomenta = self.coordinates.x_to_fourmomenta(xt)
-        condition_fourmomenta = self.coordinates.x_to_fourmomenta(batch.x_det)
+        condition_fourmomenta = batch.x_det
+
         mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
         condition_mv, condition_s, condition_batch_indices = (
             embed_into_ga_with_spurions(
@@ -121,7 +123,9 @@ class ConditionalTransformerCFM(EventCFM):
         t_embedding = self.t_embedding(t)
 
         x = torch.cat([xt, batch.scalars_gen, t_embedding], dim=-1)
-        condition = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
+
+        condition_x = self.coordinates.fourmomenta_to_x(batch.x_det)
+        condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
 
         attention_mask = xformers_sa_mask(batch.x_gen_batch)
         attention_mask_condition = xformers_sa_mask(batch.x_det_batch)

@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 
 from experiments.unfolding.coordinates import LogPtPhiEtaLogM2
 
@@ -20,8 +21,8 @@ plt.rcParams["text.latex.preamble"] = (
 )
 
 # fontsize
-FONTSIZE = 14
-FONTSIZE_LEGEND = 13
+FONTSIZE = 18
+FONTSIZE_LEGEND = FONTSIZE
 TICKLABELSIZE = 10
 
 
@@ -62,7 +63,7 @@ def plot_histogram(
         mask (np.ndarray), condition (str)
     """
     # construct labels and colors
-    labels = ["Train", "Test", model_label]
+    labels = ["Particle-level", "Detector-level", model_label]
     colors = ["black", "#0343DE", "#A52A2A"]
 
     # construct histograms
@@ -141,7 +142,7 @@ def plot_histogram(
             step="post",
         )
 
-        if label == "Train":
+        if label == "Particle-level":
             axs[0].fill_between(
                 bins,
                 dup_last(y) * scale,
@@ -155,54 +156,55 @@ def plot_histogram(
         if mask_dict is not None:
             continue
 
-        ratio = (y * scale) / (hists[0] * scales[0])
-        ratio_err = np.sqrt((y_err / y) ** 2 + (hist_errors[0] / hists[0]) ** 2)
-        ratio_isnan = np.isnan(ratio)
-        ratio[ratio_isnan] = 1.0
-        ratio_err[ratio_isnan] = 0.0
+        if label == model_label:
+            ratio = (y * scale) / (hists[0] * scales[0])
+            ratio_err = np.sqrt((y_err / y) ** 2 + (hist_errors[0] / hists[0]) ** 2)
+            ratio_isnan = np.isnan(ratio)
+            ratio[ratio_isnan] = 1.0
+            ratio_err[ratio_isnan] = 0.0
 
-        axs[1].step(bins, dup_last(ratio), linewidth=1.0, where="post", color=color)
-        axs[1].step(
-            bins,
-            dup_last(ratio + ratio_err),
-            color=color,
-            alpha=0.5,
-            linewidth=0.5,
-            where="post",
-        )
-        axs[1].step(
-            bins,
-            dup_last(ratio - ratio_err),
-            color=color,
-            alpha=0.5,
-            linewidth=0.5,
-            where="post",
-        )
-        axs[1].fill_between(
-            bins,
-            dup_last(ratio - ratio_err),
-            dup_last(ratio + ratio_err),
-            facecolor=color,
-            alpha=0.3,
-            step="post",
-        )
+            axs[1].step(bins, dup_last(ratio), linewidth=1.0, where="post", color=color)
+            axs[1].step(
+                bins,
+                dup_last(ratio + ratio_err),
+                color=color,
+                alpha=0.5,
+                linewidth=0.5,
+                where="post",
+            )
+            axs[1].step(
+                bins,
+                dup_last(ratio - ratio_err),
+                color=color,
+                alpha=0.5,
+                linewidth=0.5,
+                where="post",
+            )
+            axs[1].fill_between(
+                bins,
+                dup_last(ratio - ratio_err),
+                dup_last(ratio + ratio_err),
+                facecolor=color,
+                alpha=0.3,
+                step="post",
+            )
 
-        delta = np.fabs(ratio - 1) * 100
-        delta_err = ratio_err * 100
+            delta = np.fabs(ratio - 1) * 100
+            delta_err = ratio_err * 100
 
-        markers, caps, bars = axs[2].errorbar(
-            (bins[:-1] + bins[1:]) / 2,
-            delta,
-            yerr=delta_err,
-            ecolor=color,
-            color=color,
-            elinewidth=0.5,
-            linewidth=0,
-            fmt=".",
-            capsize=2,
-        )
-        [cap.set_alpha(0.5) for cap in caps]
-        [bar.set_alpha(0.5) for bar in bars]
+            markers, caps, bars = axs[2].errorbar(
+                (bins[:-1] + bins[1:]) / 2,
+                delta,
+                yerr=delta_err,
+                ecolor=color,
+                color=color,
+                elinewidth=0.5,
+                linewidth=0,
+                fmt=".",
+                capsize=2,
+            )
+            [cap.set_alpha(0.5) for cap in caps]
+            [bar.set_alpha(0.5) for bar in bars]
 
     axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
@@ -467,4 +469,27 @@ def plot_kinematics(path, samples, targets, base):
         ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     plt.tight_layout()
     plt.savefig(path + "/kinematics_alt.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
+
+
+def plot_correlations(file, det, part, gen, title, label, range, model_label):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+
+    bins = np.linspace(range[0], range[1], 50)
+    hist = ax1.hist2d(det, part, bins=bins, norm=mcolors.LogNorm(), rasterized=True)
+    vmin, vmax = hist[-1].get_clim()
+    ax1.set_xlabel("Detector-level", fontsize=FONTSIZE)
+    ax1.set_ylabel("Particle-level", fontsize=FONTSIZE)
+    ax1.set_title("Truth", fontsize=FONTSIZE)
+    ax1.grid(False)
+
+    ax2.hist2d(
+        det, gen, bins=bins, norm=mcolors.LogNorm(vmax=vmax, vmin=vmin), rasterized=True
+    )
+    ax2.set_xlabel("Detector-level", fontsize=FONTSIZE)
+    ax2.set_ylabel("Particle-level", fontsize=FONTSIZE)
+    ax2.set_title(model_label, fontsize=FONTSIZE)
+    ax2.grid(False)
+
+    plt.savefig(file, bbox_inches="tight", format="pdf")
     plt.close()
