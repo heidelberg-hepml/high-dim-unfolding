@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 
+from experiments.logger import LOGGER
 from experiments.unfolding.utils import (
     unpack_last,
     EPS1,
@@ -448,7 +449,9 @@ class StandardNormal(BaseTransform):
         return xunit
 
     def _inverse(self, xunit):
-        x = xunit * self.std.to(xunit.device) + self.mean.to(xunit.device)
+        x = xunit * self.std.to(xunit.device, dtype=xunit.dtype) + self.mean.to(
+            xunit.device, dtype=xunit.dtype
+        )
         return x
 
     def _jac_forward(self, x, xunit):

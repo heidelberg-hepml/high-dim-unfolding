@@ -6,12 +6,11 @@ from torchdiffeq import odeint
 from experiments.unfolding.autoregression import (
     add_start_tokens,
     start_sequence,
-    add_to_sequence,
+    insert_tokens,
     remove_extra,
 )
 from experiments.unfolding.cfm import EventCFM
 from experiments.unfolding.embedding import embed_into_ga_with_spurions
-from experiments.unfolding.utils import get_ptr_from_batch
 from gatr.interface import embed_vector, extract_vector
 from experiments.logger import LOGGER
 
@@ -54,7 +53,6 @@ def xformers_sa_mask(batch, batch_condition=None, materialize=False):
     return mask
 
 
-@torch.compile
 def full_self_attention_mask(batch):
 
     def masking(b, h, q_idx, kv_idx):
@@ -65,22 +63,22 @@ def full_self_attention_mask(batch):
     )
 
 
-@torch.compile
 def causal_self_attention_mask(batch):
 
     def masking(b, h, q_idx, kv_idx):
-        return q_idx < kv_idx and batch[q_idx] == batch[kv_idx]
+        return torch.where(q_idx < kv_idx, True, False) * torch.where(
+            batch[q_idx] == batch[kv_idx], True, False
+        )
 
     return create_block_mask(
         masking, B=None, H=None, Q_LEN=len(batch), KV_LEN=len(batch)
     )
 
 
-@torch.compile
 def cross_attention_mask(Q_batch, KV_batch):
 
     def masking(b, h, q_idx, kv_idx):
-        return Q_batch[q_idx] == KV_batch[kv_idx]
+        return torch.where(Q_batch[q_idx] == KV_batch[kv_idx], True, False)
 
     return create_block_mask(
         masking, B=None, H=None, Q_LEN=len(Q_batch), KV_LEN=len(KV_batch)
@@ -277,7 +275,9 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         t_embedding = self.t_embedding(t)
         new_batch = add_start_tokens(batch)
         autoregressive_condition = self.get_velocity_condition(new_batch)
-        input = torch.cat([xt, t_embedding, autoregressive_condition], dim=-1)
+        new_batch.x_gen = autoregressive_condition
+        condition = remove_extra(new_batch, batch.x_gen_ptr)
+        input = torch.cat([xt, t_embedding, condition.x_gen], dim=-1)
 
         v = self.mlp(input)
         return v
@@ -286,15 +286,21 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
 
         max_constituents = torch.bincount(batch.x_gen_batch).max().item()
         sequence = start_sequence(batch)
-        shape = (batch.x_gen_batch[-1] + 1, *batch.x_gen.shape[1:])
+        shape = (batch.x_gen_batch[-1].item() + 1, *batch.x_gen.shape[1:])
 
         for i in range(max_constituents):
             condition = self.get_velocity_condition(sequence)
+            condition = condition[sequence.x_gen_ptr[1:] - 1]
 
-            def velocity(t, xt):
+            def velocity(t, xt_straight):
+                xt_straight = self.geometry._handle_periodic(xt_straight)
+                t = t * torch.ones(
+                    shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
+                )
                 t_embedding = self.t_embedding(t)
-                input = torch.cat([xt, t_embedding, condition], dim=-1)
+                input = torch.cat([xt_straight, t_embedding, condition], dim=-1)
                 v = self.mlp(input)
+                v = self.handle_velocity(v)
                 return v
 
             x1_fourmomenta = self.sample_base(shape, device, dtype)
@@ -325,7 +331,12 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
             # transform generated event back to fourmomenta
             x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
 
-            sequence = add_to_sequence(sequence, x0_fourmomenta)
+            sequence = insert_tokens(sequence, x0_fourmomenta)
 
-        samples = remove_extra(sequence, batch.x_gen_batch)
+        samples = remove_extra(sequence, batch.x_gen_ptr)
+        LOGGER.info(f"batch batch {batch.x_gen_batch.shape}")
+        LOGGER.info(f"batch ptr {batch.x_gen_ptr.shape}")
+        LOGGER.info(f"samples {samples.x_gen.shape}")
+        LOGGER.info(f"samples batch {samples.x_gen_batch.shape}")
+        LOGGER.info(f"samples ptr {samples.x_gen_ptr.shape}")
         return samples

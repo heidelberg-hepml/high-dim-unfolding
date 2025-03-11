@@ -3,6 +3,9 @@ import torch
 from experiments.unfolding.utils import get_batch_from_ptr
 
 
+START_TOKEN = torch.tensor([2, 1, 1, 1], dtype=torch.float32)
+
+
 def insert_tokens(batch, tokens, start=False):
     new_batch = batch.clone()
     sequence = new_batch.x_gen
@@ -59,8 +62,7 @@ def add_start_tokens(batch):
 
     batchsize = len(ptr) - 1
 
-    start_tokens = torch.zeros_like(batchsize, 4)
-
+    start_tokens = torch.stack([START_TOKEN] * batchsize, dim=0).to(sequence.device)
     new_batch = insert_tokens(new_batch, start_tokens, True)
 
     return new_batch
@@ -69,7 +71,7 @@ def add_start_tokens(batch):
 def start_sequence(batch):
     new_batch = batch.clone()
     batchsize = len(new_batch.x_gen_ptr) - 1
-    start_tokens = torch.zeros((batchsize, 4))
+    start_tokens = torch.stack([START_TOKEN] * batchsize, dim=0).to(batch.x_gen.device)
     ptr = torch.arange(batchsize + 1, device=batch.x_gen.device)
     batch_idx = torch.arange(batchsize, device=batch.x_gen.device)
     new_batch.x_gen = start_tokens
@@ -78,7 +80,7 @@ def start_sequence(batch):
     return new_batch
 
 
-def remove_extra(batch, true_ptr, remove_start=True):
+def remove_extra(batch, true_ptr, remove_start=False):
     new_batch = batch.clone()
     seq = new_batch.x_gen
     ptr = new_batch.x_gen_ptr

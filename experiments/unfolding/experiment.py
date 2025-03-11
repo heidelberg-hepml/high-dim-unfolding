@@ -3,7 +3,6 @@ import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.utils import scatter
 from torch_geometric.data import Batch
-import torch_scatter
 
 import os, time
 from omegaconf import open_dict
@@ -33,7 +32,7 @@ class UnfoldingExperiment(BaseExperiment):
         self.modeltype = "CFM"
 
         with open_dict(self.cfg):
-            self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+            self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             # dynamically set channel dimensions
             if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
@@ -345,6 +344,8 @@ class UnfoldingExperiment(BaseExperiment):
             model_label = "CondTr"
         elif self.cfg.modelname == "ConditionalGATr":
             model_label = "CondGATr"
+        elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
+            model_label = "CondARTr"
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -427,22 +428,6 @@ class UnfoldingExperiment(BaseExperiment):
                 "fourmomenta": [[0, 1000], [-400, 400], [-400, 400], [-750, 750]],
                 "jetmomenta": [[0, 600], [-torch.pi, torch.pi], [-3, 3], [0, 600]],
                 "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
-            }
-
-        if "highest p_T" in self.cfg.evaluation.observables:
-
-            def max_pt(constituents, batch_idx):
-                _, max_indices = torch_scatter.scatter_max(
-                    constituents[:, 0], batch_idx, dim=0
-                )
-                highest_pt = constituents[max_indices]
-                return highest_pt.cpu().detach()
-
-            self.obs["highest p_T"] = max_pt
-            self.obs_ranges["highest p_T"] = {
-                "fourmomenta": [[0, 400], [-200, 200], [-200, 200], [-400, 400]],
-                "jetmomenta": [[0, 200], [-torch.pi, torch.pi], [-3, 3], [0, 0.02]],
-                "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
             }
 
         if self.cfg.data.max_constituents > 0 or self.cfg.evaluation.n_pt > 0:

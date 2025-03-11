@@ -144,7 +144,7 @@ class BaseExperiment:
         )
         if self.cfg.use_mlflow:
             log_mlflow("num_parameters", float(num_parameters), step=0)
-        modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+        modelname = self.cfg.model._target_.rsplit(".", 1)[-1]
         LOGGER.info(
             f"Instantiated model {modelname} with {num_parameters} learnable parameters"
         )
