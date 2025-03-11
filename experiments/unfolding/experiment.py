@@ -16,15 +16,12 @@ from experiments.unfolding.dataset import ZplusJetDataset
 from experiments.unfolding.utils import (
     ensure_angle,
     pid_encoding,
-    get_batch_from_ptr,
     get_ptr_from_batch,
 )
 from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-
-from experiments.unfolding.plots import plot_kinematics
 
 
 class UnfoldingExperiment(BaseExperiment):
@@ -210,18 +207,6 @@ class UnfoldingExperiment(BaseExperiment):
 
         self.model.init_geometry()
 
-        self.data_raw = {
-            "train": Batch.from_data_list(
-                self.train_data.data_list, follow_batch=["x_gen", "x_det"]
-            ),
-            "val": Batch.from_data_list(
-                self.val_data.data_list, follow_batch=["x_gen", "x_det"]
-            ),
-            "test": Batch.from_data_list(
-                self.test_data.data_list, follow_batch=["x_gen", "x_det"]
-            ),
-        }
-
     def _init_dataloader(self):
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
@@ -279,7 +264,7 @@ class UnfoldingExperiment(BaseExperiment):
                 f"Sampling {self.cfg.evaluation.n_batches} batches for evaluation"
             )
             t0 = time.time()
-            self._sample_events(loaders["train"], self.cfg.evaluation.n_batches)
+            self._sample_events(loaders["test"], self.cfg.evaluation.n_batches)
             loaders["gen"] = self.sample_loader
             dt = time.time() - t0
             LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
@@ -318,21 +303,29 @@ class UnfoldingExperiment(BaseExperiment):
 
     def _sample_events(self, loader, n_batches):
         samples = []
+        targets = []
+        self.data_raw = {}
         it = iter(loader)
         if n_batches > len(loader):
+            LOGGER.warning(
+                f"Requested {n_batches} batches for sampling, but only {len(loader)} batches available in test dataset."
+            )
             n_batches = len(loader)
         for i in range(n_batches):
             batch = next(it).to(self.device)
-            LOGGER.info(f"ptr in sample func: {batch.x_det_ptr}")
             sample_batch = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
             samples.extend(sample_batch.to_data_list())
+            targets.extend(batch.to_data_list())
 
         self.data_raw["gen"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
+        )
+        self.data_raw["train"] = Batch.from_data_list(
+            targets, follow_batch=["x_gen", "x_det"]
         )
 
         # convert the list of batches into a dataloader loading those predefined batches
@@ -452,8 +445,13 @@ class UnfoldingExperiment(BaseExperiment):
                 "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
             }
 
-        if self.cfg.data.max_constituents > 0:
-            for i in range(self.cfg.data.max_constituents):
+        if self.cfg.data.max_constituents > 0 or self.cfg.evaluation.n_pt > 0:
+            if self.cfg.data.max_constituents > 0:
+                n_pt = self.cfg.data.max_constituents
+            else:
+                n_pt = self.cfg.evaluation.n_pt
+
+            for i in range(n_pt):
 
                 def select_pt(i):
                     def ith_pt(constituents, index):

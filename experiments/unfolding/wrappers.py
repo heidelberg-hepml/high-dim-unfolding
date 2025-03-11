@@ -1,6 +1,14 @@
 import torch
+from torch.nn.attention.flex_attention import create_block_mask
 import numpy as np
+from torchdiffeq import odeint
 
+from experiments.unfolding.autoregression import (
+    add_start_tokens,
+    start_sequence,
+    add_to_sequence,
+    remove_extra,
+)
 from experiments.unfolding.cfm import EventCFM
 from experiments.unfolding.embedding import embed_into_ga_with_spurions
 from experiments.unfolding.utils import get_ptr_from_batch
@@ -44,6 +52,39 @@ def xformers_sa_mask(batch, batch_condition=None, materialize=False):
         )
 
     return mask
+
+
+@torch.compile
+def full_self_attention_mask(batch):
+
+    def masking(b, h, q_idx, kv_idx):
+        return batch[q_idx] == batch[kv_idx]
+
+    return create_block_mask(
+        masking, B=None, H=None, Q_LEN=len(batch), KV_LEN=len(batch)
+    )
+
+
+@torch.compile
+def causal_self_attention_mask(batch):
+
+    def masking(b, h, q_idx, kv_idx):
+        return q_idx < kv_idx and batch[q_idx] == batch[kv_idx]
+
+    return create_block_mask(
+        masking, B=None, H=None, Q_LEN=len(batch), KV_LEN=len(batch)
+    )
+
+
+@torch.compile
+def cross_attention_mask(Q_batch, KV_batch):
+
+    def masking(b, h, q_idx, kv_idx):
+        return Q_batch[q_idx] == KV_batch[kv_idx]
+
+    return create_block_mask(
+        masking, B=None, H=None, Q_LEN=len(Q_batch), KV_LEN=len(KV_batch)
+    )
 
 
 class ConditionalCFMForGA(EventCFM):
@@ -190,3 +231,101 @@ class ConditionalGATrCFM(ConditionalCFMForGA):
     def extract_from_ga(self, mv, s):
         v = extract_vector(mv).squeeze(dim=-2)
         return v, s
+
+
+class ConditionalAutoregressiveTransformerCFM(EventCFM):
+    """
+    Conditional Autoregressive Transformer velocity network
+    """
+
+    def __init__(
+        self,
+        autoregressive_tr,
+        mlp,
+        cfm,
+        odeint,
+    ):
+        # See GATrCFM.__init__ for documentation
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.autoregressive_tr = autoregressive_tr
+        self.mlp = mlp
+
+    def get_velocity_condition(self, batch):
+
+        x = self.coordinates.fourmomenta_to_x(batch.x_gen)
+        condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
+        condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
+
+        attention_mask = causal_self_attention_mask(batch.x_gen_batch)
+        attention_mask_condition = full_self_attention_mask(batch.x_det_batch)
+        crossattention_mask = cross_attention_mask(batch.x_gen_batch, batch.x_det_batch)
+
+        autoregressive_condition = self.autoregressive_tr(
+            x=x.unsqueeze(0),
+            condition=condition.unsqueeze(0),
+            attention_mask=attention_mask,
+            attention_mask_condition=attention_mask_condition,
+            crossattention_mask=crossattention_mask,
+        ).squeeze(0)
+        return autoregressive_condition
+
+    def get_velocity(self, xt, t, batch):
+
+        t_embedding = self.t_embedding(t)
+        new_batch = add_start_tokens(batch)
+        autoregressive_condition = self.get_velocity_condition(new_batch)
+        input = torch.cat([xt, t_embedding, autoregressive_condition], dim=-1)
+
+        v = self.mlp(input)
+        return v
+
+    def sample(self, batch, device, dtype):
+
+        max_constituents = torch.bincount(batch.x_gen_batch).max().item()
+        sequence = start_sequence(batch)
+        shape = (batch.x_gen_batch[-1] + 1, *batch.x_gen.shape[1:])
+
+        for i in range(max_constituents):
+            condition = self.get_velocity_condition(sequence)
+
+            def velocity(t, xt):
+                t_embedding = self.t_embedding(t)
+                input = torch.cat([xt, t_embedding, condition], dim=-1)
+                v = self.mlp(input)
+                return v
+
+            x1_fourmomenta = self.sample_base(shape, device, dtype)
+            x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+
+            # solve ODE in straight space
+            x0_straight = odeint(
+                velocity,
+                x1_straight,
+                torch.tensor([1.0, 0.0], device=x1_straight.device),
+                **self.odeint,
+            )[-1]
+            x0_straight = self.geometry._handle_periodic(x0_straight)
+
+            # the infamous nan remover
+            # (MLP sometimes returns nan for single events,
+            # and all components of the event are nan...
+            # just sample another event in this case)
+            mask = torch.isfinite(x0_straight).all(dim=-1)
+            if (~mask).any():
+                mask2 = torch.isfinite(x0_straight)
+                x0_straight = x0_straight[mask, ...]
+                x1_fourmomenta = x1_fourmomenta[mask, ...]
+                LOGGER.warning(
+                    f"Found {(~mask2).sum(dim=0).numpy()} nan events while sampling"
+                )
+
+            # transform generated event back to fourmomenta
+            x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
+
+            sequence = add_to_sequence(sequence, x0_fourmomenta)
+
+        samples = remove_extra(sequence, batch.x_gen_batch)
+        return samples
