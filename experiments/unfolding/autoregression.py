@@ -1,7 +1,10 @@
 import torch
+from torch.nn.attention.flex_attention import flex_attention, create_block_mask
 
 from experiments.unfolding.utils import get_batch_from_ptr
 
+flex_attention = torch.compile(flex_attention, dynamic=True)
+create_block_mask = torch.compile(create_block_mask, dynamic=True)
 
 START_TOKEN = torch.tensor([2, 1, 1, 1], dtype=torch.float32)
 

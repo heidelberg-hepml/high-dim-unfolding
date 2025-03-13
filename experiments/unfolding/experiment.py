@@ -10,6 +10,7 @@ from hydra.utils import instantiate
 from tqdm import trange, tqdm
 import energyflow
 
+from gatr.interface import embed_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
 from experiments.unfolding.dataset import ZplusJetDataset
 from experiments.unfolding.utils import (
@@ -35,6 +36,7 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             # dynamically set channel dimensions
             if self.cfg.modelname == "ConditionalGATr":
+                self.cfg.data.embed_det_with_spurions = True
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
                 self.cfg.model.net.condition_s_channels = 0
                 if self.cfg.data.pid_raw:
@@ -59,6 +61,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.cfg_data = self.cfg.data
 
             elif self.cfg.modelname == "ConditionalTransformer":
+                self.cfg.data.embed_det_with_spurions = False
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net.condition_channels = 4
                 if self.cfg.data.pid_raw:
@@ -67,6 +70,21 @@ class UnfoldingExperiment(BaseExperiment):
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net.condition_channels += 6
+            elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
+                self.cfg.data.embed_det_with_spurions = False
+                self.cfg.model.autoregressive_tr.in_channels = 4
+                self.cfg.model.autoregressive_tr.out_channels = (
+                    self.cfg.model.autoregressive_tr.hidden_channels
+                )
+                self.cfg.model.mlp.in_shape = (
+                    4
+                    + self.cfg.cfm.embed_t_dim
+                    # + self.cfg.model.autoregressive_tr.out_channels
+                )
+                self.cfg.model.mlp.out_shape = 4
+                # self.cfg.model.mlp.hidden_channels = (
+                #     self.cfg.model.autoregressive_tr.hidden_channels
+                # )
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -151,9 +169,35 @@ class UnfoldingExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        self.train_data = Dataset(self.cfg.data.max_constituents, self.dtype)
-        self.val_data = Dataset(self.cfg.data.max_constituents, self.dtype)
-        self.test_data = Dataset(self.cfg.data.max_constituents, self.dtype)
+        if self.cfg.data.embed_det_with_spurions:
+            self.spurions = embed_spurions(
+                self.cfg.data.beam_reference,
+                self.cfg.data.add_time_reference,
+                self.cfg.data.two_beams,
+                self.cfg.data.add_xzplane,
+                self.cfg.data.add_yzplane,
+            )
+        else:
+            self.spurions = None
+
+        self.train_data = Dataset(
+            self.cfg.data.max_constituents,
+            self.dtype,
+            self.cfg.data.embed_det_with_spurions,
+            self.spurions,
+        )
+        self.val_data = Dataset(
+            self.cfg.data.max_constituents,
+            self.dtype,
+            self.cfg.data.embed_det_with_spurions,
+            self.spurions,
+        )
+        self.test_data = Dataset(
+            self.cfg.data.max_constituents,
+            self.dtype,
+            self.cfg.data.embed_det_with_spurions,
+            self.spurions,
+        )
 
         self.train_data.create_data_list(
             det_particles[:train_idx],
@@ -320,10 +364,21 @@ class UnfoldingExperiment(BaseExperiment):
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
 
+        if self.cfg.data.embed_det_with_spurions:
+            if len(self.spurions) > 0:
+                for data in samples:
+                    data.x_det = extract_vector(
+                        data.x_det[: -len(self.spurions)]
+                    ).squeeze(-2)
+                for data in targets:
+                    data.x_det = extract_vector(
+                        data.x_det[: -len(self.spurions)]
+                    ).squeeze(-2)
+
         self.data_raw["gen"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
         )
-        self.data_raw["train"] = Batch.from_data_list(
+        self.data_raw["truth"] = Batch.from_data_list(
             targets, follow_batch=["x_gen", "x_det"]
         )
 
@@ -438,18 +493,53 @@ class UnfoldingExperiment(BaseExperiment):
 
             for i in range(n_pt):
 
-                def select_pt(i):
+                # def select_pt(i):
+                #     def ith_pt(constituents, index):
+                #         batch_ptr = get_ptr_from_batch(index)
+                #         idx = batch_ptr + i
+                #         selected_constituents = constituents[idx[:-1]]
+                #         return selected_constituents.cpu().detach()
+
+                #     return ith_pt
+
+                # self.obs[str(i + 1) + " highest p_T"] = select_pt(i)
+                # self.obs_ranges[str(i + 1) + " highest p_T"] = {
+                #     "fourmomenta": [
+                #         [0, 400 - 50 * i],
+                #         [-200 + 25 * i, 200 - 25 * i],
+                #         [-200 + 25 * i, 200 - 25 * i],
+                #         [-400 + 50 * i, 400 - 50 * i],
+                #     ],
+                #     "jetmomenta": [
+                #         [0, 200 - 25 * i],
+                #         [-torch.pi, torch.pi],
+                #         [-3, 3],
+                #         [0, 0.02],
+                #     ],
+                #     "StandardLogPtPhiEtaLogM2": [
+                #         [0.5 - 0.25 * i, 3 - 0.25 * i],
+                #         [-2, 2],
+                #         [-3, 3],
+                #         [-5, -4],
+                #     ],
+                # }
+
+                def st_select_pt(i):
                     def ith_pt(constituents, index):
                         batch_ptr = get_ptr_from_batch(index)
                         idx = batch_ptr + i
                         selected_constituents = constituents[idx[:-1]]
+                        # selected_constituents = (
+                        #     selected_constituents
+                        #     - selected_constituents.mean(dim=0, keepdim=True)
+                        # ) / selected_constituents.std(dim=0, keepdim=True)
                         return selected_constituents.cpu().detach()
 
                     return ith_pt
 
-                self.obs[str(i + 1) + " highest p_T"] = select_pt(i)
+                self.obs[str(i + 1) + " highest p_T"] = st_select_pt(i)
                 self.obs_ranges[str(i + 1) + " highest p_T"] = {
-                    "fourmomenta": [[0, 400], [-200, 200], [-200, 200], [-400, 400]],
-                    "jetmomenta": [[0, 200], [-torch.pi, torch.pi], [-3, 3], [0, 0.02]],
-                    "StandardLogPtPhiEtaLogM2": [[0.5, 3], [-2, 2], [-3, 3], [-5, -4]],
+                    "fourmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
+                    "jetmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
+                    "StandardLogPtPhiEtaLogM2": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
                 }

@@ -4,10 +4,12 @@ import torch
 from einops import rearrange
 from torch import Tensor
 from torch.nn.functional import scaled_dot_product_attention as torch_sdpa
-from torch.nn.attention.flex_attention import BlockMask, flex_attention
+from torch.nn.attention.flex_attention import BlockMask
 from xformers.ops import AttentionBias, memory_efficient_attention
 
 from gatr.primitives.invariants import _load_inner_product_factors
+
+from experiments.unfolding.autoregression import flex_attention
 
 # Masked out attention logits are set to this constant (a finite replacement for -inf):
 _MASKED_OUT = float("-inf")

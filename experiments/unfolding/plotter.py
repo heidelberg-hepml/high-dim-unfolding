@@ -138,7 +138,7 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["gen"].x_det, exp.data_raw["gen"].x_det_batch
             )
             part_lvl = extract(
-                exp.data_raw["train"].x_gen, exp.data_raw["train"].x_gen_batch
+                exp.data_raw["truth"].x_gen, exp.data_raw["truth"].x_gen_batch
             )[: len(det_lvl)]
             model = extract(exp.data_raw["gen"].x_gen, exp.data_raw["gen"].x_gen_batch)
             obs_names = [
@@ -188,7 +188,7 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["gen"].x_det, exp.data_raw["gen"].x_det_batch
             )
             part_lvl = extract(
-                exp.data_raw["train"].x_gen, exp.data_raw["train"].x_gen_batch
+                exp.data_raw["truth"].x_gen, exp.data_raw["truth"].x_gen_batch
             )[: len(det_lvl)]
             model = extract(exp.data_raw["gen"].x_gen, exp.data_raw["gen"].x_gen_batch)
             part_lvl = coords.fourmomenta_to_x(part_lvl)
@@ -242,7 +242,7 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["gen"].x_det, exp.data_raw["gen"].x_det_batch
             )
             part_lvl = extract(
-                exp.data_raw["train"].x_gen, exp.data_raw["train"].x_gen_batch
+                exp.data_raw["truth"].x_gen, exp.data_raw["truth"].x_gen_batch
             )[: len(det_lvl)]
             model = extract(exp.data_raw["gen"].x_gen, exp.data_raw["gen"].x_gen_batch)
             part_lvl = coords.fourmomenta_to_x(part_lvl)

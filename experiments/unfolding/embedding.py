@@ -1,5 +1,4 @@
 import torch
-from torch.nn.functional import one_hot
 from torch_geometric.utils import scatter
 
 from experiments.unfolding.utils import get_batch_from_ptr, get_pt, get_phi, get_eta
@@ -120,3 +119,20 @@ def embed_into_ga_with_spurions(fourmomenta, scalars, batch_ptr, cfg_data):
     batch = get_batch_from_ptr(ptr)
 
     return multivectors, scalars, batch
+
+
+def event_to_GA_with_spurions(fourmomenta, scalars, spurions):
+
+    multivectors = embed_vector(fourmomenta)
+
+    spurions = spurions.to(device=fourmomenta.device, dtype=fourmomenta.dtype)
+    spurions_scalars = torch.zeros(
+        (spurions.shape[0], *scalars.shape[1:]),
+        device=fourmomenta.device,
+        dtype=fourmomenta.dtype,
+    )
+
+    multivectors = torch.cat((multivectors, spurions), dim=0).unsqueeze(-2)
+    scalars = torch.cat((scalars, spurions_scalars), dim=0)
+
+    return multivectors, scalars

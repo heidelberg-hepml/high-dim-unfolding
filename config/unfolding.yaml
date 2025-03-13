@@ -41,7 +41,7 @@ cfm:
  transforms_float64: true
 
 odeint:
- method: rk4
+ method: dopri5
  rtol: 1e-5
  atol: 1e-5
  options:

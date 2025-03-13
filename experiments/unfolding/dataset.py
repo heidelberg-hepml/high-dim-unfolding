@@ -1,13 +1,18 @@
 import torch
 from torch_geometric.data import Data
 
+from gatr.interface import embed_vector
 from experiments.unfolding.utils import get_pt
+from experiments.unfolding.embedding import event_to_GA_with_spurions
 
 
 class ZplusJetDataset(torch.utils.data.Dataset):
-    def __init__(self, max_constituents, dtype):
+    def __init__(self, max_constituents, dtype, embed_into_GA=False, spurions=None):
         self.max_constituents = max_constituents
         self.dtype = dtype
+        self.embed_into_GA = embed_into_GA
+        if embed_into_GA:
+            self.spurions = spurions
 
     def __len__(self):
         return len(self.data_list)
@@ -49,6 +54,14 @@ class ZplusJetDataset(torch.utils.data.Dataset):
             det_scalars = det_scalars[det_idx]
             gen_event = gen_event[gen_idx]
             gen_scalars = gen_scalars[gen_idx]
+
+            if self.embed_into_GA:
+                if self.spurions is not None:
+                    det_event, det_scalars = event_to_GA_with_spurions(
+                        det_event, det_scalars, self.spurions
+                    )
+                else:
+                    det_event = embed_vector(det_event).unsqueeze(-2)
 
             graph = Data(
                 x_det=det_event,
