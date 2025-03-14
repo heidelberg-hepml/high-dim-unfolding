@@ -111,11 +111,12 @@ class CFM(nn.Module):
         """
         x0_fourmomenta = batch.x_gen
         t = torch.rand(
-            x0_fourmomenta.shape[0],
+            batch.num_graphs,
             1,
             dtype=x0_fourmomenta.dtype,
             device=x0_fourmomenta.device,
         )
+        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
         x1_fourmomenta = self.sample_base(
             x0_fourmomenta.shape, x0_fourmomenta.device, x0_fourmomenta.dtype
         )
@@ -198,11 +199,11 @@ class CFM(nn.Module):
 
         pt = get_pt(x0_fourmomenta)
 
-        _, x_perm = torch.sort(pt, dim=0, descending=True)
-        x0_fourmomenta = x0_fourmomenta.take_along_dim(x_perm.unsqueeze(-1), dim=0)
-        index = batch.x_gen_batch.take_along_dim(x_perm, dim=0)
-        index, index_perm = torch.sort(index, dim=0, stable=True)
-        x0_fourmomenta = x0_fourmomenta.take_along_dim(index_perm.unsqueeze(-1), dim=0)
+        x_perm = torch.argsort(pt, dim=0, descending=True)
+        x0_fourmomenta = x0_fourmomenta.take_along_dim(x_perm, dim=0)
+        index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+        index_perm = torch.argsort(index, dim=0, stable=True)
+        x0_fourmomenta = x0_fourmomenta.take_along_dim(index_perm, dim=0)
 
         sample_batch.x_gen = x0_fourmomenta
 

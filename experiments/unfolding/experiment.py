@@ -79,12 +79,12 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.mlp.in_shape = (
                     4
                     + self.cfg.cfm.embed_t_dim
-                    # + self.cfg.model.autoregressive_tr.out_channels
+                    + self.cfg.model.autoregressive_tr.out_channels
                 )
                 self.cfg.model.mlp.out_shape = 4
-                # self.cfg.model.mlp.hidden_channels = (
-                #     self.cfg.model.autoregressive_tr.hidden_channels
-                # )
+                self.cfg.model.mlp.hidden_channels = (
+                    self.cfg.model.autoregressive_tr.hidden_channels
+                )
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -224,6 +224,10 @@ class UnfoldingExperiment(BaseExperiment):
             gen_mults[train_idx + val_idx :],
         )
 
+        LOGGER.info(
+            f"Constructed datasets with {train_idx} training events, {val_idx} validation events and {size - train_idx - val_idx} test events"
+        )
+
         # initialize cfm (might require data)
         self.model.init_physics(
             self.cfg.data.units,
@@ -248,6 +252,13 @@ class UnfoldingExperiment(BaseExperiment):
         fit_det_data = det_particles[:train_idx][det_mask]
         self.model.condition_coordinates.init_fit(fit_det_data)
 
+        LOGGER.info(
+            f"Fitted gen data with mean {self.model.coordinates.transforms[-1].mean}, std {self.model.coordinates.transforms[-1].std}"
+        )
+        LOGGER.info(
+            f"Fitted det data with mean {self.model.condition_coordinates.transforms[-1].mean}, std {self.model.condition_coordinates.transforms[-1].std}"
+        )
+
         self.model.init_geometry()
 
     def _init_dataloader(self):
@@ -267,7 +278,7 @@ class UnfoldingExperiment(BaseExperiment):
             self.test_data,
             num_replicas=self.world_size,
             rank=self.rank,
-            shuffle=True,
+            shuffle=False,
         )
         self.test_loader = DataLoader(
             dataset=self.test_data,
@@ -279,7 +290,7 @@ class UnfoldingExperiment(BaseExperiment):
             self.val_data,
             num_replicas=self.world_size,
             rank=self.rank,
-            shuffle=True,
+            shuffle=False,
         )
         self.val_loader = DataLoader(
             dataset=self.val_data,
@@ -382,12 +393,18 @@ class UnfoldingExperiment(BaseExperiment):
             targets, follow_batch=["x_gen", "x_det"]
         )
 
-        # convert the list of batches into a dataloader loading those predefined batches
-        self.sample_loader = DataLoader(
+        # convert the list into a dataloader
+        sampler = torch.utils.data.DistributedSampler(
             samples,
-            batch_size=self.cfg.evaluation.batchsize,
+            num_replicas=self.world_size,
+            rank=self.rank,
             shuffle=False,
-            collate_fn=lambda x: x[0],
+        )
+        self.sample_loader = DataLoader(
+            dataset=samples,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=sampler,
+            follow_batch=["x_gen", "x_det"],
         )
 
     def plot(self):
@@ -493,53 +510,53 @@ class UnfoldingExperiment(BaseExperiment):
 
             for i in range(n_pt):
 
-                # def select_pt(i):
-                #     def ith_pt(constituents, index):
-                #         batch_ptr = get_ptr_from_batch(index)
-                #         idx = batch_ptr + i
-                #         selected_constituents = constituents[idx[:-1]]
-                #         return selected_constituents.cpu().detach()
-
-                #     return ith_pt
-
-                # self.obs[str(i + 1) + " highest p_T"] = select_pt(i)
-                # self.obs_ranges[str(i + 1) + " highest p_T"] = {
-                #     "fourmomenta": [
-                #         [0, 400 - 50 * i],
-                #         [-200 + 25 * i, 200 - 25 * i],
-                #         [-200 + 25 * i, 200 - 25 * i],
-                #         [-400 + 50 * i, 400 - 50 * i],
-                #     ],
-                #     "jetmomenta": [
-                #         [0, 200 - 25 * i],
-                #         [-torch.pi, torch.pi],
-                #         [-3, 3],
-                #         [0, 0.02],
-                #     ],
-                #     "StandardLogPtPhiEtaLogM2": [
-                #         [0.5 - 0.25 * i, 3 - 0.25 * i],
-                #         [-2, 2],
-                #         [-3, 3],
-                #         [-5, -4],
-                #     ],
-                # }
-
-                def st_select_pt(i):
+                def select_pt(i):
                     def ith_pt(constituents, index):
                         batch_ptr = get_ptr_from_batch(index)
                         idx = batch_ptr + i
                         selected_constituents = constituents[idx[:-1]]
-                        # selected_constituents = (
-                        #     selected_constituents
-                        #     - selected_constituents.mean(dim=0, keepdim=True)
-                        # ) / selected_constituents.std(dim=0, keepdim=True)
                         return selected_constituents.cpu().detach()
 
                     return ith_pt
 
-                self.obs[str(i + 1) + " highest p_T"] = st_select_pt(i)
+                self.obs[str(i + 1) + " highest p_T"] = select_pt(i)
                 self.obs_ranges[str(i + 1) + " highest p_T"] = {
-                    "fourmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
-                    "jetmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
-                    "StandardLogPtPhiEtaLogM2": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
+                    "fourmomenta": [
+                        [0, 400 - 50 * i],
+                        [-200 + 25 * i, 200 - 25 * i],
+                        [-200 + 25 * i, 200 - 25 * i],
+                        [-400 + 50 * i, 400 - 50 * i],
+                    ],
+                    "jetmomenta": [
+                        [0, 200 - 25 * i],
+                        [-torch.pi, torch.pi],
+                        [-3, 3],
+                        [0, 0.02],
+                    ],
+                    "StandardLogPtPhiEtaLogM2": [
+                        [0.5 - 0.25 * i, 3 - 0.25 * i],
+                        [-2, 2],
+                        [-3, 3],
+                        [-5, -4],
+                    ],
                 }
+
+                # def st_select_pt(i):
+                #     def ith_pt(constituents, index):
+                #         batch_ptr = get_ptr_from_batch(index)
+                #         idx = batch_ptr + i
+                #         selected_constituents = constituents[idx[:-1]]
+                #         # selected_constituents = (
+                #         #     selected_constituents
+                #         #     - selected_constituents.mean(dim=0, keepdim=True)
+                #         # ) / selected_constituents.std(dim=0, keepdim=True)
+                #         return selected_constituents.cpu().detach()
+
+                #     return ith_pt
+
+                # self.obs[str(i + 1) + " highest p_T"] = st_select_pt(i)
+                # self.obs_ranges[str(i + 1) + " highest p_T"] = {
+                #     "fourmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
+                #     "jetmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
+                #     "StandardLogPtPhiEtaLogM2": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
+                # }

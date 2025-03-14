@@ -161,9 +161,9 @@ class ConditionalTransformerCFM(EventCFM):
         condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
         condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
 
-        attention_mask = full_self_attention_mask(batch.x_gen_batch)
-        attention_mask_condition = full_self_attention_mask(batch.x_det_batch)
-        crossattention_mask = cross_attention_mask(batch.x_gen_batch, batch.x_det_batch)
+        attention_mask = xformers_sa_mask(batch.x_gen_batch)
+        attention_mask_condition = xformers_sa_mask(batch.x_det_batch)
+        crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
 
         v = self.net(
             x=x.unsqueeze(0),
@@ -268,12 +268,12 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
     def get_velocity(self, xt, t, batch):
 
         t_embedding = self.t_embedding(t)
-        # new_batch = add_start_tokens(batch)
-        # autoregressive_condition = self.get_velocity_condition(new_batch)
-        # new_batch.x_gen = autoregressive_condition
-        # condition = remove_extra(new_batch, batch.x_gen_ptr)
-        # input = torch.cat([xt, t_embedding, condition.x_gen], dim=-1)
-        input = torch.cat([xt, t_embedding], dim=-1)
+        new_batch = add_start_tokens(batch)
+        autoregressive_condition = self.get_velocity_condition(new_batch)
+        new_batch.x_gen = autoregressive_condition
+        condition = remove_extra(new_batch, batch.x_gen_ptr)
+        input = torch.cat([xt, t_embedding, condition.x_gen], dim=-1)
+        # input = torch.cat([xt, t_embedding], dim=-1)
 
         v = self.mlp(input)
         return v
@@ -285,8 +285,8 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         shape = (batch.x_gen_batch[-1].item() + 1, *batch.x_gen.shape[1:])
 
         for i in range(max_constituents):
-            # condition = self.get_velocity_condition(sequence)
-            # condition = condition[sequence.x_gen_ptr[1:] - 1]
+            condition = self.get_velocity_condition(sequence)
+            condition = condition[sequence.x_gen_ptr[1:] - 1]
 
             def velocity(t, xt_straight):
                 xt_straight = self.geometry._handle_periodic(xt_straight)
@@ -294,8 +294,8 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
                     shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
                 )
                 t_embedding = self.t_embedding(t)
-                # input = torch.cat([xt_straight, t_embedding, condition], dim=-1)
-                input = torch.cat([xt_straight, t_embedding], dim=-1)
+                input = torch.cat([xt_straight, t_embedding, condition], dim=-1)
+                # input = torch.cat([xt_straight, t_embedding], dim=-1)
 
                 v = self.mlp(input)
                 v = self.handle_velocity(v)
