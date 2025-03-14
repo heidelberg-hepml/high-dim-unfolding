@@ -503,9 +503,12 @@ class UnfoldingExperiment(BaseExperiment):
 
                 def select_pt(i):
                     def ith_pt(constituents, index):
+                        idx = []
                         batch_ptr = get_ptr_from_batch(index)
-                        idx = batch_ptr + i
-                        selected_constituents = constituents[idx[:-1]]
+                        for n in range(len(batch_ptr)):
+                            if i < batch_ptr[n + 1] - batch_ptr[n]:
+                                idx.append(batch_ptr[n] + i)
+                        selected_constituents = constituents[idx]
                         return selected_constituents.cpu().detach()
 
                     return ith_pt
