@@ -197,7 +197,7 @@ class CFM(nn.Module):
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
 
-        pt = get_pt(x0_fourmomenta)
+        pt = get_pt(x0_fourmomenta).unsqueeze(-1)
 
         x_perm = torch.argsort(pt, dim=0, descending=True)
         x0_fourmomenta = x0_fourmomenta.take_along_dim(x_perm, dim=0)

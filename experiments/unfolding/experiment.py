@@ -95,9 +95,12 @@ class UnfoldingExperiment(BaseExperiment):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating ZplusJetDataset from {data_path}")
         self._init_data(ZplusJetDataset, data_path)
-        LOGGER.info(f"Created ZplusJetDataset in {time.time() - t0:.2f} seconds")
+        LOGGER.info(
+            f"Created ZplusJetDataset with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
+        )
 
     def _init_data(self, Dataset, data_path):
+
         data = energyflow.zjets_delphes.load(
             "Herwig",
             num_data=self.cfg.data.length,
@@ -198,7 +201,6 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.data.embed_det_with_spurions,
             self.spurions,
         )
-
         self.train_data.create_data_list(
             det_particles[:train_idx],
             det_pids[:train_idx],
@@ -224,10 +226,6 @@ class UnfoldingExperiment(BaseExperiment):
             gen_mults[train_idx + val_idx :],
         )
 
-        LOGGER.info(
-            f"Constructed datasets with {train_idx} training events, {val_idx} validation events and {size - train_idx - val_idx} test events"
-        )
-
         # initialize cfm (might require data)
         self.model.init_physics(
             self.cfg.data.units,
@@ -251,13 +249,6 @@ class UnfoldingExperiment(BaseExperiment):
         )
         fit_det_data = det_particles[:train_idx][det_mask]
         self.model.condition_coordinates.init_fit(fit_det_data)
-
-        LOGGER.info(
-            f"Fitted gen data with mean {self.model.coordinates.transforms[-1].mean}, std {self.model.coordinates.transforms[-1].std}"
-        )
-        LOGGER.info(
-            f"Fitted det data with mean {self.model.condition_coordinates.transforms[-1].mean}, std {self.model.condition_coordinates.transforms[-1].std}"
-        )
 
         self.model.init_geometry()
 
