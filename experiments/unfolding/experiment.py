@@ -38,17 +38,23 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.data.embed_det_with_spurions = True
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.condition_s_channels = 0
+                self.cfg.model.net_condition.in_s_channels = 0
+                self.cfg.model.net_condition.out_mv_channels = (
+                    self.cfg.model.net.hidden_mv_channels
+                )
+                self.cfg.model.net_condition.out_s_channels = (
+                    self.cfg.model.net.hidden_s_channels
+                )
                 if self.cfg.data.pid_raw:
                     self.cfg.model.net.in_s_channels += 1
-                    self.cfg.model.net.condition_s_channels += 1
+                    self.cfg.model.net_condition.in_s_channels += 1
                 elif self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_s_channels += 6
-                    self.cfg.model.net.condition_s_channels += 6
+                    self.cfg.model.net_condition.in_s_channels += 6
                 if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net.condition_s_channels += 7
+                    self.cfg.model.net_condition.in_s_channels += 7
                 if not self.cfg.data.beam_token:
-                    self.cfg.model.net.condition_mv_channels += (
+                    self.cfg.model.net_condition.in_mv_channels += (
                         2
                         if (
                             self.cfg.data.two_beams
@@ -57,19 +63,20 @@ class UnfoldingExperiment(BaseExperiment):
                         else 1
                     )
                     if self.cfg.data.add_time_reference:
-                        self.cfg.model.net.condition_mv_channels += 1
+                        self.cfg.model.net_condition.in_mv_channels += 1
                 self.cfg.model.cfg_data = self.cfg.data
 
             elif self.cfg.modelname == "ConditionalTransformer":
                 self.cfg.data.embed_det_with_spurions = False
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.condition_channels = 4
+                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net_condition.out_channels = self.cfg.net.hidden_channels
                 if self.cfg.data.pid_raw:
                     self.cfg.model.net.in_channels += 1
-                    self.cfg.model.net.condition_channels += 1
+                    self.cfg.model.net_condition.in_channels += 1
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net.condition_channels += 6
+                    self.cfg.model.net_condition.in_channels += 6
             elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
                 self.cfg.data.embed_det_with_spurions = False
                 self.cfg.model.autoregressive_tr.in_channels = 4
@@ -357,7 +364,6 @@ class UnfoldingExperiment(BaseExperiment):
             )
             n_batches = len(loader)
         for i in range(n_batches):
-            t0 = time.time()
             batch = next(it).to(self.device)
             sample_batch = self.model.sample(
                 batch,
@@ -366,7 +372,6 @@ class UnfoldingExperiment(BaseExperiment):
             )
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
-            LOGGER.info(f"Sampled batch {i+1} in {time.time() - t0:.2f}s")
 
         if self.cfg.data.embed_det_with_spurions:
             if len(self.spurions) > 0:
@@ -511,11 +516,9 @@ class UnfoldingExperiment(BaseExperiment):
                         batch_ptr = get_ptr_from_batch(batch_idx)
                         other_batch_ptr = get_ptr_from_batch(other_batch_idx)
                         for n in range(len(batch_ptr) - 1):
-                            if (
-                                i < batch_ptr[n + 1] - batch_ptr[n]
-                                and i < other_batch_ptr[n + 1] - other_batch_ptr[n]
-                            ):
-                                idx.append(batch_ptr[n] + i)
+                            if i < batch_ptr[n + 1] - batch_ptr[n]:
+                                if i < other_batch_ptr[n + 1] - other_batch_ptr[n]:
+                                    idx.append(batch_ptr[n] + i)
                         selected_constituents = constituents[idx]
                         return selected_constituents.cpu().detach()
 

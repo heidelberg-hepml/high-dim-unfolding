@@ -44,11 +44,16 @@ class ZplusJetDataset(torch.utils.data.Dataset):
             gen_idx = torch.argsort(gen_pt, descending=True)
 
             if self.max_constituents > 0:
-                if gen_mults[i] < self.max_constituents:
+                if (
+                    gen_mults[i] < self.max_constituents
+                    or det_mults[i] < 2 * self.max_constituents
+                ):
                     continue
                 else:
                     gen_idx = gen_idx[: self.max_constituents]
                     gen_mults[i] = self.max_constituents
+                    det_idx = det_idx[: 2 * self.max_constituents]
+                    det_mults[i] = 2 * self.max_constituents
 
             det_event = det_event[det_idx]
             det_scalars = det_scalars[det_idx]

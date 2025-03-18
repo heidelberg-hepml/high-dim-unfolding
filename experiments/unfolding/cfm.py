@@ -14,6 +14,8 @@ import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.logger import LOGGER
 
+RANDOM_CONDITION = False
+
 
 def hutchinson_trace(x_out, x_in):
     # Hutchinson's trace Jacobian estimator, needs O(1) calls to autograd
@@ -129,6 +131,8 @@ class CFM(nn.Module):
             x0_straight, x1_straight, t
         )
         condition = self.get_velocity_condition(batch)
+        if RANDOM_CONDITION:
+            condition = torch.rand_like(condition)
         vp_straight = self.get_velocity(xt_straight, t, batch, condition)
 
         # evaluate conditional flow matching objective
@@ -160,6 +164,8 @@ class CFM(nn.Module):
         sample_batch = batch.clone()
 
         condition = self.get_velocity_condition(batch)
+        if RANDOM_CONDITION:
+            condition = torch.rand_like(condition)
 
         def velocity(t, xt_straight):
             xt_straight = self.geometry._handle_periodic(xt_straight)
@@ -200,8 +206,8 @@ class CFM(nn.Module):
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
 
+        # sort generated events by pT
         pt = get_pt(x0_fourmomenta).unsqueeze(-1)
-
         x_perm = torch.argsort(pt, dim=0, descending=True)
         x0_fourmomenta = x0_fourmomenta.take_along_dim(x_perm, dim=0)
         index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)

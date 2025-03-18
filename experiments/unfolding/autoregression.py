@@ -60,12 +60,8 @@ def insert_tokens(batch, tokens, start=False):
 
 def add_start_tokens(batch):
     new_batch = batch.clone()
-    sequence = new_batch.x_gen
-    ptr = new_batch.x_gen_ptr
 
-    batchsize = len(ptr) - 1
-
-    start_tokens = torch.stack([START_TOKEN] * batchsize, dim=0).to(sequence.device)
+    start_tokens = new_batch.x_det[new_batch.x_det_ptr[:-1]]
     new_batch = insert_tokens(new_batch, start_tokens, True)
 
     return new_batch

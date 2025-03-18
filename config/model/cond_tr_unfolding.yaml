@@ -4,11 +4,22 @@ net:
   _target_: experiments.baselines.ConditionalTransformer
 
   in_channels: 4
-  condition_channels: 4
   out_channels: 4
   hidden_channels: 32
 
   num_blocks: 4
-  num_condition_blocks: 4
   num_heads: 4
   dropout_prob: null
+
+net_condition:
+  _target_: experiments.baselines.Transformer
+
+  in_channels: 4
+  out_channels: 4
+  hidden_channels: 32
+
+  num_blocks: 4
+  num_heads: 4
+  dropout_prob: null
+
+  pos_encoding: false

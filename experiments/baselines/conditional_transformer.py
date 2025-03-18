@@ -177,11 +177,9 @@ class ConditionalTransformer(nn.Module):
     def __init__(
         self,
         in_channels: int,
-        condition_channels: int,
         out_channels: int,
         hidden_channels: int,
         num_blocks: int = 4,
-        num_condition_blocks: int = 4,
         num_heads: int = 8,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,
@@ -191,20 +189,7 @@ class ConditionalTransformer(nn.Module):
         super().__init__()
         self.checkpoint_blocks = checkpoint_blocks
         self.linear_in = nn.Linear(in_channels, hidden_channels)
-        self.condition_linear_in = nn.Linear(condition_channels, hidden_channels)
 
-        self.condition_blocks = nn.ModuleList(
-            [
-                BaselineTransformerBlock(
-                    channels=hidden_channels,
-                    num_heads=num_heads,
-                    increase_hidden_channels=increase_hidden_channels,
-                    multi_query=multi_query,
-                    dropout_prob=dropout_prob,
-                )
-                for _ in range(num_condition_blocks)
-            ]
-        )
         self.blocks = nn.ModuleList(
             [
                 ConditionalTransformerBlock(
@@ -247,16 +232,3 @@ class ConditionalTransformer(nn.Module):
                 )
 
         return self.linear_out(x)
-
-    def forward_condition(
-        self, condition: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
-    ) -> torch.Tensor:
-        condition = self.condition_linear_in(condition)
-        for block in self.condition_blocks:
-            if self.checkpoint_blocks:
-                condition = checkpoint(
-                    block, inputs=condition, attention_mask=attention_mask
-                )
-            else:
-                condition = block(condition, attention_mask=attention_mask)
-        return condition

@@ -96,9 +96,8 @@ class ConditionalCFMForGA(EventCFM):
 
     def get_velocity_condition(self, batch):
         attention_mask = xformers_sa_mask(batch.x_det_batch)
-        condition_mv, condition_s = self.net.forward_condition(
-            batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0), attention_mask
-        )
+        mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
+        condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
         return condition_mv, condition_s
 
     def get_velocity(self, xt, t, batch, condition):
@@ -144,6 +143,7 @@ class ConditionalTransformerCFM(EventCFM):
     def __init__(
         self,
         net,
+        net_condition,
         cfm,
         odeint,
     ):
@@ -153,12 +153,13 @@ class ConditionalTransformerCFM(EventCFM):
             odeint,
         )
         self.net = net
+        self.net_condition = net_condition
 
     def get_velocity_condition(self, batch):
         condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
         condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
         attention_mask = xformers_sa_mask(batch.x_det_batch)
-        processed_condition = self.net.forward_condition(
+        processed_condition = self.net_condition(
             condition=condition.unsqueeze(0),
             attention_mask=attention_mask,
         )
@@ -190,6 +191,7 @@ class ConditionalGATrCFM(ConditionalCFMForGA):
     def __init__(
         self,
         net,
+        net_condition,
         cfm,
         scalar_dims,
         odeint,
@@ -216,6 +218,7 @@ class ConditionalGATrCFM(ConditionalCFMForGA):
             odeint,
         )
         self.net = net
+        self.net_condition = net_condition
 
     def embed_into_ga(self, fourmomenta, scalars, t):
 
@@ -254,30 +257,36 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
 
     def get_velocity_condition(self, batch):
 
-        x = self.coordinates.fourmomenta_to_x(batch.x_gen)
-        condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
-        condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
+        new_batch = add_start_tokens(batch)
 
-        attention_mask = causal_self_attention_mask(batch.x_gen_batch)
-        attention_mask_condition = full_self_attention_mask(batch.x_det_batch)
-        crossattention_mask = cross_attention_mask(batch.x_gen_batch, batch.x_det_batch)
+        x = self.coordinates.fourmomenta_to_x(new_batch.x_gen)
+        condition_x = self.condition_coordinates.fourmomenta_to_x(new_batch.x_det)
+        condition = torch.cat([condition_x, new_batch.scalars_det], dim=-1)
+
+        attention_mask = causal_self_attention_mask(new_batch.x_gen_batch)
+        attention_mask_condition = full_self_attention_mask(new_batch.x_det_batch)
+        crossattention_mask = cross_attention_mask(
+            new_batch.x_gen_batch, new_batch.x_det_batch
+        )
+
+        processed_condition = self.autoregressive_tr.forward_condition(
+            condition.unsqueeze(0), attention_mask_condition
+        )
 
         autoregressive_condition = self.autoregressive_tr(
             x=x.unsqueeze(0),
-            condition=condition.unsqueeze(0),
+            processed_condition=processed_condition,
             attention_mask=attention_mask,
-            attention_mask_condition=attention_mask_condition,
             crossattention_mask=crossattention_mask,
         ).squeeze(0)
-        return autoregressive_condition
+        new_batch.x_gen = autoregressive_condition
+        return new_batch
 
-    def get_velocity(self, xt, t, batch):
+    def get_velocity(self, xt, t, batch, batch_with_cond):
 
         t_embedding = self.t_embedding(t)
-        new_batch = add_start_tokens(batch)
-        autoregressive_condition = self.get_velocity_condition(new_batch)
-        new_batch.x_gen = autoregressive_condition
-        condition = remove_extra(new_batch, batch.x_gen_ptr)
+
+        condition = remove_extra(batch_with_cond, batch.x_gen_ptr)
         input = torch.cat([xt, t_embedding, condition.x_gen], dim=-1)
         # input = torch.cat([xt, t_embedding], dim=-1)
 

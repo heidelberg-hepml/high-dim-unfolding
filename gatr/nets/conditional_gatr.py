@@ -65,60 +65,33 @@ class ConditionalGATr(nn.Module):
     def __init__(
         self,
         in_mv_channels: int,
-        condition_mv_channels: int,
         out_mv_channels: int,
         hidden_mv_channels: int,
         in_s_channels: Optional[int],
-        condition_s_channels: Optional[int],
         out_s_channels: Optional[int],
         hidden_s_channels: Optional[int],
         attention: SelfAttentionConfig,
         crossattention: CrossAttentionConfig,
-        attention_condition: SelfAttentionConfig,
         mlp: MLPConfig,
         num_blocks: int = 10,
-        num_condition_blocks: int = 10,
         checkpoint_blocks: bool = False,
         dropout_prob: Optional[float] = None,
         double_layernorm: bool = False,
         **kwargs,
     ) -> None:
         super().__init__()
-        self.linear_in_condition = EquiLinear(
-            condition_mv_channels,
-            hidden_mv_channels,
-            in_s_channels=condition_s_channels,
-            out_s_channels=hidden_s_channels,
-        )
+
         self.linear_in = EquiLinear(
             in_mv_channels,
             hidden_mv_channels,
             in_s_channels=in_s_channels,
             out_s_channels=hidden_s_channels,
         )
-        self.linear_condition = EquiLinear(
-            condition_mv_channels,
-            hidden_mv_channels,
-            in_s_channels=condition_s_channels,
-            out_s_channels=hidden_s_channels,
-        )
+
         attention = SelfAttentionConfig.cast(attention)
         crossattention = CrossAttentionConfig.cast(crossattention)
-        attention_condition = SelfAttentionConfig.cast(attention_condition)
         mlp = MLPConfig.cast(mlp)
-        self.condition_blocks = nn.ModuleList(
-            [
-                GATrBlock(
-                    mv_channels=hidden_mv_channels,
-                    s_channels=hidden_s_channels,
-                    attention=attention_condition,
-                    mlp=mlp,
-                    dropout_prob=dropout_prob,
-                    double_layernorm=double_layernorm,
-                )
-                for _ in range(num_condition_blocks)
-            ]
-        )
+
         self.blocks = nn.ModuleList(
             [
                 ConditionalGATrBlock(
@@ -142,35 +115,6 @@ class ConditionalGATr(nn.Module):
             out_s_channels=out_s_channels,
         )
         self._checkpoint_blocks = checkpoint_blocks
-
-    def forward_condition(
-        self,
-        multivectors_condition: torch.Tensor,
-        scalars_condition: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
-    ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
-
-        # Encode condition with GATr blocks
-        c_mv, c_s = self.linear_in_condition(
-            multivectors_condition, scalars=scalars_condition
-        )
-        for block in self.condition_blocks:
-            if self._checkpoint_blocks:
-                c_mv, c_s = checkpoint(
-                    block,
-                    c_mv,
-                    use_reentrant=False,
-                    scalars=c_s,
-                    attention_mask=attention_mask,
-                )
-            else:
-                c_mv, c_s = block(
-                    c_mv,
-                    scalars=c_s,
-                    attention_mask=attention_mask,
-                )
-
-        return c_mv, c_s
 
     def forward(
         self,
