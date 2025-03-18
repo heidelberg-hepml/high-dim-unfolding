@@ -70,7 +70,9 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.data.embed_det_with_spurions = False
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net_condition.in_channels = 4
-                self.cfg.model.net_condition.out_channels = self.cfg.net.hidden_channels
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.net.hidden_channels
+                )
                 if self.cfg.data.pid_raw:
                     self.cfg.model.net.in_channels += 1
                     self.cfg.model.net_condition.in_channels += 1
@@ -80,6 +82,10 @@ class UnfoldingExperiment(BaseExperiment):
             elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
                 self.cfg.data.embed_det_with_spurions = False
                 self.cfg.model.autoregressive_tr.in_channels = 4
+                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.autoregressive_tr.hidden_channels
+                )
                 self.cfg.model.autoregressive_tr.out_channels = (
                     self.cfg.model.autoregressive_tr.hidden_channels
                 )
@@ -502,11 +508,14 @@ class UnfoldingExperiment(BaseExperiment):
                 "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
             }
 
-        if self.cfg.data.max_constituents > 0 or self.cfg.evaluation.n_pt > 0:
-            if self.cfg.data.max_constituents > 0:
-                n_pt = self.cfg.data.max_constituents
+        if self.cfg.data.max_constituents > 0 or self.cfg.plotting.n_pt > 0:
+            if self.cfg.plotting.n_pt > 0:
+                if self.cfg.plotting.n_pt <= self.cfg.data.max_constituents:
+                    n_pt = self.cfg.plotting.n_pt
+                else:
+                    n_pt = self.cfg.data.max_constituents
             else:
-                n_pt = self.cfg.evaluation.n_pt
+                n_pt = self.cfg.data.max_constituents
 
             for i in range(n_pt):
 

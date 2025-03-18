@@ -160,7 +160,7 @@ class ConditionalTransformerCFM(EventCFM):
         condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
         attention_mask = xformers_sa_mask(batch.x_det_batch)
         processed_condition = self.net_condition(
-            condition=condition.unsqueeze(0),
+            inputs=condition.unsqueeze(0),
             attention_mask=attention_mask,
         )
         return processed_condition
@@ -243,6 +243,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
     def __init__(
         self,
         autoregressive_tr,
+        net_condition,
         mlp,
         cfm,
         odeint,
@@ -253,11 +254,14 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
             odeint,
         )
         self.autoregressive_tr = autoregressive_tr
+        self.net_condition = net_condition
         self.mlp = mlp
 
-    def get_velocity_condition(self, batch):
-
-        new_batch = add_start_tokens(batch)
+    def get_velocity_condition(self, batch, add_start=True):
+        if add_start:
+            new_batch = add_start_tokens(batch)
+        else:
+            new_batch = batch.clone()
 
         x = self.coordinates.fourmomenta_to_x(new_batch.x_gen)
         condition_x = self.condition_coordinates.fourmomenta_to_x(new_batch.x_det)
@@ -269,7 +273,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
             new_batch.x_gen_batch, new_batch.x_det_batch
         )
 
-        processed_condition = self.autoregressive_tr.forward_condition(
+        processed_condition = self.net_condition(
             condition.unsqueeze(0), attention_mask_condition
         )
 
@@ -300,8 +304,8 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         shape = (batch.x_gen_batch[-1].item() + 1, *batch.x_gen.shape[1:])
 
         for i in range(max_constituents):
-            condition = self.get_velocity_condition(sequence)
-            condition = condition[sequence.x_gen_ptr[1:] - 1]
+            new_batch = self.get_velocity_condition(sequence)
+            condition = new_batch.x_gen[sequence.x_gen_ptr[1:] - 1]
 
             def velocity(t, xt_straight):
                 xt_straight = self.geometry._handle_periodic(xt_straight)

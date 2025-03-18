@@ -65,7 +65,6 @@ evaluation:
  n_batches: 100
  eval_loss: ["train", "val", "test"]
  observables: ["jet"]
- n_pt: 5
 
 plot: true
 plotting:
@@ -73,6 +72,7 @@ plotting:
  fourmomenta: true
  jetmomenta: true
  preprocessed: true
+ n_pt: 5
 
 defaults:
  - model: cond_tr_unfolding

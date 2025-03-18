@@ -70,7 +70,7 @@ def add_start_tokens(batch):
 def start_sequence(batch):
     new_batch = batch.clone()
     batchsize = len(new_batch.x_gen_ptr) - 1
-    start_tokens = torch.stack([START_TOKEN] * batchsize, dim=0).to(batch.x_gen.device)
+    start_tokens = new_batch.x_det[new_batch.x_det_ptr[:-1]]
     ptr = torch.arange(batchsize + 1, device=batch.x_gen.device)
     batch_idx = torch.arange(batchsize, device=batch.x_gen.device)
     new_batch.x_gen = start_tokens
