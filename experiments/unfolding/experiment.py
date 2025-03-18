@@ -100,7 +100,7 @@ class UnfoldingExperiment(BaseExperiment):
         )
 
     def _init_data(self, Dataset, data_path):
-
+        t0 = time.time()
         data = energyflow.zjets_delphes.load(
             "Herwig",
             num_data=self.cfg.data.length,
@@ -108,7 +108,7 @@ class UnfoldingExperiment(BaseExperiment):
             cache_dir=data_path,
             include_keys=["particles", "mults", "jets"],
         )
-
+        LOGGER.info(f"Loaded data in {time.time() - t0:.2f} seconds")
         split = self.cfg.data.train_test_val
         size = len(data["sim_particles"])
         train_idx = int(split[0] * size)
@@ -357,6 +357,7 @@ class UnfoldingExperiment(BaseExperiment):
             )
             n_batches = len(loader)
         for i in range(n_batches):
+            t0 = time.time()
             batch = next(it).to(self.device)
             sample_batch = self.model.sample(
                 batch,
@@ -365,6 +366,7 @@ class UnfoldingExperiment(BaseExperiment):
             )
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
+            LOGGER.info(f"Sampled batch {i+1} in {time.time() - t0:.2f}s")
 
         if self.cfg.data.embed_det_with_spurions:
             if len(self.spurions) > 0:
@@ -402,6 +404,7 @@ class UnfoldingExperiment(BaseExperiment):
         path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
         os.makedirs(os.path.join(path), exist_ok=True)
         LOGGER.info(f"Creating plots in {path}")
+        t0 = time.time()
 
         if self.cfg.modelname == "ConditionalTransformer":
             model_label = "CondTr"
@@ -452,6 +455,7 @@ class UnfoldingExperiment(BaseExperiment):
                 plotter.plot_preprocessed(
                     filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
                 )
+        LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
     def _init_loss(self):
         # loss defined manually within the model
@@ -482,7 +486,7 @@ class UnfoldingExperiment(BaseExperiment):
 
         if "jet" in self.cfg.evaluation.observables:
 
-            def form_jet(constituents, batch_idx):
+            def form_jet(constituents, batch_idx, other_batch_idx=None):
                 jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
                 return jet.cpu().detach()
 
@@ -502,11 +506,15 @@ class UnfoldingExperiment(BaseExperiment):
             for i in range(n_pt):
 
                 def select_pt(i):
-                    def ith_pt(constituents, index):
+                    def ith_pt(constituents, batch_idx, other_batch_idx):
                         idx = []
-                        batch_ptr = get_ptr_from_batch(index)
-                        for n in range(len(batch_ptr)):
-                            if i < batch_ptr[n + 1] - batch_ptr[n]:
+                        batch_ptr = get_ptr_from_batch(batch_idx)
+                        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+                        for n in range(len(batch_ptr) - 1):
+                            if (
+                                i < batch_ptr[n + 1] - batch_ptr[n]
+                                and i < other_batch_ptr[n + 1] - other_batch_ptr[n]
+                            ):
                                 idx.append(batch_ptr[n] + i)
                         selected_constituents = constituents[idx]
                         return selected_constituents.cpu().detach()
@@ -534,23 +542,3 @@ class UnfoldingExperiment(BaseExperiment):
                         [-5, -4],
                     ],
                 }
-
-                # def st_select_pt(i):
-                #     def ith_pt(constituents, index):
-                #         batch_ptr = get_ptr_from_batch(index)
-                #         idx = batch_ptr + i
-                #         selected_constituents = constituents[idx[:-1]]
-                #         # selected_constituents = (
-                #         #     selected_constituents
-                #         #     - selected_constituents.mean(dim=0, keepdim=True)
-                #         # ) / selected_constituents.std(dim=0, keepdim=True)
-                #         return selected_constituents.cpu().detach()
-
-                #     return ith_pt
-
-                # self.obs[str(i + 1) + " highest p_T"] = st_select_pt(i)
-                # self.obs_ranges[str(i + 1) + " highest p_T"] = {
-                #     "fourmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
-                #     "jetmomenta": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
-                #     "StandardLogPtPhiEtaLogM2": [[-3, 3], [-3, 3], [-3, 3], [-3, 3]],
-                # }

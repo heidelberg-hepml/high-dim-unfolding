@@ -223,20 +223,10 @@ class ConditionalTransformer(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        condition: torch.Tensor,
+        processed_condition: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        attention_mask_condition: Optional[torch.Tensor] = None,
         crossattention_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-
-        condition = self.condition_linear_in(condition)
-        for block in self.condition_blocks:
-            if self.checkpoint_blocks:
-                condition = checkpoint(
-                    block, inputs=condition, attention_mask=attention_mask_condition
-                )
-            else:
-                condition = block(condition, attention_mask=attention_mask_condition)
 
         x = self.linear_in(x)
         for block in self.blocks:
@@ -244,16 +234,29 @@ class ConditionalTransformer(nn.Module):
                 x = checkpoint(
                     block,
                     inputs=x,
-                    condition=condition,
+                    condition=processed_condition,
                     attention_mask=attention_mask,
                     crossattention_mask=crossattention_mask,
                 )
             else:
                 x = block(
                     x,
-                    condition,
+                    processed_condition,
                     attention_mask=attention_mask,
                     crossattention_mask=crossattention_mask,
                 )
 
         return self.linear_out(x)
+
+    def forward_condition(
+        self, condition: torch.Tensor, attention_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
+        condition = self.condition_linear_in(condition)
+        for block in self.condition_blocks:
+            if self.checkpoint_blocks:
+                condition = checkpoint(
+                    block, inputs=condition, attention_mask=attention_mask
+                )
+            else:
+                condition = block(condition, attention_mask=attention_mask)
+        return condition

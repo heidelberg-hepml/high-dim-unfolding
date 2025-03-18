@@ -128,7 +128,8 @@ class CFM(nn.Module):
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
-        vp_straight = self.get_velocity(xt_straight, t, batch)
+        condition = self.get_velocity_condition(batch)
+        vp_straight = self.get_velocity(xt_straight, t, batch, condition)
 
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(
@@ -158,12 +159,14 @@ class CFM(nn.Module):
 
         sample_batch = batch.clone()
 
+        condition = self.get_velocity_condition(batch)
+
         def velocity(t, xt_straight):
             xt_straight = self.geometry._handle_periodic(xt_straight)
             t = t * torch.ones(
                 shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
             )
-            vt_straight = self.get_velocity(xt_straight, t, batch)
+            vt_straight = self.get_velocity(xt_straight, t, batch, condition)
             vt_straight = self.handle_velocity(vt_straight)
             return vt_straight
 

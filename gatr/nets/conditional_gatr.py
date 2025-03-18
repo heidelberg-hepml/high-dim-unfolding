@@ -143,6 +143,35 @@ class ConditionalGATr(nn.Module):
         )
         self._checkpoint_blocks = checkpoint_blocks
 
+    def forward_condition(
+        self,
+        multivectors_condition: torch.Tensor,
+        scalars_condition: Optional[torch.Tensor] = None,
+        attention_mask: Optional[torch.Tensor] = None,
+    ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
+
+        # Encode condition with GATr blocks
+        c_mv, c_s = self.linear_in_condition(
+            multivectors_condition, scalars=scalars_condition
+        )
+        for block in self.condition_blocks:
+            if self._checkpoint_blocks:
+                c_mv, c_s = checkpoint(
+                    block,
+                    c_mv,
+                    use_reentrant=False,
+                    scalars=c_s,
+                    attention_mask=attention_mask,
+                )
+            else:
+                c_mv, c_s = block(
+                    c_mv,
+                    scalars=c_s,
+                    attention_mask=attention_mask,
+                )
+
+        return c_mv, c_s
+
     def forward(
         self,
         multivectors: torch.Tensor,
@@ -150,7 +179,6 @@ class ConditionalGATr(nn.Module):
         scalars: Optional[torch.Tensor] = None,
         scalars_condition: Optional[torch.Tensor] = None,
         attention_mask: Optional[torch.Tensor] = None,
-        attention_mask_condition: Optional[torch.Tensor] = None,
         crossattention_mask: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
         """Forward pass of the network.
@@ -180,26 +208,6 @@ class ConditionalGATr(nn.Module):
             Output scalars, if scalars are provided. Otherwise None.
         """
 
-        # Encode condition with GATr blocks
-        c_mv, c_s = self.linear_in_condition(
-            multivectors_condition, scalars=scalars_condition
-        )
-        for block in self.condition_blocks:
-            if self._checkpoint_blocks:
-                c_mv, c_s = checkpoint(
-                    block,
-                    c_mv,
-                    use_reentrant=False,
-                    scalars=c_s,
-                    attention_mask=attention_mask_condition,
-                )
-            else:
-                c_mv, c_s = block(
-                    c_mv,
-                    scalars=c_s,
-                    attention_mask=attention_mask_condition,
-                )
-
         # Decode condition into main track with
         h_mv, h_s = self.linear_in(multivectors, scalars=scalars)
         for block in self.blocks:
@@ -209,8 +217,8 @@ class ConditionalGATr(nn.Module):
                     h_mv,
                     use_reentrant=False,
                     scalars=h_s,
-                    multivectors_condition=c_mv,
-                    scalars_condition=c_s,
+                    multivectors_condition=multivectors_condition,
+                    scalars_condition=scalars_condition,
                     attention_mask=attention_mask,
                     crossattention_mask=crossattention_mask,
                 )
@@ -218,8 +226,8 @@ class ConditionalGATr(nn.Module):
                 h_mv, h_s = block(
                     h_mv,
                     scalars=h_s,
-                    multivectors_condition=c_mv,
-                    scalars_condition=c_s,
+                    multivectors_condition=multivectors_condition,
+                    scalars_condition=scalars_condition,
                     attention_mask=attention_mask,
                     crossattention_mask=crossattention_mask,
                 )

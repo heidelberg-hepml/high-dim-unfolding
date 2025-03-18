@@ -94,28 +94,30 @@ class ConditionalCFMForGA(EventCFM):
         assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
         self.cfg_data = cfg_data
 
-    def get_velocity(self, xt, t, batch):
+    def get_velocity_condition(self, batch):
+        attention_mask = xformers_sa_mask(batch.x_det_batch)
+        condition_mv, condition_s = self.net.forward_condition(
+            batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0), attention_mask
+        )
+        return condition_mv, condition_s
+
+    def get_velocity(self, xt, t, batch, condition):
         assert self.coordinates is not None
 
         fourmomenta = self.coordinates.x_to_fourmomenta(xt)
+        condition_mv, condition_s = condition
 
         mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
-        condition_mv, condition_s = batch.x_det, batch.scalars_det
 
-        # attention_mask = full_self_attention_mask(batch.x_gen_batch)
-        # attention_mask_condition = full_self_attention_mask(batch.x_det_batch)
-        # crossattention_mask = cross_attention_mask(batch.x_gen_batch, batch.x_det_batch)
         attention_mask = xformers_sa_mask(batch.x_gen_batch)
-        attention_mask_condition = xformers_sa_mask(batch.x_det_batch)
         crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),
-            multivectors_condition=condition_mv.unsqueeze(0),
+            multivectors_condition=condition_mv,
             scalars=s.unsqueeze(0),
-            scalars_condition=condition_s.unsqueeze(0),
+            scalars_condition=condition_s,
             attention_mask=attention_mask,
-            attention_mask_condition=attention_mask_condition,
             crossattention_mask=crossattention_mask,
         )
         mv_outputs = mv_outputs.squeeze(0)
@@ -152,24 +154,28 @@ class ConditionalTransformerCFM(EventCFM):
         )
         self.net = net
 
-    def get_velocity(self, xt, t, batch):
+    def get_velocity_condition(self, batch):
+        condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
+        condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
+        attention_mask = xformers_sa_mask(batch.x_det_batch)
+        processed_condition = self.net.forward_condition(
+            condition=condition.unsqueeze(0),
+            attention_mask=attention_mask,
+        )
+        return processed_condition
 
+    def get_velocity(self, xt, t, batch, processed_condition):
         t_embedding = self.t_embedding(t)
 
         x = torch.cat([xt, batch.scalars_gen, t_embedding], dim=-1)
 
-        condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
-        condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
-
         attention_mask = xformers_sa_mask(batch.x_gen_batch)
-        attention_mask_condition = xformers_sa_mask(batch.x_det_batch)
         crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
 
         v = self.net(
             x=x.unsqueeze(0),
-            condition=condition.unsqueeze(0),
+            processed_condition=processed_condition,
             attention_mask=attention_mask,
-            attention_mask_condition=attention_mask_condition,
             crossattention_mask=crossattention_mask,
         )
         v = v.squeeze(0)
