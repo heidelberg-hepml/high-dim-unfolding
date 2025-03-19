@@ -84,17 +84,16 @@ def remove_extra(batch, true_ptr, remove_start=False):
     seq = new_batch.x_gen
     ptr = new_batch.x_gen_ptr
 
-    idx = torch.zeros(
-        seq.shape[0],
-        dtype=torch.bool,
-        device=seq.device,
+    n_constituents = true_ptr[1:] - true_ptr[:-1]  # Compute lengths of each segment
+    start_indices = ptr[:-1] + remove_start  # Adjust for remove_start flag
+    ranges = torch.arange(seq.shape[0], device=seq.device).unsqueeze(0)
+
+    # Create a mask by checking which indices fall in valid ranges
+    mask = (ranges >= start_indices.unsqueeze(1)) & (
+        ranges < (start_indices + n_constituents).unsqueeze(1)
     )
-    for i in range(len(ptr) - 1):
-        n_constituents = true_ptr[i + 1] - true_ptr[i]
-        if remove_start:
-            idx[ptr[i] + 1 : ptr[i] + 1 + n_constituents] = True
-        else:
-            idx[ptr[i] : ptr[i] + n_constituents] = True
+    idx = mask.any(dim=0)  # Collapse across rows to get the final index mask
+
     new_batch.x_gen = seq[idx]
     new_batch.x_gen_ptr = true_ptr.clone()
     new_batch.x_gen_batch = get_batch_from_ptr(new_batch.x_gen_ptr)

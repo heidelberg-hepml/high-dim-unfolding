@@ -304,7 +304,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         shape = (batch.x_gen_batch[-1].item() + 1, *batch.x_gen.shape[1:])
 
         for i in range(max_constituents):
-            new_batch = self.get_velocity_condition(sequence)
+            new_batch = self.get_velocity_condition(sequence, add_start=False)
             condition = new_batch.x_gen[sequence.x_gen_ptr[1:] - 1]
 
             def velocity(t, xt_straight):

@@ -44,6 +44,8 @@ class ZplusJetDataset(torch.utils.data.Dataset):
             gen_idx = torch.argsort(gen_pt, descending=True)
 
             if self.max_constituents > 0:
+                # keep only the events with at least max_constituents
+                # keep 2 times more det than gen
                 if (
                     gen_mults[i] < self.max_constituents
                     or det_mults[i] < 2 * self.max_constituents

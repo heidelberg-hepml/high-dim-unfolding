@@ -36,7 +36,7 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             # dynamically set channel dimensions
             if self.cfg.modelname == "ConditionalGATr":
-                self.cfg.data.embed_det_with_spurions = True
+                self.cfg.data.embed_det_in_GA = True
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
                 self.cfg.model.net_condition.in_s_channels = 0
                 self.cfg.model.net_condition.out_mv_channels = (
@@ -67,7 +67,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.cfg_data = self.cfg.data
 
             elif self.cfg.modelname == "ConditionalTransformer":
-                self.cfg.data.embed_det_with_spurions = False
+                self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net_condition.in_channels = 4
                 self.cfg.model.net_condition.out_channels = (
@@ -80,7 +80,7 @@ class UnfoldingExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
             elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
-                self.cfg.data.embed_det_with_spurions = False
+                self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.autoregressive_tr.in_channels = 4
                 self.cfg.model.net_condition.in_channels = 4
                 self.cfg.model.net_condition.out_channels = (
@@ -185,7 +185,7 @@ class UnfoldingExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        if self.cfg.data.embed_det_with_spurions:
+        if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
             self.spurions = embed_spurions(
                 self.cfg.data.beam_reference,
                 self.cfg.data.add_time_reference,
@@ -199,19 +199,19 @@ class UnfoldingExperiment(BaseExperiment):
         self.train_data = Dataset(
             self.cfg.data.max_constituents,
             self.dtype,
-            self.cfg.data.embed_det_with_spurions,
+            self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.val_data = Dataset(
             self.cfg.data.max_constituents,
             self.dtype,
-            self.cfg.data.embed_det_with_spurions,
+            self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.test_data = Dataset(
             self.cfg.data.max_constituents,
             self.dtype,
-            self.cfg.data.embed_det_with_spurions,
+            self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.train_data.create_data_list(
@@ -379,8 +379,8 @@ class UnfoldingExperiment(BaseExperiment):
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
 
-        if self.cfg.data.embed_det_with_spurions:
-            if len(self.spurions) > 0:
+        if self.cfg.data.embed_det_in_GA:
+            if self.spurions is not None and len(self.spurions) > 0:
                 for data in samples:
                     data.x_det = extract_vector(
                         data.x_det[: -len(self.spurions)]
@@ -389,6 +389,11 @@ class UnfoldingExperiment(BaseExperiment):
                     data.x_det = extract_vector(
                         data.x_det[: -len(self.spurions)]
                     ).squeeze(-2)
+            else:
+                for data in samples:
+                    data.x_det = extract_vector(data.x_det).squeeze(-2)
+                for data in targets:
+                    data.x_det = extract_vector(data.x_det).squeeze(-2)
 
         self.data_raw["gen"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
@@ -501,8 +506,8 @@ class UnfoldingExperiment(BaseExperiment):
                 jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
                 return jet.cpu().detach()
 
-            self.obs["jet"] = form_jet
-            self.obs_ranges["jet"] = {
+            self.obs["\mathrm{ jet }"] = form_jet
+            self.obs_ranges["\mathrm{ jet }"] = {
                 "fourmomenta": [[0, 1000], [-400, 400], [-400, 400], [-750, 750]],
                 "jetmomenta": [[0, 600], [-torch.pi, torch.pi], [-3, 3], [0, 600]],
                 "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
@@ -510,7 +515,10 @@ class UnfoldingExperiment(BaseExperiment):
 
         if self.cfg.data.max_constituents > 0 or self.cfg.plotting.n_pt > 0:
             if self.cfg.plotting.n_pt > 0:
-                if self.cfg.plotting.n_pt <= self.cfg.data.max_constituents:
+                if (
+                    self.cfg.plotting.n_pt <= self.cfg.data.max_constituents
+                    or self.cfg.data.max_constituents == -1
+                ):
                     n_pt = self.cfg.plotting.n_pt
                 else:
                     n_pt = self.cfg.data.max_constituents
@@ -533,8 +541,8 @@ class UnfoldingExperiment(BaseExperiment):
 
                     return ith_pt
 
-                self.obs[str(i + 1) + " highest p_T"] = select_pt(i)
-                self.obs_ranges[str(i + 1) + " highest p_T"] = {
+                self.obs[str(i + 1) + "\mathrm{ highest } p_T"] = select_pt(i)
+                self.obs_ranges[str(i + 1) + "\mathrm{ highest } p_T"] = {
                     "fourmomenta": [
                         [0, 400 - 50 * i],
                         [-200 + 25 * i, 200 - 25 * i],

@@ -16,6 +16,7 @@ data:
  mass: 0.1
  max_num_particles: 152
  max_constituents: -1
+ add_spurions: true
  beam_reference: xyplane
  two_beams: true
  beam_token: true

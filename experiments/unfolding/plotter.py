@@ -211,7 +211,7 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
             det_lvl = coords.fourmomenta_to_x(det_lvl)
             model = coords.fourmomenta_to_x(model)
             obs_names = [
-                "p_{T," + name + "}",
+                r"p_{T," + name + "}",
                 "\phi_{" + name + "}",
                 "\eta_{" + name + "}",
                 "m_{" + name + "}",
@@ -274,14 +274,7 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
             model = coords.fourmomenta_to_x(model)
 
             obs_names = [
-                r"\text{"
-                + coords.__class__.__name__
-                + " coord(}"
-                + str(i + 1)
-                + r"\text{) "
-                + name
-                + "}"
-                for i in range(4)
+                r"\text{FM coord }(" + str(i + 1) + ")" + name for i in range(4)
             ]
             xranges = exp.obs_ranges[name][coords.__class__.__name__]
             for channel in range(4):
