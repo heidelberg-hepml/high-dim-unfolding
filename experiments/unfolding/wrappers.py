@@ -94,7 +94,7 @@ class ConditionalCFMForGA(EventCFM):
         assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
         self.cfg_data = cfg_data
 
-    def get_velocity_condition(self, batch):
+    def get_condition(self, batch):
         attention_mask = xformers_sa_mask(batch.x_det_batch)
         mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
         condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
@@ -155,7 +155,7 @@ class ConditionalTransformerCFM(EventCFM):
         self.net = net
         self.net_condition = net_condition
 
-    def get_velocity_condition(self, batch):
+    def get_condition(self, batch):
         condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
         condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
         attention_mask = xformers_sa_mask(batch.x_det_batch)
@@ -183,7 +183,7 @@ class ConditionalTransformerCFM(EventCFM):
         return v
 
 
-class ConditionalGATrCFM(ConditionalCFMForGA):
+class ConditionalGATrCFM(EventCFM):
     """
     GATr velocity network
     """
@@ -201,6 +201,7 @@ class ConditionalGATrCFM(ConditionalCFMForGA):
         Parameters
         ----------
         net : torch.nn.Module
+        net_condition : torch.nn.Module
         cfm : Dict
             Information about how to set up CFM (used in parent classes)
         scalar_dims : List[int]
@@ -210,15 +211,58 @@ class ConditionalGATrCFM(ConditionalCFMForGA):
             This is required when cfm.coordinates contains log-transforms
         odeint : Dict
             ODE solver settings to be passed to torchdiffeq.odeint
+        cfg_data : Dict
+            Data settings to be passed to the CFM
         """
         super().__init__(
-            scalar_dims,
-            cfg_data,
             cfm,
             odeint,
         )
+        self.scalar_dims = scalar_dims
+        assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
+        self.cfg_data = cfg_data
         self.net = net
         self.net_condition = net_condition
+
+    def get_condition(self, batch):
+        attention_mask = xformers_sa_mask(batch.x_det_batch)
+        mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
+        condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
+        return condition_mv, condition_s
+
+    def get_velocity(self, xt, t, batch, condition):
+        assert self.coordinates is not None
+
+        fourmomenta = self.coordinates.x_to_fourmomenta(xt)
+        condition_mv, condition_s = condition
+
+        mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
+
+        attention_mask = xformers_sa_mask(batch.x_gen_batch)
+        crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
+
+        mv_outputs, s_outputs = self.net(
+            multivectors=mv.unsqueeze(0),
+            multivectors_condition=condition_mv,
+            scalars=s.unsqueeze(0),
+            scalars_condition=condition_s,
+            attention_mask=attention_mask,
+            crossattention_mask=crossattention_mask,
+        )
+        mv_outputs = mv_outputs.squeeze(0)
+        s_outputs = s_outputs.squeeze(0)
+
+        v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs)
+
+        v_straight = self.coordinates.velocity_fourmomenta_to_x(
+            v_fourmomenta,
+            fourmomenta,
+        )[0]
+
+        # Overwrite transformed velocities with scalar outputs
+        # (this is specific to GATr to avoid large jacobians from from log-transforms)
+        v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
+        return v_straight
 
     def embed_into_ga(self, fourmomenta, scalars, t):
 
@@ -257,7 +301,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         self.net_condition = net_condition
         self.mlp = mlp
 
-    def get_velocity_condition(self, batch, add_start=True):
+    def get_condition(self, batch, add_start=True):
         if add_start:
             new_batch = add_start_tokens(batch)
         else:
@@ -304,7 +348,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         shape = (batch.x_gen_batch[-1].item() + 1, *batch.x_gen.shape[1:])
 
         for i in range(max_constituents):
-            new_batch = self.get_velocity_condition(sequence, add_start=False)
+            new_batch = self.get_condition(sequence, add_start=False)
             condition = new_batch.x_gen[sequence.x_gen_ptr[1:] - 1]
 
             def velocity(t, xt_straight):

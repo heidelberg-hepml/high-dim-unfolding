@@ -3,8 +3,6 @@ from xformers.ops.fmha import BlockDiagonalMask
 import math
 from torch import nn
 
-from experiments.logger import LOGGER
-
 
 class GaussianFourierProjection(nn.Module):
     def __init__(self, embed_dim, input_dim=1, scale=30.0):

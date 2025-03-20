@@ -1,5 +1,5 @@
 exp_type: unfolding
-exp_name: unfolding_debug
+exp_name: unfolding_runs1
 
 seed: 42
 
@@ -10,8 +10,6 @@ data:
  dataset: zplusjets
  length: -1
  train_test_val: [0.8, 0.1, 0.1]
- standardize: false
- pid_raw: false
  pid_encoding: false
  mass: 0.1
  max_num_particles: 152
@@ -52,7 +50,7 @@ train: true
 training:
  iterations: 100000
  batchsize: 1024
- lr: 3e-4
+ lr: 5e-4
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
@@ -60,10 +58,10 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 2048
+ batchsize: 4096
  classifier: false
  sample: true
- n_batches: 100
+ n_batches: -1
  eval_loss: ["train", "val", "test"]
  observables: ["jet"]
 
@@ -73,7 +71,7 @@ plotting:
  fourmomenta: true
  jetmomenta: true
  preprocessed: true
- n_pt: 5
+ n_pt: 0
 
 defaults:
  - model: cond_tr_unfolding

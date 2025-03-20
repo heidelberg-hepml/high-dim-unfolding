@@ -7,8 +7,7 @@ from experiments.unfolding.embedding import event_to_GA_with_spurions
 
 
 class ZplusJetDataset(torch.utils.data.Dataset):
-    def __init__(self, max_constituents, dtype, embed_into_GA=False, spurions=None):
-        self.max_constituents = max_constituents
+    def __init__(self, dtype, embed_into_GA=False, spurions=None):
         self.dtype = dtype
         self.embed_into_GA = embed_into_GA
         if embed_into_GA:
@@ -32,35 +31,15 @@ class ZplusJetDataset(torch.utils.data.Dataset):
 
         self.data_list = []
         for i in range(det_particles.shape[0]):
-            det_event = det_particles[i, : det_mults[i]]
-            det_scalars = det_pids[i, : det_mults[i]]
+            det_pt = get_pt(det_particles[i])
+            gen_pt = get_pt(gen_particles[i])
+            det_idx = torch.argsort(det_pt, descending=True)[: det_mults[i]]
+            gen_idx = torch.argsort(gen_pt, descending=True)[: gen_mults[i]]
 
-            gen_event = gen_particles[i, : gen_mults[i]]
-            gen_scalars = gen_pids[i, : gen_mults[i]]
-
-            det_pt = get_pt(det_event)
-            gen_pt = get_pt(gen_event)
-            det_idx = torch.argsort(det_pt, descending=True)
-            gen_idx = torch.argsort(gen_pt, descending=True)
-
-            if self.max_constituents > 0:
-                # keep only the events with at least max_constituents
-                # keep 2 times more det than gen
-                if (
-                    gen_mults[i] < self.max_constituents
-                    or det_mults[i] < 2 * self.max_constituents
-                ):
-                    continue
-                else:
-                    gen_idx = gen_idx[: self.max_constituents]
-                    gen_mults[i] = self.max_constituents
-                    det_idx = det_idx[: 2 * self.max_constituents]
-                    det_mults[i] = 2 * self.max_constituents
-
-            det_event = det_event[det_idx]
-            det_scalars = det_scalars[det_idx]
-            gen_event = gen_event[gen_idx]
-            gen_scalars = gen_scalars[gen_idx]
+            det_event = det_particles[i, det_idx]
+            det_scalars = det_pids[i, det_idx]
+            gen_event = gen_particles[i, gen_idx]
+            gen_scalars = gen_pids[i, gen_idx]
 
             if self.embed_into_GA:
                 if self.spurions is not None:
@@ -73,10 +52,8 @@ class ZplusJetDataset(torch.utils.data.Dataset):
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_scalars,
-                mult_det=det_mults[i],
                 x_gen=gen_event,
                 scalars_gen=gen_scalars,
-                mult_gen=gen_mults[i],
             )
 
             self.data_list.append(graph)

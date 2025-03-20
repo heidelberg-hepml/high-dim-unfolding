@@ -134,20 +134,32 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             extract = exp.obs[name]
-            det_lvl = extract(
-                exp.data_raw["gen"].x_det,
-                exp.data_raw["gen"].x_det_batch,
-                exp.data_raw["gen"].x_gen_batch,
+            det_lvl = (
+                extract(
+                    exp.data_raw["gen"].x_det,
+                    exp.data_raw["gen"].x_det_batch,
+                    exp.data_raw["gen"].x_gen_batch,
+                )
+                .cpu()
+                .detach()
             )
-            part_lvl = extract(
-                exp.data_raw["truth"].x_gen,
-                exp.data_raw["truth"].x_gen_batch,
-                exp.data_raw["truth"].x_det_batch,
-            )[: len(det_lvl)]
-            model = extract(
-                exp.data_raw["gen"].x_gen,
-                exp.data_raw["gen"].x_gen_batch,
-                exp.data_raw["gen"].x_det_batch,
+            part_lvl = (
+                extract(
+                    exp.data_raw["truth"].x_gen,
+                    exp.data_raw["truth"].x_gen_batch,
+                    exp.data_raw["truth"].x_det_batch,
+                )[: len(det_lvl)]
+                .cpu()
+                .detach()
+            )
+            model = (
+                extract(
+                    exp.data_raw["gen"].x_gen,
+                    exp.data_raw["gen"].x_gen_batch,
+                    exp.data_raw["gen"].x_det_batch,
+                )
+                .cpu()
+                .detach()
             )
             obs_names = [
                 "E_{" + name + "}",
@@ -207,14 +219,14 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["gen"].x_gen_batch,
                 exp.data_raw["gen"].x_det_batch,
             )
-            part_lvl = coords.fourmomenta_to_x(part_lvl)
-            det_lvl = coords.fourmomenta_to_x(det_lvl)
-            model = coords.fourmomenta_to_x(model)
+            part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
+            det_lvl = coords.fourmomenta_to_x(det_lvl).cpu().detach()
+            model = coords.fourmomenta_to_x(model).cpu().detach()
             obs_names = [
                 r"p_{T," + name + "}",
                 "\phi_{" + name + "}",
                 "\eta_{" + name + "}",
-                "m_{" + name + "}",
+                "m^2_{" + name + "}",
             ]
             xranges = exp.obs_ranges[name]["jetmomenta"]
             for channel in range(4):
@@ -269,12 +281,15 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["gen"].x_gen_batch,
                 exp.data_raw["gen"].x_det_batch,
             )
-            part_lvl = coords.fourmomenta_to_x(part_lvl)
-            det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl)
-            model = coords.fourmomenta_to_x(model)
+            part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
+            det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl).cpu().detach()
+            model = coords.fourmomenta_to_x(model).cpu().detach()
 
             obs_names = [
-                r"\text{FM coord }(" + str(i + 1) + ")" + name for i in range(4)
+                r"\log p_{T," + name + "}",
+                "\phi_{" + name + "}",
+                "\eta_{" + name + "}",
+                "\log m^2_{" + name + "}",
             ]
             xranges = exp.obs_ranges[name][coords.__class__.__name__]
             for channel in range(4):

@@ -1,10 +1,13 @@
 import torch
+import torch.nn as nn
+
 import experiments.unfolding.transforms as tr
+from experiments.logger import LOGGER
 
 DTYPE = torch.float64
 
 
-class BaseCoordinates(torch.nn.Module):
+class BaseCoordinates(nn.Module):
     """
     Class that implements transformations
     from fourmomenta to an abstract set of variables
@@ -15,7 +18,7 @@ class BaseCoordinates(torch.nn.Module):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = False
-        self.transforms = []
+        self.transforms = nn.ModuleList([])
 
     def init_fit(self, fourmomenta):
         # only does something for StandardNormal()
@@ -90,14 +93,14 @@ class Fourmomenta(BaseCoordinates):
     # because fourmomenta are already the baseline representation
     def __init__(self):
         super().__init__()
-        self.transforms = [tr.EmptyTransform()]
+        self.transforms = nn.ModuleList([tr.EmptyTransform()])
 
 
 class PPPM2(BaseCoordinates):
     def __init__(self):
         super().__init__()
         self.contains_mass = True
-        self.transforms = [tr.EPPP_to_PPPM2()]
+        self.transforms = nn.ModuleList([tr.EPPP_to_PPPM2()])
 
 
 class StandardPPPM2(BaseCoordinates):
@@ -105,10 +108,12 @@ class StandardPPPM2(BaseCoordinates):
     def __init__(self):
         super().__init__()
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PPPM2(),
-            tr.StandardNormal([3]),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PPPM2(),
+                tr.StandardNormal([3]),
+            ]
+        )
 
 
 class EPhiPtPz(BaseCoordinates):
@@ -116,7 +121,7 @@ class EPhiPtPz(BaseCoordinates):
     def __init__(self):
         super().__init__()
         self.contains_phi = True
-        self.transforms = [tr.EPPP_to_EPhiPtPz()]
+        self.transforms = nn.ModuleList([tr.EPPP_to_EPhiPtPz()])
 
 
 class PtPhiEtaE(BaseCoordinates):
@@ -124,7 +129,7 @@ class PtPhiEtaE(BaseCoordinates):
     def __init__(self):
         super().__init__()
         self.contains_phi = True
-        self.transforms = [tr.EPPP_to_PtPhiEtaE()]
+        self.transforms = nn.ModuleList([tr.EPPP_to_PtPhiEtaE()])
 
 
 class PtPhiEtaM2(BaseCoordinates):
@@ -132,10 +137,12 @@ class PtPhiEtaM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PtPhiEtaE(),
+                tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            ]
+        )
 
 
 class PPPLogM2(BaseCoordinates):
@@ -143,10 +150,12 @@ class PPPLogM2(BaseCoordinates):
     def __init__(self):
         super().__init__()
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PPPM2(),
-            tr.M2_to_LogM2(),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PPPM2(),
+                tr.M2_to_LogM2(),
+            ]
+        )
 
 
 class StandardPPPLogM2(BaseCoordinates):
@@ -154,11 +163,13 @@ class StandardPPPLogM2(BaseCoordinates):
     def __init__(self):
         super().__init__()
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PPPM2(),
-            tr.M2_to_LogM2(),
-            tr.StandardNormal([3]),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PPPM2(),
+                tr.M2_to_LogM2(),
+                tr.StandardNormal([3]),
+            ]
+        )
 
 
 class LogPtPhiEtaE(BaseCoordinates):
@@ -166,7 +177,9 @@ class LogPtPhiEtaE(BaseCoordinates):
     def __init__(self, pt_min, units):
         super().__init__()
         self.contains_phi = True
-        self.transforms = [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min, units)]
+        self.transforms = nn.ModuleList(
+            [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min, units)]
+        )
 
 
 class PtPhiEtaM2(BaseCoordinates):
@@ -175,10 +188,12 @@ class PtPhiEtaM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PtPhiEtaE(),
+                tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            ]
+        )
 
 
 class PtPhiEtaLogM2(BaseCoordinates):
@@ -187,11 +202,13 @@ class PtPhiEtaLogM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.M2_to_LogM2(),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PtPhiEtaE(),
+                tr.PtPhiEtaE_to_PtPhiEtaM2(),
+                tr.M2_to_LogM2(),
+            ]
+        )
 
 
 class LogPtPhiEtaM2(BaseCoordinates):
@@ -200,11 +217,13 @@ class LogPtPhiEtaM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min, units),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PtPhiEtaE(),
+                tr.PtPhiEtaE_to_PtPhiEtaM2(),
+                tr.Pt_to_LogPt(pt_min, units),
+            ]
+        )
 
 
 class LogPtPhiEtaLogM2(BaseCoordinates):
@@ -213,12 +232,14 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min, units),
-            tr.M2_to_LogM2(),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PtPhiEtaE(),
+                tr.PtPhiEtaE_to_PtPhiEtaM2(),
+                tr.Pt_to_LogPt(pt_min, units),
+                tr.M2_to_LogM2(),
+            ]
+        )
 
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
@@ -227,10 +248,12 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min, units),
-            tr.M2_to_LogM2(),
-            tr.StandardNormal([3]),
-        ]
+        self.transforms = nn.ModuleList(
+            [
+                tr.EPPP_to_PtPhiEtaE(),
+                tr.PtPhiEtaE_to_PtPhiEtaM2(),
+                tr.Pt_to_LogPt(pt_min, units),
+                tr.M2_to_LogM2(),
+                tr.StandardNormal([3]),
+            ]
+        )

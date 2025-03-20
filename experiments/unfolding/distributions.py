@@ -4,7 +4,7 @@ import math
 import experiments.unfolding.coordinates as c
 
 
-class BaseDistribution:
+class BaseDistribution(torch.nn.Module):
     """
     Abstract base distribution
     All child classes work in fourmomenta space,
@@ -20,7 +20,7 @@ class BaseDistribution:
 
 class OnShellDistribution(BaseDistribution):
     """
-    Implement on shell sampling
+    Implement fixed mass sampling
     """
 
     def __init__(
@@ -29,22 +29,23 @@ class OnShellDistribution(BaseDistribution):
         pt_min,
         units,
     ):
+        super().__init__()
         self.onshell_mass = torch.tensor(onshell_mass)
         self.pt_min = pt_min
         self.units = units
 
     def sample(self, shape, device, dtype, generator=None):
         fourmomenta = self.propose(
-            shape, device=device, dtype=dtype, generator=generator
+            shape, device=device, dtype=c.DTYPE, generator=generator
         )
         onshell_mass = (
-            self.onshell_mass.to(device, dtype=dtype).expand(fourmomenta.shape[:-1])
+            self.onshell_mass.to(device, dtype=c.DTYPE).expand(fourmomenta.shape[:-1])
             / self.units
         )
         fourmomenta[..., 0] = torch.sqrt(
             onshell_mass**2 + torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
         )
-        return fourmomenta
+        return fourmomenta.to(dtype=dtype)
 
     def propose(self, shape, device, dtype, generator=None):
         raise NotImplementedError
@@ -55,7 +56,7 @@ class NaivePPP(OnShellDistribution):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coordinates = c.PPPM2()
+        self.coordinates = c.PPPLogM2()
 
     def propose(self, shape, device, dtype, generator=None):
         eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
@@ -63,11 +64,11 @@ class NaivePPP(OnShellDistribution):
         return fourmomenta
 
     def log_prob(self, fourmomenta):
-        pppm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
-        log_prob = log_prob_normal(pppm2)
+        ppplogm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(ppplogm2)
         log_prob[..., 3] = 0.0  # fixed mass does not contribute
         log_prob = log_prob.sum(-1).unsqueeze(-1)
-        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(pppm2)[0]
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(ppplogm2)[0]
         log_prob = log_prob + logdetjac
         return log_prob
 
@@ -75,7 +76,7 @@ class NaivePPP(OnShellDistribution):
 class StandardPPP(OnShellDistribution):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.coordinates = c.StandardPPPM2()
+        self.coordinates = c.StandardPPPLogM2()
 
     def propose(self, shape, device, dtype, generator=None):
         eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
@@ -83,11 +84,11 @@ class StandardPPP(OnShellDistribution):
         return fourmomenta
 
     def log_prob(self, fourmomenta):
-        pppm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
-        log_prob = log_prob_normal(pppm2)
+        ppplogm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(ppplogm2)
         log_prob[..., 3] = 0.0  # fixed mass does not contribute
         log_prob = log_prob.sum(-1).unsqueeze(-1)
-        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(pppm2)[0]
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(ppplogm2)[0]
         log_prob = log_prob + logdetjac
         return log_prob
 

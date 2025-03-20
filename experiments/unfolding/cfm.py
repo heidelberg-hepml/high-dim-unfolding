@@ -122,7 +122,6 @@ class CFM(nn.Module):
         x1_fourmomenta = self.sample_base(
             x0_fourmomenta.shape, x0_fourmomenta.device, x0_fourmomenta.dtype
         )
-
         # construct target trajectories
         x0_straight = self.coordinates.fourmomenta_to_x(x0_fourmomenta)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
@@ -130,7 +129,7 @@ class CFM(nn.Module):
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
-        condition = self.get_velocity_condition(batch)
+        condition = self.get_condition(batch)
         if RANDOM_CONDITION:
             condition = torch.rand_like(condition)
         vp_straight = self.get_velocity(xt_straight, t, batch, condition)
@@ -163,7 +162,7 @@ class CFM(nn.Module):
 
         sample_batch = batch.clone()
 
-        condition = self.get_velocity_condition(batch)
+        condition = self.get_condition(batch)
         if RANDOM_CONDITION:
             condition = torch.rand_like(condition)
 
@@ -364,6 +363,9 @@ class EventCFM(CFM):
         self.condition_coordinates = self._init_coordinates(
             self.cfm.condition_coordinates
         )
+        if self.cfm.transforms_float64:
+            self.coordinates.to(torch.float64)
+            self.condition_coordinates.to(torch.float64)
 
     def _init_coordinates(self, coordinates_label):
         if coordinates_label == "Fourmomenta":

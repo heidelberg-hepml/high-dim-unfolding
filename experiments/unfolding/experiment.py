@@ -45,10 +45,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.net_condition.out_s_channels = (
                     self.cfg.model.net.hidden_s_channels
                 )
-                if self.cfg.data.pid_raw:
-                    self.cfg.model.net.in_s_channels += 1
-                    self.cfg.model.net_condition.in_s_channels += 1
-                elif self.cfg.data.pid_encoding:
+                if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_s_channels += 6
                     self.cfg.model.net_condition.in_s_channels += 6
                 if self.cfg.data.add_scalar_features:
@@ -73,9 +70,6 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.net_condition.out_channels = (
                     self.cfg.model.net.hidden_channels
                 )
-                if self.cfg.data.pid_raw:
-                    self.cfg.model.net.in_channels += 1
-                    self.cfg.model.net_condition.in_channels += 1
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
@@ -165,25 +159,38 @@ class UnfoldingExperiment(BaseExperiment):
         det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
         gen_particles = DatasetCoordinates.x_to_fourmomenta(gen_particles)
 
-        if self.cfg.data.standardize:
-            mask = (
-                torch.arange(det_particles.shape[1])[None, :]
-                < det_mults[:train_idx, None]
-            )
-            flattened_particles = det_particles[:train_idx][mask]
+        if self.cfg.data.max_constituents > 0:
+            det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
+            gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
 
-            if self.cfg.modelname == "ConditionalGATr":
-                # For GATr, same standardization for all components
-                # mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
-                mean = torch.zeros(1, 4, dtype=self.dtype)
-                std = flattened_particles.std().unsqueeze(0).expand(1, 4)
-            elif self.cfg.modelname == "ConditionalTransformer":
-                # Otherwise, standardization done separately for each component
-                mean = flattened_particles.mean(dim=0, keepdim=True)
-                mean[..., -1] = 0
-                std = flattened_particles.std(dim=0, keepdim=True)
-                std[..., -1] = 1
-            det_particles = (det_particles - mean) / std
+        # initialize cfm (might require data)
+        self.model.init_physics(
+            self.cfg.data.units,
+            self.cfg.data.pt_min,
+            self.cfg.data.base_type,
+            self.cfg.data.mass,
+            self.device,
+        )
+        self.model.init_distribution()
+        self.model.init_coordinates()
+        gen_mask = (
+            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
+        )
+        fit_gen_data = gen_particles[:train_idx][gen_mask].to(
+            self.device, self.model.coordinates.transforms[-1].mean.dtype
+        )
+        self.model.coordinates.init_fit(fit_gen_data)
+        self.model.distribution.coordinates.init_fit(fit_gen_data)
+
+        det_mask = (
+            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
+        )
+        fit_det_data = det_particles[:train_idx][det_mask].to(
+            self.device, self.model.coordinates.transforms[-1].mean.dtype
+        )
+        self.model.condition_coordinates.init_fit(fit_det_data)
+
+        self.model.init_geometry()
 
         if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
             self.spurions = embed_spurions(
@@ -197,19 +204,16 @@ class UnfoldingExperiment(BaseExperiment):
             self.spurions = None
 
         self.train_data = Dataset(
-            self.cfg.data.max_constituents,
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.val_data = Dataset(
-            self.cfg.data.max_constituents,
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.test_data = Dataset(
-            self.cfg.data.max_constituents,
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
@@ -238,32 +242,6 @@ class UnfoldingExperiment(BaseExperiment):
             gen_pids[train_idx + val_idx :],
             gen_mults[train_idx + val_idx :],
         )
-
-        # initialize cfm (might require data)
-        self.model.init_physics(
-            self.cfg.data.units,
-            self.cfg.data.pt_min,
-            self.cfg.data.base_type,
-            self.cfg.data.mass,
-            self.device,
-        )
-        self.model.init_distribution()
-        self.model.init_coordinates()
-        gen_mask = (
-            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
-        )
-        fit_gen_data = gen_particles[:train_idx][gen_mask]
-        self.model.coordinates.init_fit(fit_gen_data)
-        if hasattr(self.model, "distribution"):
-            self.model.distribution.coordinates.init_fit(fit_gen_data)
-
-        det_mask = (
-            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
-        )
-        fit_det_data = det_particles[:train_idx][det_mask]
-        self.model.condition_coordinates.init_fit(fit_det_data)
-
-        self.model.init_geometry()
 
     def _init_dataloader(self):
         train_sampler = torch.utils.data.DistributedSampler(
@@ -318,9 +296,6 @@ class UnfoldingExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         if self.cfg.evaluation.sample:
-            LOGGER.info(
-                f"Sampling {self.cfg.evaluation.n_batches} batches for evaluation"
-            )
             t0 = time.time()
             self._sample_events(loaders["test"], self.cfg.evaluation.n_batches)
             loaders["gen"] = self.sample_loader
@@ -369,6 +344,9 @@ class UnfoldingExperiment(BaseExperiment):
                 f"Requested {n_batches} batches for sampling, but only {len(loader)} batches available in test dataset."
             )
             n_batches = len(loader)
+        elif n_batches == -1:
+            n_batches = len(loader)
+        LOGGER.info(f"Sampling {n_batches} batches for evaluation")
         for i in range(n_batches):
             batch = next(it).to(self.device)
             sample_batch = self.model.sample(
@@ -376,6 +354,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.device,
                 self.dtype,
             )
+            LOGGER.info(f"Sampled batch {i+1}")
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
 
@@ -495,35 +474,33 @@ class UnfoldingExperiment(BaseExperiment):
         return metrics
 
     def define_process_specifics(self):
-        self.plot_title = "Z+Jet"
+        if self.cfg.data.max_constituents == -1:
+            n_const = "All"
+        else:
+            n_const = str(self.cfg.data.max_constituents)
+        self.plot_title = n_const + " constituents"
 
         self.obs = {}
         self.obs_ranges = {}
 
         if "jet" in self.cfg.evaluation.observables:
 
-            def form_jet(constituents, batch_idx, other_batch_idx=None):
+            def form_jet(constituents, batch_idx, other_batch_idx):
                 jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
-                return jet.cpu().detach()
+                return jet
 
-            self.obs["\mathrm{ jet }"] = form_jet
-            self.obs_ranges["\mathrm{ jet }"] = {
+            self.obs[r"\text{ jet }"] = form_jet
+            self.obs_ranges[r"\text{ jet }"] = {
                 "fourmomenta": [[0, 1000], [-400, 400], [-400, 400], [-750, 750]],
                 "jetmomenta": [[0, 600], [-torch.pi, torch.pi], [-3, 3], [0, 600]],
-                "StandardLogPtPhiEtaLogM2": [[2, 3.5], [-2, 2], [-3, 3], [3, 9]],
+                "StandardLogPtPhiEtaLogM2": [[0, 4], [-2, 2], [-3, 3], [0, 10]],
             }
 
-        if self.cfg.data.max_constituents > 0 or self.cfg.plotting.n_pt > 0:
-            if self.cfg.plotting.n_pt > 0:
-                if (
-                    self.cfg.plotting.n_pt <= self.cfg.data.max_constituents
-                    or self.cfg.data.max_constituents == -1
-                ):
-                    n_pt = self.cfg.plotting.n_pt
-                else:
-                    n_pt = self.cfg.data.max_constituents
+        if self.cfg.plotting.n_pt > 0:
+            if self.cfg.data.max_constituents == -1:
+                n_pt = self.cfg.plotting.n_pt
             else:
-                n_pt = self.cfg.data.max_constituents
+                n_pt = min(self.cfg.data.max_constituents, self.cfg.plotting.n_pt)
 
             for i in range(n_pt):
 
@@ -537,12 +514,12 @@ class UnfoldingExperiment(BaseExperiment):
                                 if i < other_batch_ptr[n + 1] - other_batch_ptr[n]:
                                     idx.append(batch_ptr[n] + i)
                         selected_constituents = constituents[idx]
-                        return selected_constituents.cpu().detach()
+                        return selected_constituents
 
                     return ith_pt
 
-                self.obs[str(i + 1) + "\mathrm{ highest } p_T"] = select_pt(i)
-                self.obs_ranges[str(i + 1) + "\mathrm{ highest } p_T"] = {
+                self.obs[str(i + 1) + r"\text{ highest } p_T"] = select_pt(i)
+                self.obs_ranges[str(i + 1) + r"\text{ highest } p_T"] = {
                     "fourmomenta": [
                         [0, 400 - 50 * i],
                         [-200 + 25 * i, 200 - 25 * i],
