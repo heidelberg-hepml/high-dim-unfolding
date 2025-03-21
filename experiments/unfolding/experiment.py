@@ -160,7 +160,14 @@ class UnfoldingExperiment(BaseExperiment):
         gen_particles = DatasetCoordinates.x_to_fourmomenta(gen_particles)
 
         if self.cfg.data.max_constituents > 0:
-            det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
+            if self.cfg.data.det_mult == 1:
+                det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
+            elif self.cfg.data.det_mult == 2:
+                det_mults = torch.clamp(
+                    det_mults, max=2 * self.cfg.data.max_constituents
+                )
+            elif self.cfg.data.det_mult == -1:
+                pass
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
 
         # initialize cfm (might require data)
