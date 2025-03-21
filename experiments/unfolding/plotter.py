@@ -12,8 +12,8 @@ from experiments.unfolding.plots import (
     plot_roc,
     plot_correlations,
 )
-
 from experiments.unfolding.coordinates import PtPhiEtaM2
+from experiments.unfolding.utils import get_range
 
 
 def plot_losses(exp, filename, model_label):
@@ -170,7 +170,16 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
             xranges = exp.obs_ranges[name]["fourmomenta"]
             for channel in range(4):
                 xlabel = obs_names[channel]
-                xrange = xranges[channel]
+                # xrange = xranges[channel]
+                xrange = np.array(
+                    get_range(
+                        [
+                            part_lvl[..., channel],
+                            det_lvl[..., channel],
+                            model[..., channel],
+                        ]
+                    )
+                )
                 logy = False
                 plot_histogram(
                     file=file,
@@ -231,7 +240,16 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
             xranges = exp.obs_ranges[name]["jetmomenta"]
             for channel in range(4):
                 xlabel = obs_names[channel]
-                xrange = xranges[channel]
+                # xrange = xranges[channel]
+                xrange = np.array(
+                    get_range(
+                        [
+                            part_lvl[..., channel],
+                            det_lvl[..., channel],
+                            model[..., channel],
+                        ]
+                    )
+                )
                 logy = False
                 plot_histogram(
                     file=file,
@@ -294,7 +312,16 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
             xranges = exp.obs_ranges[name][coords.__class__.__name__]
             for channel in range(4):
                 xlabel = obs_names[channel]
-                xrange = xranges[channel]
+                # xrange = xranges[channel]
+                xrange = np.array(
+                    get_range(
+                        [
+                            part_lvl[..., channel],
+                            det_lvl[..., channel],
+                            model[..., channel],
+                        ]
+                    )
+                )
                 logy = False
                 plot_histogram(
                     file=file,

@@ -203,3 +203,12 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
     encoded = pid_lookup[rounded_pids.flatten()].reshape(original_shape)
 
     return encoded
+
+
+def get_range(input):
+    if type(input) in [list, tuple]:
+        tensor = torch.cat(input, dim=0)
+    else:
+        tensor = input
+    quantiles = torch.quantile(tensor, torch.tensor([0.01, 0.99], device=tensor.device))
+    return quantiles

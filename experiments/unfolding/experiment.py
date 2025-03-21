@@ -17,6 +17,7 @@ from experiments.unfolding.utils import (
     ensure_angle,
     pid_encoding,
     get_ptr_from_batch,
+    get_pt,
 )
 from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
@@ -356,12 +357,13 @@ class UnfoldingExperiment(BaseExperiment):
         LOGGER.info(f"Sampling {n_batches} batches for evaluation")
         for i in range(n_batches):
             batch = next(it).to(self.device)
+
             sample_batch = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
-            LOGGER.info(f"Sampled batch {i+1}")
+
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
 
@@ -490,7 +492,7 @@ class UnfoldingExperiment(BaseExperiment):
         self.obs = {}
         self.obs_ranges = {}
 
-        if "jet" in self.cfg.evaluation.observables:
+        if "jet" in self.cfg.plotting.observables:
 
             def form_jet(constituents, batch_idx, other_batch_idx):
                 jet = scatter(constituents, batch_idx, dim=0, reduce="sum")

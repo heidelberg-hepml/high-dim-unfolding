@@ -64,7 +64,6 @@ evaluation:
  sample: true
  n_batches: -1
  eval_loss: ["train", "val", "test"]
- observables: ["jet"]
 
 plot: true
 plotting:
@@ -72,6 +71,7 @@ plotting:
  fourmomenta: true
  jetmomenta: true
  preprocessed: true
+ observables: ["jet"]
  n_pt: 0
 
 defaults:

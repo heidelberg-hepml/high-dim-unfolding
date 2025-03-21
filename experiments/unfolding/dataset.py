@@ -4,6 +4,7 @@ from torch_geometric.data import Data
 from gatr.interface import embed_vector
 from experiments.unfolding.utils import get_pt
 from experiments.unfolding.embedding import event_to_GA_with_spurions
+from experiments.logger import LOGGER
 
 
 class ZplusJetDataset(torch.utils.data.Dataset):
@@ -33,6 +34,7 @@ class ZplusJetDataset(torch.utils.data.Dataset):
         for i in range(det_particles.shape[0]):
             det_pt = get_pt(det_particles[i])
             gen_pt = get_pt(gen_particles[i])
+
             det_idx = torch.argsort(det_pt, descending=True)[: det_mults[i]]
             gen_idx = torch.argsort(gen_pt, descending=True)[: gen_mults[i]]
 
