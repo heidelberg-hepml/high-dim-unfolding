@@ -51,9 +51,9 @@ def plot_mixer(cfg, plot_path, plot_dict):
         if cfg.plotting.distributions:
             file = f"{plot_path}/distributions.pdf"
             if cfg.dist.diff:
-                xrange = [-15, 40]
+                xrange = [-5, 30]
             else:
-                xrange = [0, 85]
+                xrange = [0, 70]
             plot_distributions(
                 file,
                 plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
@@ -71,7 +71,7 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 plot_dict["results_test"]["samples"][:, 1].numpy(),
                 plot_dict["results_test"]["samples"][:, 0].numpy(),
                 xlabel=r"\text{Multiplicity}",
-                xrange=[0, 85],
+                xrange=[0, 70],
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
         if cfg.plotting.diff:
@@ -83,7 +83,7 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 plot_dict["results_test"]["samples"][:, 0].numpy()
                 - plot_dict["results_test"]["samples"][:, 2].numpy(),
                 xlabel=r"\text{Multiplicity difference}",
-                xrange=[-15, 40],
+                xrange=[-5, 30],
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
         if cfg.plotting.corr:
@@ -99,9 +99,9 @@ def plot_mixer(cfg, plot_path, plot_dict):
         if cfg.plotting.components:
             file = f"{plot_path}/components.pdf"
             if cfg.dist.diff:
-                xrange = [-15, 40]
+                xrange = [-5, 30]
             else:
-                xrange = [0, 85]
+                xrange = [0, 70]
             plot_components(
                 file,
                 plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
