@@ -74,6 +74,12 @@ class UnfoldingExperiment(BaseExperiment):
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
+            elif self.cfg.modelname == "ConditionalMLP":
+                self.cfg.data.embed_det_in_GA = False
+                self.cfg.model.net.in_shape = 4 + self.cfg.cfm.embed_t_dim
+                self.cfg.model.net.out_shape = 4
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
             elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
                 self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.autoregressive_tr.in_channels = 4
@@ -416,6 +422,8 @@ class UnfoldingExperiment(BaseExperiment):
             model_label = "CondGATr"
         elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
             model_label = "CondARTr"
+        elif self.cfg.modelname == "ConditionalMLP":
+            model_label = "MLP"
         kwargs = {
             "exp": self,
             "model_label": model_label,

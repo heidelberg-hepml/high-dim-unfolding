@@ -15,6 +15,7 @@ from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicG
 from experiments.logger import LOGGER
 
 RANDOM_CONDITION = False
+ZERO_CONDITION = False
 
 
 def hutchinson_trace(x_out, x_in):
@@ -132,6 +133,8 @@ class CFM(nn.Module):
         condition = self.get_condition(batch)
         if RANDOM_CONDITION:
             condition = torch.rand_like(condition)
+        if ZERO_CONDITION:
+            condition = torch.zeros_like(condition)
         vp_straight = self.get_velocity(xt_straight, t, batch, condition)
 
         # evaluate conditional flow matching objective
@@ -165,6 +168,8 @@ class CFM(nn.Module):
         condition = self.get_condition(batch)
         if RANDOM_CONDITION:
             condition = torch.rand_like(condition)
+        if ZERO_CONDITION:
+            condition = torch.zeros_like(condition)
 
         def velocity(t, xt_straight):
             xt_straight = self.geometry._handle_periodic(xt_straight)

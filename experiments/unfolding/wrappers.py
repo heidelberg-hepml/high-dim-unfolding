@@ -183,6 +183,46 @@ class ConditionalTransformerCFM(EventCFM):
         return v
 
 
+class ConditionalMLPCFM(EventCFM):
+    """
+    Conditional Transformer velocity network
+    """
+
+    def __init__(
+        self,
+        net,
+        net_condition,
+        cfm,
+        odeint,
+    ):
+        # See GATrCFM.__init__ for documentation
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.net = net
+        self.net_condition = net_condition
+
+    def get_condition(self, batch):
+        # condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
+        # condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
+        # processed_condition = self.net_condition(
+        #     inputs=condition,
+        # )
+        return None
+
+    def get_velocity(self, xt, t, batch, processed_condition):
+        t_embedding = self.t_embedding(t)
+
+        x = torch.cat([xt, batch.scalars_gen, t_embedding], dim=-1)
+
+        v = self.net(
+            inputs=x,
+        )
+
+        return v
+
+
 class ConditionalGATrCFM(EventCFM):
     """
     GATr velocity network

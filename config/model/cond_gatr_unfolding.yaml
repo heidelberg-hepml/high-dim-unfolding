@@ -15,7 +15,7 @@ net:
  num_blocks: 4
  reinsert_mv_channels: null
  reinsert_s_channels: null
- dropout_prob: null
+ dropout_prob: 0.1
  double_layernorm: false
 
  attention:
@@ -44,7 +44,7 @@ net_condition:
  num_blocks: 4
  reinsert_mv_channels: null
  reinsert_s_channels: null
- dropout_prob: null
+ dropout_prob: 0.1
  double_layernorm: false
 
  attention:
