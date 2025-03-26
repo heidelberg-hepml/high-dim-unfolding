@@ -23,6 +23,7 @@ from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
+import experiments.unfolding.cfm as cfm
 
 
 class UnfoldingExperiment(BaseExperiment):
@@ -103,6 +104,9 @@ class UnfoldingExperiment(BaseExperiment):
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
+
+            cfm.MASKED_DIMS = self.cfg.training.masked_dims
+            cfm.ZERO_CONDITION = self.cfg.training.zero_condition
 
     def init_data(self):
         t0 = time.time()

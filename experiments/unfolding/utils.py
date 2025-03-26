@@ -212,3 +212,9 @@ def get_range(input):
         tensor = input
     quantiles = torch.quantile(tensor, torch.tensor([0.01, 0.99], device=tensor.device))
     return quantiles
+
+
+def mask_dims(input, dims):
+    mask = torch.ones_like(input)
+    mask[..., dims] = 0
+    return input * mask

@@ -9,13 +9,14 @@ from experiments.unfolding.distributions import (
     StandardPPP,
     StandardLogPtPhiEta,
 )
-from experiments.unfolding.utils import TimeEmbedding, get_pt
+from experiments.unfolding.utils import TimeEmbedding, get_pt, mask_dims
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.logger import LOGGER
 
 RANDOM_CONDITION = False
 ZERO_CONDITION = False
+MASKED_DIMS = [1, 2, 3]
 
 
 def hutchinson_trace(x_out, x_in):
@@ -137,6 +138,8 @@ class CFM(nn.Module):
             condition = torch.zeros_like(condition)
         vp_straight = self.get_velocity(xt_straight, t, batch, condition)
 
+        vp_straight = mask_dims(vp_straight, MASKED_DIMS)
+        vt_straight = mask_dims(vt_straight, MASKED_DIMS)
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(
             vp_straight, vt_straight, xt_straight
@@ -178,6 +181,7 @@ class CFM(nn.Module):
             )
             vt_straight = self.get_velocity(xt_straight, t, batch, condition)
             vt_straight = self.handle_velocity(vt_straight)
+            vt_straight = mask_dims(vt_straight, MASKED_DIMS)
             return vt_straight
 
         # sample fourmomenta from base distribution
