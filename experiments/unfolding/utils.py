@@ -19,20 +19,6 @@ class GaussianFourierProjection(nn.Module):
         return embedding
 
 
-class TimeEmbedding(nn.Module):
-    def __init__(self, embed_dim, input_dim=1, scale=30.0):
-        super().__init__()
-        self.proj = GaussianFourierProjection(embed_dim, input_dim, scale)
-        self.linear = nn.Linear(embed_dim, embed_dim)
-        self.linear.weight.requires_grad = False
-        self.linear.bias.requires_grad = False
-
-    def forward(self, t):
-        projection = self.proj(t)
-        embedding = self.linear(projection)
-        return embedding
-
-
 # log(x) -> log(x+EPS1)
 # in (invertible) preprocessing functions to avoid being close to log(0)
 EPS1 = 1e-5

@@ -9,7 +9,7 @@ from experiments.unfolding.distributions import (
     StandardPPP,
     StandardLogPtPhiEta,
 )
-from experiments.unfolding.utils import TimeEmbedding, get_pt, mask_dims
+from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.logger import LOGGER
@@ -53,8 +53,11 @@ class CFM(nn.Module):
         odeint={"method": "dopri5", "atol": 1e-5, "rtol": 1e-5, "options": None},
     ):
         super().__init__()
-        self.t_embedding = TimeEmbedding(
-            embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
+        self.t_embedding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
+            ),
+            nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
         )
         self.trace_fn = hutchinson_trace if cfm.hutchinson else autograd_trace
         self.odeint = odeint
