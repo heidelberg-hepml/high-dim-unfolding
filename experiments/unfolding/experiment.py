@@ -111,64 +111,95 @@ class UnfoldingExperiment(BaseExperiment):
     def init_data(self):
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
-        LOGGER.info(f"Creating ZplusJetDataset from {data_path}")
-        self._init_data(ZplusJetDataset, data_path)
+        LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
+        if self.cfg.data.dataset == "zplusjet":
+            self._init_data(ZplusJetDataset, data_path)
+        else:
+            self._init_data("jets", data_path)
         LOGGER.info(
-            f"Created ZplusJetDataset with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
+            f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
         )
 
     def _init_data(self, Dataset, data_path):
         t0 = time.time()
-        data = energyflow.zjets_delphes.load(
-            "Herwig",
-            num_data=self.cfg.data.length,
-            pad=True,
-            cache_dir=data_path,
-            include_keys=["particles", "mults", "jets"],
-        )
-        LOGGER.info(f"Loaded data in {time.time() - t0:.2f} seconds")
-        split = self.cfg.data.train_test_val
-        size = len(data["sim_particles"])
-        train_idx = int(split[0] * size)
-        val_idx = int(split[1] * size)
+        if Dataset == ZplusJetDataset:
+            data = energyflow.zjets_delphes.load(
+                "Herwig",
+                num_data=self.cfg.data.length,
+                pad=True,
+                cache_dir=data_path,
+                include_keys=["particles", "mults", "jets"],
+            )
+            LOGGER.info(f"Loaded data in {time.time() - t0:.2f} seconds")
+            split = self.cfg.data.train_test_val
+            size = len(data["sim_particles"])
+            train_idx = int(split[0] * size)
+            val_idx = int(split[1] * size)
 
-        det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
-        det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
-        det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
+            det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
+            det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
+            det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
 
-        gen_particles = torch.tensor(data["gen_particles"], dtype=self.dtype)
-        gen_jets = torch.tensor(data["gen_jets"], dtype=self.dtype)
-        gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
+            gen_particles = torch.tensor(data["gen_particles"], dtype=self.dtype)
+            gen_jets = torch.tensor(data["gen_jets"], dtype=self.dtype)
+            gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
 
-        # undo the dataset scaling
-        det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
-        det_particles[..., 2] = ensure_angle(det_particles[..., 2])
-        det_particles[..., 0] = det_particles[..., 0] * 100
+            # undo the dataset scaling
+            det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
+            det_particles[..., 2] = ensure_angle(det_particles[..., 2])
+            det_particles[..., 0] = det_particles[..., 0] * 100
 
-        gen_particles[..., 1:3] = gen_particles[..., 1:3] + gen_jets[:, None, 1:3]
-        gen_particles[..., 2] = ensure_angle(gen_particles[..., 2])
-        gen_particles[..., 0] = gen_particles[..., 0] * 100
+            gen_particles[..., 1:3] = gen_particles[..., 1:3] + gen_jets[:, None, 1:3]
+            gen_particles[..., 2] = ensure_angle(gen_particles[..., 2])
+            gen_particles[..., 0] = gen_particles[..., 0] * 100
 
-        # swap eta and phi for consistency
-        det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
-        gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
+            # swap eta and phi for consistency
+            det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
+            gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
 
-        # save pids before replacing with mass
-        if self.cfg.data.pid_encoding:
-            det_pids = det_particles[..., 3].clone().unsqueeze(-1)
-            det_pids = pid_encoding(det_pids)
-            gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
-            gen_pids = pid_encoding(gen_pids)
-        else:
-            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
+            # save pids before replacing with mass
+            if self.cfg.data.pid_encoding:
+                det_pids = det_particles[..., 3].clone().unsqueeze(-1)
+                det_pids = pid_encoding(det_pids)
+                gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
+                gen_pids = pid_encoding(gen_pids)
+            else:
+                det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
+                gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
+
+            det_particles[..., 3] = self.cfg.data.mass**2
+            gen_particles[..., 3] = self.cfg.data.mass**2
+
+            DatasetCoordinates = PtPhiEtaM2()
+            det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
+            gen_particles = DatasetCoordinates.x_to_fourmomenta(gen_particles)
+
+        elif Dataset == "jets":
+            Dataset = ZplusJetDataset
+            gen_particles = (
+                torch.from_numpy(
+                    np.load(os.path.join(data_path, "gen_1725_delphes.npy"))
+                )
+                .to(self.dtype)
+                .reshape(-1, 3, 4)
+            )
+            det_particles = (
+                torch.from_numpy(
+                    np.load(os.path.join(data_path, "rec_1725_delphes.npy"))
+                )
+                .to(self.dtype)
+                .reshape(-1, 3, 4)
+            )
+            gen_mults = torch.ones(gen_particles.shape[0], dtype=torch.int)
+            det_mults = torch.ones(det_particles.shape[0], dtype=torch.int)
             gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
+            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
 
-        det_particles[..., 3] = self.cfg.data.mass**2
-        gen_particles[..., 3] = self.cfg.data.mass**2
-
-        DatasetCoordinates = PtPhiEtaM2()
-        det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
-        gen_particles = DatasetCoordinates.x_to_fourmomenta(gen_particles)
+            LOGGER.info(f"Loaded data in {time.time() - t0:.2f} seconds")
+            split = self.cfg.data.train_test_val
+            size = len(gen_particles)
+            train_idx = int(split[0] * size)
+            val_idx = int(split[1] * size)
 
         if self.cfg.data.max_constituents > 0:
             if self.cfg.data.det_mult == 1:
