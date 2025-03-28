@@ -16,9 +16,9 @@ font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
-plt.rcParams["text.latex.preamble"] = (
-    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
-)
+plt.rcParams[
+    "text.latex.preamble"
+] = r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
 
 # fontsize
 FONTSIZE = 18

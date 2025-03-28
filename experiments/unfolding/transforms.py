@@ -300,7 +300,9 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_pt = torch.stack((one, zero, zero, -2 * pt * torch.cosh(eta) ** 2), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
-        jac_eta = torch.stack((zero, zero, one, -(pt**2) * torch.sinh(2 * eta)), dim=-1)
+        jac_eta = torch.stack(
+            (zero, zero, one, -(pt**2) * torch.sinh(2 * eta)), dim=-1
+        )
         jac_E = torch.stack((zero, zero, zero, 2 * E), dim=-1)
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_E), dim=-1)

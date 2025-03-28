@@ -7,8 +7,8 @@ use_mlflow: false
 
 data:
  data_dir: data/
- dataset: zplusjets
- length: -1
+ dataset: zplusjet
+ num_data: -1
  train_test_val: [0.8, 0.1, 0.1]
  pid_encoding: false
  mass: 0.1

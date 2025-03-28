@@ -122,7 +122,7 @@ class UnfoldingExperiment(BaseExperiment):
         if Dataset == ZplusJetDataset:
             data = energyflow.zjets_delphes.load(
                 "Herwig",
-                num_data=self.cfg.data.length,
+                num_data=self.cfg.data.num_data,
                 pad=True,
                 cache_dir=data_path,
                 include_keys=["particles", "mults", "jets"],
