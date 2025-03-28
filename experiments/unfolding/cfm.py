@@ -12,11 +12,6 @@ from experiments.unfolding.distributions import (
 from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
-from experiments.logger import LOGGER
-
-RANDOM_CONDITION = False
-ZERO_CONDITION = False
-MASKED_DIMS = [1, 2, 3]
 
 
 def hutchinson_trace(x_out, x_in):
@@ -135,14 +130,12 @@ class CFM(nn.Module):
             x0_straight, x1_straight, t
         )
         condition = self.get_condition(batch)
-        if RANDOM_CONDITION:
-            condition = torch.rand_like(condition)
-        if ZERO_CONDITION:
+        if self.cfm.zero_condition:
             condition = torch.zeros_like(condition)
         vp_straight = self.get_velocity(xt_straight, t, batch, condition)
 
-        vp_straight = mask_dims(vp_straight, MASKED_DIMS)
-        vt_straight = mask_dims(vt_straight, MASKED_DIMS)
+        vp_straight = mask_dims(vp_straight, self.cfm.masked_dims)
+        vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(
             vp_straight, vt_straight, xt_straight
@@ -172,9 +165,7 @@ class CFM(nn.Module):
         sample_batch = batch.clone()
 
         condition = self.get_condition(batch)
-        if RANDOM_CONDITION:
-            condition = torch.rand_like(condition)
-        if ZERO_CONDITION:
+        if self.cfm.zero_condition:
             condition = torch.zeros_like(condition)
 
         def velocity(t, xt_straight):
@@ -184,7 +175,7 @@ class CFM(nn.Module):
             )
             vt_straight = self.get_velocity(xt_straight, t, batch, condition)
             vt_straight = self.handle_velocity(vt_straight)
-            vt_straight = mask_dims(vt_straight, MASKED_DIMS)
+            vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
             return vt_straight
 
         # sample fourmomenta from base distribution
@@ -204,6 +195,7 @@ class CFM(nn.Module):
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
 
+        """
         # sort generated events by pT
         pt = get_pt(x0_fourmomenta).unsqueeze(-1)
         x_perm = torch.argsort(pt, dim=0, descending=True)
@@ -211,6 +203,7 @@ class CFM(nn.Module):
         index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
         index_perm = torch.argsort(index, dim=0, stable=True)
         x0_fourmomenta = x0_fourmomenta.take_along_dim(index_perm, dim=0)
+        """
 
         sample_batch.x_gen = x0_fourmomenta
 
@@ -235,6 +228,7 @@ class CFM(nn.Module):
         log_prob_fourmomenta : torch.tensor with shape (batchsize)
             log_prob of each event in x0, evaluated in fourmomenta space
         """
+        raise NotImplementedError
 
         x0_fourmomenta = batch.x_gen
 
