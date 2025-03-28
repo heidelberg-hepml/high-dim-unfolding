@@ -21,7 +21,7 @@ def plot_losses(exp, filename, model_label):
             [exp.train_loss, exp.val_loss],
             exp.train_lr,
             labels=["train loss", "val loss"],
-            logy=True if exp.modeltype == "CFM" else False,
+            logy=True,
         )
         plot_metric(
             file,
@@ -38,7 +38,7 @@ def plot_losses(exp, filename, model_label):
                 ],
                 lr=exp.train_lr,
                 labels=[f"train mse_{k}", f"val mse_{k}"],
-                logy=True if exp.modeltype == "CFM" else False,
+                logy=True,
             )
 
 
