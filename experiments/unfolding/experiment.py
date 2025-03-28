@@ -225,18 +225,22 @@ class UnfoldingExperiment(BaseExperiment):
         gen_mask = (
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
-        fit_gen_data = gen_particles[:train_idx][gen_mask].to(
-            self.device, self.model.coordinates.transforms[-1].mean.dtype
-        )
+        fit_gen_data = gen_particles[:train_idx][gen_mask]
+        if self.cfg.cfm.coordinates[:2] == 'St':
+            fit_gen_data = fit_gen_data.to(
+                self.device, self.model.coordinates.transforms[-1].mean.dtype
+            )
         self.model.coordinates.init_fit(fit_gen_data)
         self.model.distribution.coordinates.init_fit(fit_gen_data)
 
         det_mask = (
             torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         )
-        fit_det_data = det_particles[:train_idx][det_mask].to(
-            self.device, self.model.coordinates.transforms[-1].mean.dtype
-        )
+        fit_det_data = det_particles[:train_idx][det_mask]
+        if self.cfg.cfm.coordinates[:2] == 'St':
+            fit_det_data = fit_det_data.to(
+                self.device, self.model.coordinates.transforms[-1].mean.dtype
+            )
         self.model.condition_coordinates.init_fit(fit_det_data)
 
         self.model.init_geometry()

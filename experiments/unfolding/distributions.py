@@ -129,6 +129,41 @@ class StandardLogPtPhiEta(OnShellDistribution):
         return log_prob
 
 
+class LogPtPhiEta(OnShellDistribution):
+    """Base distribution 4: phi uniform; eta, log(pt) and log(mass) from fitted normal"""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.coordinates = c.LogPtPhiEtaLogM2(self.pt_min, self.units)
+
+    def propose(self, shape, device, dtype, generator=None):
+        """Base distribution for precisesiast: pt, eta gaussian; phi uniform; mass shifted gaussian"""
+        # sample (logpt, phi, eta, logmass)
+        eps = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+
+        # sample phi uniformly
+        eps[..., 1] = math.pi * (
+            2 * torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
+            - 1
+        )
+
+        for t in self.coordinates.transforms[::-1]:
+            eps = t.inverse(eps)
+        return eps
+
+    def log_prob(self, fourmomenta):
+        logptphietalogm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(logptphietalogm2)
+        log_prob[..., 1] = -math.log(
+            2 * math.pi
+        )  # normalization factor for uniform phi distribution: 1/(2 pi)
+        log_prob[..., 3] = 0.0
+        log_prob = log_prob.sum(-1).unsqueeze(-1)
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(logptphietalogm2)[0]
+        log_prob = log_prob + logdetjac
+        return log_prob
+
+
 def log_prob_normal(z, mean=0.0, std=1.0):
     std_term = torch.log(std) if type(std) == torch.Tensor else math.log(std)
     return -((z - mean) ** 2) / (2 * std**2) - 0.5 * math.log(2 * math.pi) - std_term

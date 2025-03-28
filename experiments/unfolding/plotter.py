@@ -167,7 +167,7 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 "p_{y," + name + "}",
                 "p_{z," + name + "}",
             ]
-            xranges = exp.obs_ranges[name]["fourmomenta"]
+            # xranges = exp.obs_ranges[name]["fourmomenta"]
             for channel in range(4):
                 xlabel = obs_names[channel]
                 # xrange = xranges[channel]
@@ -237,7 +237,7 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 "\eta_{" + name + "}",
                 "m^2_{" + name + "}",
             ]
-            xranges = exp.obs_ranges[name]["jetmomenta"]
+            # xranges = exp.obs_ranges[name]["jetmomenta"]
             for channel in range(4):
                 xlabel = obs_names[channel]
                 # xrange = xranges[channel]
@@ -309,7 +309,7 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 "\eta_{" + name + "}",
                 "\log m^2_{" + name + "}",
             ]
-            xranges = exp.obs_ranges[name][coords.__class__.__name__]
+            # xranges = exp.obs_ranges[name][coords.__class__.__name__]
             for channel in range(4):
                 xlabel = obs_names[channel]
                 # xrange = xranges[channel]
