@@ -164,12 +164,16 @@ class BaseExperiment:
                 self.cfg.run_dir, "models", f"model_run{self.cfg.warm_start_idx}.pt"
             )
             try:
-                state_dict = torch.load(model_path, map_location="cpu")["model"]
+                state_dict = torch.load(
+                    model_path, map_location="cpu", weights_only=False
+                )["model"]
                 LOGGER.info(f"Loading model from {model_path}")
                 self.model.load_state_dict(state_dict)
                 if self.ema is not None:
                     LOGGER.info(f"Loading EMA from {model_path}")
-                    state_dict = torch.load(model_path, map_location="cpu")["ema"]
+                    state_dict = torch.load(
+                        model_path, map_location="cpu", weights_only=False
+                    )["ema"]
                     self.ema.load_state_dict(state_dict)
             except FileNotFoundError:
                 LOGGER.warning(
@@ -434,7 +438,9 @@ class BaseExperiment:
                 self.cfg.run_dir, "models", f"model_run{self.cfg.warm_start_idx}.pt"
             )
             try:
-                state_dict = torch.load(model_path, map_location="cpu")["optimizer"]
+                state_dict = torch.load(
+                    model_path, map_location="cpu", weights_only=False
+                )["optimizer"]
                 LOGGER.info(f"Loading optimizer from {model_path}")
                 self.optimizer.load_state_dict(state_dict)
             except FileNotFoundError:
@@ -481,7 +487,9 @@ class BaseExperiment:
                 self.cfg.run_dir, "models", f"model_run{self.cfg.warm_start_idx}.pt"
             )
             try:
-                state_dict = torch.load(model_path, map_location="cpu")["scheduler"]
+                state_dict = torch.load(
+                    model_path, map_location="cpu", weights_only=False
+                )["scheduler"]
                 LOGGER.info(f"Loading scheduler from {model_path}")
                 self.scheduler.load_state_dict(state_dict)
             except FileNotFoundError:
@@ -582,7 +590,9 @@ class BaseExperiment:
                 f"model_run{self.cfg.run_idx}_it{smallest_val_loss_step}.pt",
             )
             try:
-                state_dict = torch.load(model_path, map_location=self.device)["model"]
+                state_dict = torch.load(
+                    model_path, map_location=self.device, weights_only=False
+                )["model"]
                 LOGGER.info(f"Loading model from {model_path}")
                 self.model.load_state_dict(state_dict)
             except FileNotFoundError:
