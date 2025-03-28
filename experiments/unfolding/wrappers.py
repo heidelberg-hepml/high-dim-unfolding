@@ -84,62 +84,6 @@ def cross_attention_mask(Q_batch, KV_batch):
     )
 
 
-class ConditionalCFMForGA(EventCFM):
-    def __init__(self, scalar_dims, cfg_data, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.scalar_dims = scalar_dims
-        assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
-        self.cfg_data = cfg_data
-
-    def get_condition(self, batch):
-        attention_mask = xformers_sa_mask(
-            batch.x_det_batch, materialize=not torch.cuda.is_available()
-        )
-        mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
-        condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
-        return condition_mv, condition_s
-
-    def get_velocity(self, xt, t, batch, condition):
-        assert self.coordinates is not None
-
-        fourmomenta = self.coordinates.x_to_fourmomenta(xt)
-        condition_mv, condition_s = condition
-
-        mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
-
-        attention_mask = xformers_sa_mask(
-            batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        )
-        crossattention_mask = xformers_sa_mask(
-            batch.x_gen_batch,
-            batch.x_det_batch,
-            materialize=not torch.cuda.is_available(),
-        )
-
-        mv_outputs, s_outputs = self.net(
-            multivectors=mv.unsqueeze(0),
-            multivectors_condition=condition_mv,
-            scalars=s.unsqueeze(0),
-            scalars_condition=condition_s,
-            attention_mask=attention_mask,
-            crossattention_mask=crossattention_mask,
-        )
-        mv_outputs = mv_outputs.squeeze(0)
-        s_outputs = s_outputs.squeeze(0)
-
-        v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs)
-
-        v_straight = self.coordinates.velocity_fourmomenta_to_x(
-            v_fourmomenta,
-            fourmomenta,
-        )[0]
-
-        # Overwrite transformed velocities with scalar outputs
-        # (this is specific to GATr to avoid large jacobians from from log-transforms)
-        v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
-        return v_straight
-
-
 class ConditionalTransformerCFM(EventCFM):
     """
     Conditional Transformer velocity network
