@@ -300,7 +300,7 @@ class EventCFM(CFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def init_physics(self, units, pt_min, base_type, onshell_mass, device):
+    def init_physics(self, units, pt_min, base_type, onshell_mass):
         """
         Pass physics information to the CFM class
 

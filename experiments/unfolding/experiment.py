@@ -99,9 +99,6 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
 
-            cfm.MASKED_DIMS = self.cfg.training.masked_dims
-            cfm.ZERO_CONDITION = self.cfg.training.zero_condition
-
     def init_data(self):
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
@@ -207,11 +204,10 @@ class UnfoldingExperiment(BaseExperiment):
 
         # initialize cfm (might require data)
         self.model.init_physics(
-            self.cfg.data.units,
-            self.cfg.data.pt_min,
-            self.cfg.data.base_type,
-            self.cfg.data.mass,
-            self.device,
+            units=self.cfg.data.units,
+            pt_min=0,
+            base_type=self.cfg.data.base_type,
+            onshell_mass=self.cfg.data.mass,
         )
         self.model.init_distribution()
         self.model.init_coordinates()
