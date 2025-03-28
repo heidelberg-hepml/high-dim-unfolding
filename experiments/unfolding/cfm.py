@@ -201,19 +201,6 @@ class CFM(nn.Module):
         )[-1]
         x0_straight = self.geometry._handle_periodic(x0_straight)
 
-        # the infamous nan remover
-        # (MLP sometimes returns nan for single events,
-        # and all components of the event are nan...
-        # just sample another event in this case)
-        mask = torch.isfinite(x0_straight).all(dim=-1)
-        if (~mask).any():
-            mask2 = torch.isfinite(x0_straight)
-            x0_straight = x0_straight[mask, ...]
-            x1_fourmomenta = x1_fourmomenta[mask, ...]
-            LOGGER.warning(
-                f"Found {(~mask2).sum(dim=0).numpy()} nan events while sampling"
-            )
-
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
 
@@ -288,19 +275,6 @@ class CFM(nn.Module):
         )
         logdetjac_cfm_straight = logdetjact_cfm_straight[-1].detach()
         x1_straight = xt_straight[-1].detach()
-
-        # the infamous nan remover
-        # (MLP sometimes returns nan for single events,
-        # just remove these events from the log_prob computation)
-        mask = torch.isfinite(x1_straight).all(dim=-1)
-        if (~mask).any():
-            mask2 = torch.isfinite(x1_straight)
-            logdetjac_cfm_straight = logdetjac_cfm_straight[mask]
-            x1_straight = x1_straight[mask]
-            x0_fourmomenta = x0_fourmomenta[mask]
-            LOGGER.warning(
-                f"Found {(~mask2).sum(dim=0).numpy()} nan events while sampling"
-            )
 
         x1_fourmomenta = self.coordinates.x_to_fourmomenta(x1_straight)
         logdetjac_forward = self.coordinates.logdetjac_fourmomenta_to_x(x0_fourmomenta)[
