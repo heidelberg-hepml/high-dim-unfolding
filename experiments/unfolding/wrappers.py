@@ -161,7 +161,7 @@ class ConditionalMLPCFM(EventCFM):
         # processed_condition = self.net_condition(
         #     inputs=condition,
         # )
-        return None
+        return torch.zeros_like(batch.x_gen)
 
     def get_velocity(self, xt, t, batch, processed_condition):
         t_embedding = self.t_embedding(t)
