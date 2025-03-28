@@ -1,8 +1,6 @@
 exp_type: unfolding
 exp_name: unfolding_runs1
 
-seed: 42
-
 use_mlflow: false
 
 data:
