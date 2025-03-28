@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 
-from experiments.logger import LOGGER
 from experiments.unfolding.utils import (
     unpack_last,
     EPS1,
@@ -11,8 +10,6 @@ from experiments.unfolding.utils import (
     get_phi,
     get_eta,
 )
-
-MASS = 0.1
 
 
 class BaseTransform(nn.Module):
@@ -119,7 +116,6 @@ class EPPP_to_PPPM2(BaseTransform):
         m2 = E**2 - (px**2 + py**2 + pz**2)
         m2 = torch.abs(m2)
 
-        # m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
@@ -284,7 +280,6 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         p_abs = pt * torch.cosh(eta)
         m2 = E**2 - p_abs**2
         m2 = torch.abs(m2)
-        # m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _inverse(self, ptphietam2):

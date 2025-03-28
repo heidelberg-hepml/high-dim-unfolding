@@ -37,6 +37,8 @@ def unpack_last(x):
 
 
 def fourmomenta_to_jetmomenta(fourmomenta):
+    in_dtype = fourmomenta.dtype
+    fourmomenta = fourmomenta.to(dtype=torch.float64)
     pt = get_pt(fourmomenta)
     phi = get_phi(fourmomenta)
     eta = get_eta(fourmomenta)
@@ -44,10 +46,12 @@ def fourmomenta_to_jetmomenta(fourmomenta):
 
     jetmomenta = torch.stack((pt, phi, eta, mass**2), dim=-1)
     assert torch.isfinite(jetmomenta).all()
-    return jetmomenta
+    return jetmomenta.to(in_dtype)
 
 
 def jetmomenta_to_fourmomenta(jetmomenta):
+    in_dtype = jetmomenta.dtype
+    jetmomenta = jetmomenta.to(dtype=torch.float64)
     pt, phi, eta, m2 = unpack_last(jetmomenta)
 
     px = pt * torch.cos(phi)
@@ -57,7 +61,7 @@ def jetmomenta_to_fourmomenta(jetmomenta):
 
     fourmomenta = torch.stack((E, px, py, pz), dim=-1)
     assert torch.isfinite(fourmomenta).all()
-    return fourmomenta
+    return fourmomenta.to(in_dtype)
 
 
 def ensure_angle(phi):

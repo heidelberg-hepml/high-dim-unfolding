@@ -6,8 +6,6 @@ from torch_geometric.data import Batch
 
 import os, time
 from omegaconf import open_dict
-from hydra.utils import instantiate
-from tqdm import trange, tqdm
 import energyflow
 
 from gatr.interface import embed_spurions, extract_vector
@@ -17,9 +15,8 @@ from experiments.unfolding.utils import (
     ensure_angle,
     pid_encoding,
     get_ptr_from_batch,
-    get_pt,
+    jetmomenta_to_fourmomenta,
 )
-from experiments.unfolding.coordinates import PtPhiEtaM2
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
@@ -170,9 +167,8 @@ class UnfoldingExperiment(BaseExperiment):
             det_particles[..., 3] = self.cfg.data.mass**2
             gen_particles[..., 3] = self.cfg.data.mass**2
 
-            DatasetCoordinates = PtPhiEtaM2()
-            det_particles = DatasetCoordinates.x_to_fourmomenta(det_particles)
-            gen_particles = DatasetCoordinates.x_to_fourmomenta(gen_particles)
+            det_particles = jetmomenta_to_fourmomenta(det_particles)
+            gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
         elif Dataset == "jets":
             Dataset = ZplusJetDataset
