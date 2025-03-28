@@ -28,9 +28,6 @@ class UnfoldingExperiment(BaseExperiment):
 
         self.define_process_specifics()
 
-        # dynamically set wrapper properties
-        self.modeltype = "CFM"
-
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             # dynamically set channel dimensions
