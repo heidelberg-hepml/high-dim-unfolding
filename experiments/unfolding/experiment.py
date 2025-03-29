@@ -19,8 +19,6 @@ from experiments.unfolding.utils import (
 )
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
-from experiments.mlflow import log_mlflow
-import experiments.unfolding.cfm as cfm
 
 
 class UnfoldingExperiment(BaseExperiment):
@@ -121,11 +119,7 @@ class UnfoldingExperiment(BaseExperiment):
                 cache_dir=data_path,
                 include_keys=["particles", "mults", "jets"],
             )
-            LOGGER.info(f"Loaded data in {time.time() - t0:.2f} seconds")
-            split = self.cfg.data.train_test_val
             size = len(data["sim_particles"])
-            train_idx = int(split[0] * size)
-            val_idx = int(split[1] * size)
 
             det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
             det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
@@ -180,16 +174,13 @@ class UnfoldingExperiment(BaseExperiment):
                 .to(self.dtype)
                 .reshape(-1, 3, 4)
             )
+            size = len(gen_particles)
             gen_mults = torch.ones(gen_particles.shape[0], dtype=torch.int)
             det_mults = torch.ones(det_particles.shape[0], dtype=torch.int)
             gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
             det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
 
-            LOGGER.info(f"Loaded data in {time.time() - t0:.2f} seconds")
-            split = self.cfg.data.train_test_val
-            size = len(gen_particles)
-            train_idx = int(split[0] * size)
-            val_idx = int(split[1] * size)
+        LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
         if self.cfg.data.max_constituents > 0:
             if self.cfg.data.det_mult == 1:
@@ -202,6 +193,9 @@ class UnfoldingExperiment(BaseExperiment):
                 pass
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
 
+        split = self.cfg.data.train_test_val
+        train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
+
         # initialize cfm (might require data)
         self.model.init_physics(
             units=self.cfg.data.units,
@@ -211,6 +205,7 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.model.init_distribution()
         self.model.init_coordinates()
+
         gen_mask = (
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
@@ -265,20 +260,20 @@ class UnfoldingExperiment(BaseExperiment):
             gen_mults[:train_idx],
         )
         self.val_data.create_data_list(
-            det_particles[train_idx : train_idx + val_idx],
-            det_pids[train_idx : train_idx + val_idx],
-            det_mults[train_idx : train_idx + val_idx],
-            gen_particles[train_idx : train_idx + val_idx],
-            gen_pids[train_idx : train_idx + val_idx],
-            gen_mults[train_idx : train_idx + val_idx],
+            det_particles[train_idx:val_idx],
+            det_pids[train_idx:val_idx],
+            det_mults[train_idx:val_idx],
+            gen_particles[train_idx:val_idx],
+            gen_pids[train_idx:val_idx],
+            gen_mults[train_idx:val_idx],
         )
         self.test_data.create_data_list(
-            det_particles[train_idx + val_idx :],
-            det_pids[train_idx + val_idx :],
-            det_mults[train_idx + val_idx :],
-            gen_particles[train_idx + val_idx :],
-            gen_pids[train_idx + val_idx :],
-            gen_mults[train_idx + val_idx :],
+            det_particles[val_idx:test_idx],
+            det_pids[val_idx:test_idx],
+            det_mults[val_idx:test_idx],
+            gen_particles[val_idx:test_idx],
+            gen_pids[val_idx:test_idx],
+            gen_mults[val_idx:test_idx],
         )
 
     def _init_dataloader(self):
@@ -335,7 +330,7 @@ class UnfoldingExperiment(BaseExperiment):
         }
         if self.cfg.evaluation.sample:
             t0 = time.time()
-            self._sample_events(loaders["test"], self.cfg.evaluation.n_batches)
+            self._sample_events(loaders["test"])
             loaders["gen"] = self.sample_loader
             dt = time.time() - t0
             LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
@@ -345,38 +340,18 @@ class UnfoldingExperiment(BaseExperiment):
         if self.cfg.evaluation.classifier:
             self.classifier = self._evaluate_classifier_metric()
 
-        for key in self.cfg.evaluation.eval_loss:
-            if key in loaders.keys():
-                self._evaluate_loss_single(loaders[key], key)
-
     def _evaluate_classifier_metric(self):
-        pass
-
-    def _evaluate_loss_single(self, loader, title):
-        self.model.eval()
-        losses = []
-        LOGGER.info(f"Starting to evaluate loss for model on {title} dataset")
-        t0 = time.time()
-        for i, data in enumerate(loader):
-            data = data.to(self.device)
-            loss = self.model.batch_loss(data)[0]
-            losses.append(loss.cpu().item())
-        dt = time.time() - t0
-        LOGGER.info(
-            f"Finished evaluating loss for {title} dataset after {dt/60:.2f}min: {np.mean(losses):.4f}"
-        )
-
-        if self.cfg.use_mlflow:
-            log_mlflow(f"eval.{title}.loss", np.mean(losses))
+        raise NotImplementedError
 
     def _evaluate_log_prob_single(self, loader, title):
-        pass
+        raise NotImplementedError
 
-    def _sample_events(self, loader, n_batches):
+    def _sample_events(self, loader):
         samples = []
         targets = []
         self.data_raw = {}
         it = iter(loader)
+        n_batches = self.cfg.evaluation.n_batches
         if n_batches > len(loader):
             LOGGER.warning(
                 f"Requested {n_batches} batches for sampling, but only {len(loader)} batches available in test dataset."
