@@ -182,6 +182,9 @@ class UnfoldingExperiment(BaseExperiment):
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
+        gen_particles /= self.cfg.data.units
+        det_particles /= self.cfg.data.units
+
         if self.cfg.data.max_constituents > 0:
             if self.cfg.data.det_mult == 1:
                 det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
@@ -503,7 +506,7 @@ class UnfoldingExperiment(BaseExperiment):
 
             def form_jet(constituents, batch_idx, other_batch_idx):
                 jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
-                return jet
+                return jet * self.cfg.data.units
 
             self.obs[r"\text{ jet }"] = form_jet
             self.obs_ranges[r"\text{ jet }"] = {
@@ -530,7 +533,7 @@ class UnfoldingExperiment(BaseExperiment):
                                 if i < other_batch_ptr[n + 1] - other_batch_ptr[n]:
                                     idx.append(batch_ptr[n] + i)
                         selected_constituents = constituents[idx]
-                        return selected_constituents
+                        return selected_constituents * self.cfg.data.units
 
                     return ith_pt
 
