@@ -7,6 +7,7 @@ from experiments.unfolding.distributions import (
     BaseDistribution,
     NaivePPP,
     StandardPPP,
+    LogPtPhiEta,
     StandardLogPtPhiEta,
 )
 from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
@@ -334,6 +335,8 @@ class EventCFM(CFM):
         elif self.base_type == 2:
             self.distribution = StandardPPP(*args)
         elif self.base_type == 3:
+            self.distribution = LogPtPhiEta(*args)
+        elif self.base_type == 4:
             self.distribution = StandardLogPtPhiEta(*args)
         else:
             raise ValueError(f"base_type={self.base_type} not implemented")

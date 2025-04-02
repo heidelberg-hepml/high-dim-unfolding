@@ -24,7 +24,7 @@ data:
  add_pid: false
  add_scalar_features: false
  reinsert_channels: false
- base_type: 3
+ base_type: 4
  units: 10
  mass: 0.1
 
