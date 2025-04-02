@@ -6,14 +6,12 @@ from matplotlib.backends.backend_pdf import PdfPages
 from experiments.base_plots import plot_loss, plot_metric
 from experiments.unfolding.plots import (
     plot_histogram,
-    plot_histogram_2d,
     plot_calibration,
     simple_histogram,
     plot_roc,
     plot_correlations,
 )
-from experiments.unfolding.coordinates import PtPhiEtaM2
-from experiments.unfolding.utils import get_range
+from experiments.unfolding.utils import get_range, fourmomenta_to_jetmomenta
 
 
 def plot_losses(exp, filename, model_label):
@@ -23,7 +21,7 @@ def plot_losses(exp, filename, model_label):
             [exp.train_loss, exp.val_loss],
             exp.train_lr,
             labels=["train loss", "val loss"],
-            logy=True if exp.modeltype == "CFM" else False,
+            logy=True,
         )
         plot_metric(
             file,
@@ -40,7 +38,7 @@ def plot_losses(exp, filename, model_label):
                 ],
                 lr=exp.train_lr,
                 labels=[f"train mse_{k}", f"val mse_{k}"],
-                logy=True if exp.modeltype == "CFM" else False,
+                logy=True,
             )
 
 
@@ -208,8 +206,6 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
 
 def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
 
-    coords = PtPhiEtaM2()
-
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             extract = exp.obs[name]
@@ -228,9 +224,9 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["gen"].x_gen_batch,
                 exp.data_raw["gen"].x_det_batch,
             )
-            part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
-            det_lvl = coords.fourmomenta_to_x(det_lvl).cpu().detach()
-            model = coords.fourmomenta_to_x(model).cpu().detach()
+            part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
+            det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()
+            model = fourmomenta_to_jetmomenta(model).cpu().detach()
             obs_names = [
                 r"p_{T," + name + "}",
                 "\phi_{" + name + "}",

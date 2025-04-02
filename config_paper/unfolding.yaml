@@ -1,14 +1,12 @@
 exp_type: unfolding
 exp_name: unfolding_runs1
 
-seed: 42
-
 use_mlflow: false
 
 data:
  data_dir: data/
  dataset: zplusjet
- num_data: 10000
+ num_data: -1
  train_test_val: [0.8, 0.1, 0.1]
  pid_encoding: false
  max_num_particles: 152
@@ -24,7 +22,7 @@ data:
  add_pid: false
  add_scalar_features: false
  reinsert_channels: false
- base_type: 4
+ base_type: 3
  units: 10
  mass: 0.1
 
@@ -46,12 +44,12 @@ odeint:
  rtol: 1e-5
  atol: 1e-5
  options:
-  step_size: 0.05
+  step_size: 0.02
 
 train: true
 training:
- iterations: 100
- batchsize: 16
+ iterations: 100000
+ batchsize: 128
  lr: 3e-4
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
@@ -60,7 +58,7 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 64
+ batchsize: 512
  classifier: false
  sample: true
  n_batches: -1

@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 
-from experiments.logger import LOGGER
 from experiments.unfolding.utils import (
     unpack_last,
     EPS1,
@@ -11,8 +10,6 @@ from experiments.unfolding.utils import (
     get_phi,
     get_eta,
 )
-
-MASS = 0.1
 
 
 class BaseTransform(nn.Module):
@@ -119,7 +116,6 @@ class EPPP_to_PPPM2(BaseTransform):
         m2 = E**2 - (px**2 + py**2 + pz**2)
         m2 = torch.abs(m2)
 
-        # m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
@@ -284,7 +280,6 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         p_abs = pt * torch.cosh(eta)
         m2 = E**2 - p_abs**2
         m2 = torch.abs(m2)
-        # m2 = MASS ** 2 * torch.ones_like(m2)
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _inverse(self, ptphietam2):
@@ -305,7 +300,9 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_pt = torch.stack((one, zero, zero, -2 * pt * torch.cosh(eta) ** 2), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
-        jac_eta = torch.stack((zero, zero, one, -(pt**2) * torch.sinh(2 * eta)), dim=-1)
+        jac_eta = torch.stack(
+            (zero, zero, one, -(pt**2) * torch.sinh(2 * eta)), dim=-1
+        )
         jac_E = torch.stack((zero, zero, zero, 2 * E), dim=-1)
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_E), dim=-1)

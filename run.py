@@ -14,12 +14,10 @@ from experiments.tagging.finetuneexperiment import TopTaggingFineTuneExperiment
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.unfolding.experiment import UnfoldingExperiment
 
-import random
-import numpy as np
 import torch
 
 
-@hydra.main(config_path="config", config_name="amplitudes", version_base=None)
+@hydra.main(config_path="config", config_name="unfolding", version_base=None)
 def main(cfg):
     world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
 

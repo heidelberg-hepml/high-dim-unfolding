@@ -54,7 +54,6 @@ def xformers_sa_mask(batch, batch_condition=None, materialize=False):
 
 @torch.compile(dynamic=True)
 def full_self_attention_mask(batch):
-
     def masking(b, h, q_idx, kv_idx):
         return batch[q_idx] == batch[kv_idx]
 
@@ -65,7 +64,6 @@ def full_self_attention_mask(batch):
 
 @torch.compile(dynamic=True)
 def causal_self_attention_mask(batch):
-
     def masking(b, h, q_idx, kv_idx):
         return torch.where(q_idx < kv_idx, True, False) * torch.where(
             batch[q_idx] == batch[kv_idx], True, False
@@ -78,7 +76,6 @@ def causal_self_attention_mask(batch):
 
 @torch.compile(dynamic=True)
 def cross_attention_mask(Q_batch, KV_batch):
-
     def masking(b, h, q_idx, kv_idx):
         return torch.where(Q_batch[q_idx] == KV_batch[kv_idx], True, False)
 
@@ -110,7 +107,9 @@ class ConditionalTransformerCFM(EventCFM):
     def get_condition(self, batch):
         condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
         condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
-        attention_mask = xformers_sa_mask(batch.x_det_batch)
+        attention_mask = xformers_sa_mask(
+            batch.x_det_batch, materialize=not torch.cuda.is_available()
+        )
         processed_condition = self.net_condition(
             inputs=condition.unsqueeze(0),
             attention_mask=attention_mask,
@@ -122,8 +121,14 @@ class ConditionalTransformerCFM(EventCFM):
 
         x = torch.cat([xt, batch.scalars_gen, t_embedding], dim=-1)
 
-        attention_mask = xformers_sa_mask(batch.x_gen_batch)
-        crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
+        attention_mask = xformers_sa_mask(
+            batch.x_gen_batch, materialize=not torch.cuda.is_available()
+        )
+        crossattention_mask = xformers_sa_mask(
+            batch.x_gen_batch,
+            batch.x_det_batch,
+            materialize=not torch.cuda.is_available(),
+        )
 
         v = self.net(
             x=x.unsqueeze(0),
