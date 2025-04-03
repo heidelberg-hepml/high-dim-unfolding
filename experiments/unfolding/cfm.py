@@ -9,6 +9,7 @@ from experiments.unfolding.distributions import (
     StandardPPP,
     LogPtPhiEta,
     StandardLogPtPhiEta,
+    StandardPtPhiEta,
 )
 from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
 import experiments.unfolding.coordinates as c
@@ -338,6 +339,8 @@ class EventCFM(CFM):
             self.distribution = LogPtPhiEta(*args)
         elif self.base_type == 4:
             self.distribution = StandardLogPtPhiEta(*args)
+        elif self.base_type == 5:
+            self.distribution = StandardPtPhiEta(*args)
         else:
             raise ValueError(f"base_type={self.base_type} not implemented")
 

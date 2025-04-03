@@ -194,6 +194,20 @@ class PtPhiEtaLogM2(BaseCoordinates):
         ]
 
 
+class StandardPtPhiEtaLogM2(BaseCoordinates):
+    # (pt, phi, eta, log(m^2))
+    def __init__(self):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_LogM2(),
+            tr.StandardNormal([3]),
+        ]
+
+
 class LogPtPhiEtaM2(BaseCoordinates):
     # (log(pt), phi, eta, m^2)
     def __init__(self, pt_min, units):
