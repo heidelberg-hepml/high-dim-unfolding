@@ -10,6 +10,7 @@ from experiments.unfolding.autoregression import (
     create_block_mask,
 )
 from experiments.unfolding.cfm import EventCFM
+from experiments.unfolding.utils import ensure_angle, mask_dims
 from gatr.interface import embed_vector, extract_vector
 from experiments.logger import LOGGER
 
@@ -380,3 +381,185 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
 
         samples = remove_extra(sequence, batch.x_gen_ptr, remove_start=True)
         return samples
+
+
+class SimpleConditionalTransformerCFM(EventCFM):
+    """
+    Base class for all CFM models
+    - event-generation-specific features are implemented in EventCFM
+    - get_velocity is implemented by architecture-specific subclasses
+    """
+
+    def __init__(
+        self,
+        net,
+        net_condition,
+        cfm,
+        odeint,
+    ):
+        # See GATrCFM.__init__ for documentation
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.net = net
+        self.net_condition = net_condition
+
+    def get_masks(self, batch):
+        return xformers_sa_mask(
+            batch.x_gen_batch, materialize=not torch.cuda.is_available()
+        ), xformers_sa_mask(
+            batch.x_gen_batch,
+            batch.x_det_batch,
+            materialize=not torch.cuda.is_available(),
+        )
+
+    def sample_base(self, shape, device, dtype, generator=None):
+        sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+        sample[..., 1] = (
+            torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
+            * 2
+            * torch.pi
+            - torch.pi
+        )
+        return sample
+
+    def get_condition(self, batch):
+        mask = xformers_sa_mask(
+            batch.x_det_batch, materialize=not torch.cuda.is_available()
+        )
+        return self.net_condition(batch.x_det.unsqueeze(0), mask)
+
+    def get_velocity(self, x, t, condition, attention_mask, crossattention_mask):
+        input = torch.cat([x, self.t_embedding(t)], dim=-1)
+        vp = self.net(
+            x=input.unsqueeze(0),
+            processed_condition=condition,
+            attention_mask=attention_mask,
+            crossattention_mask=crossattention_mask,
+        ).squeeze(0)
+        # return ensure_angle(vp)
+        return vp
+
+    def batch_loss(self, batch):
+        """
+        Construct the conditional flow matching objective
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+            Target space particles in fourmomenta space
+
+        Returns
+        -------
+        loss : torch.tensor with shape (1)
+        """
+        x0 = batch.x_gen
+        t = torch.rand(
+            batch.num_graphs,
+            1,
+            dtype=x0.dtype,
+            device=x0.device,
+        )
+        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
+        x1 = self.sample_base(x0.shape, x0.device, x0.dtype)
+
+        vt = x1 - x0
+        vt[..., 1] = ensure_angle(vt[..., 1])
+        xt = ensure_angle(x0 + vt * t)
+        xt[..., 1] = ensure_angle(xt[..., 1])
+
+        condition = self.get_condition(batch)
+
+        attention_mask, crossattention_mask = self.get_masks(batch)
+
+        vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
+
+        vp = mask_dims(vp, self.cfm.masked_dims)
+        vt = mask_dims(vt, self.cfm.masked_dims)
+        # evaluate conditional flow matching objective
+        distance = ((vp - vt) ** 2).mean()
+        distance_particlewise = [((vp - vt) ** 2)[..., i].mean() / 2 for i in range(4)]
+        return distance, distance_particlewise
+
+    def sample(self, batch, device, dtype):
+        """
+        Sample from CFM model
+        Solve an ODE using a NN-parametrized velocity field
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+        device : torch.device
+        dtype : torch.dtype
+
+        Returns
+        -------
+        x0_fourmomenta : torch.tensor with shape shape = (batchsize, 4)
+            Generated events
+        """
+
+        sample_batch = batch.clone()
+
+        condition = self.get_condition(batch)
+
+        attention_mask, crossattention_mask = self.get_masks(batch)
+
+        def velocity(t, xt_straight):
+            xt_straight[..., 1] = ensure_angle(xt_straight[..., 1])
+            t = t * torch.ones(
+                shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
+            )
+            vt_straight = self.get_velocity(
+                xt_straight, t, condition, attention_mask, crossattention_mask
+            )
+            vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
+            return vt_straight
+
+        # sample fourmomenta from base distribution
+        shape = batch.x_gen.shape
+        x1 = self.sample_base(shape, device, dtype)
+
+        # solve ODE in straight space
+        x0 = odeint(
+            velocity,
+            x1,
+            torch.tensor([1.0, 0.0], device=x1.device),
+            **self.odeint,
+        )[-1]
+
+        x0[..., 1] = ensure_angle(x0[..., 1])
+        sample_batch.x_gen = x0
+
+        """
+        # sort generated events by pT
+        pt = x0[..., 0].unsqueeze(-1)
+        x_perm = torch.argsort(pt, dim=0, descending=True)
+        x0 = x0.take_along_dim(x_perm, dim=0)
+        index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+        index_perm = torch.argsort(index, dim=0, stable=True)
+        x0 = x0.take_along_dim(index_perm, dim=0)
+        """
+
+        return sample_batch
+
+    def log_prob(self, batch):
+        """
+        Evaluate log_prob for existing target samples in a CFM model
+        Solve ODE involving the trace of the velocity field, this is more expensive than normal sampling
+        The 'self.hutchinson' parameter controls if the trace should be evaluated
+        with the hutchinson trace estimator that needs O(1) calls to the network,
+        as opposed to the exact autograd trace that needs O(n_particles) calls to the network
+        Note: Could also have a sample_and_log_prob method, but we have no use case for this
+
+        Parameters
+        ----------
+
+        batch : tuple of Batch graphs
+
+        Returns
+        -------
+        log_prob_fourmomenta : torch.tensor with shape (batchsize)
+            log_prob of each event in x0, evaluated in fourmomenta space
+        """
+        raise NotImplementedError

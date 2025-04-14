@@ -1,5 +1,5 @@
 exp_type: unfolding
-exp_name: unfolding_runs1
+exp_name: simplecondtest
 
 seed: 42
 
@@ -7,14 +7,15 @@ use_mlflow: false
 
 data:
  data_dir: data/
- dataset: zplusjet
- num_data: 10000
+ dataset: cms
+ num_data: 100000
  train_test_val: [0.8, 0.1, 0.1]
  pid_encoding: false
  max_num_particles: 152
- max_constituents: -1
- det_mult: -1
- add_spurions: true
+ max_constituents: 1
+ det_mult: 1
+ add_spurions: false
+ embed_det_in_GA: false
  beam_reference: xyplane
  two_beams: true
  beam_token: true
@@ -25,6 +26,7 @@ data:
  add_scalar_features: false
  reinsert_channels: false
  base_type: 4
+ pt_min: 0.0
  units: 10
  mass: 0.1
 
@@ -51,8 +53,8 @@ odeint:
 train: true
 training:
  iterations: 100
- batchsize: 16
- lr: 3e-4
+ batchsize: 128
+ lr: 1e-3
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
@@ -60,7 +62,7 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 64
+ batchsize: 128
  classifier: false
  sample: true
  n_batches: -1
@@ -73,9 +75,9 @@ plotting:
  jetmomenta: true
  preprocessed: true
  observables: []
- n_pt: 1
+ n_pt: 3
 
 defaults:
- - model: cond_tr_unfolding
+ - model: scond_tr_unfolding
  - default
  - _self_

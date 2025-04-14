@@ -25,6 +25,8 @@ class CrossAttention(nn.Module):
         hidden_channels: int,
         out_channels: int,
         num_heads: int,
+        pos_encoding: bool = False,
+        pos_encoding_base: int = 4096,
         multi_query: bool = True,
         dropout_prob: Optional[float] = None,
     ):
@@ -39,6 +41,13 @@ class CrossAttention(nn.Module):
             in_kv_channels, 2 * hidden_channels * (1 if multi_query else num_heads)
         )
         self.out_linear = nn.Linear(hidden_channels * num_heads, out_channels)
+
+        if pos_encoding:
+            self.pos_encoding = ApplyRotaryPositionalEncoding(
+                hidden_channels, item_dim=-2, base=pos_encoding_base
+            )
+        else:
+            self.pos_encoding = None
 
         self.dropout = nn.Dropout(dropout_prob) if dropout_prob is not None else None
 
@@ -70,6 +79,11 @@ class CrossAttention(nn.Module):
                 "... num_items (num_heads hidden_channels) -> ... num_heads num_items hidden_channels",
                 num_heads=self.num_heads,
             )
+
+        # Rotary positional encoding
+        if self.pos_encoding is not None:
+            q = self.pos_encoding(q)
+            k = self.pos_encoding(k)
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask)
@@ -117,6 +131,8 @@ class ConditionalTransformerBlock(nn.Module):
         channels: int,
         condition_channels: int,
         num_heads: int,
+        pos_encoding: bool = False,
+        pos_encoding_base: int = 4096,
         increase_hidden_channels=1,
         multi_query: bool = True,
         dropout_prob: Optional[float] = None,
@@ -126,12 +142,17 @@ class ConditionalTransformerBlock(nn.Module):
         self.norm = BaselineLayerNorm()
 
         hidden_channels = channels // num_heads * increase_hidden_channels
+        if pos_encoding:
+            hidden_channels = (hidden_channels + 1) // 2 * 2
+            hidden_channels = max(hidden_channels, 16)
 
         self.self_attention = BaselineSelfAttention(
             in_channels=channels,
             out_channels=channels,
             hidden_channels=hidden_channels,
             num_heads=num_heads,
+            pos_encoding=pos_encoding,
+            pos_encoding_base=pos_encoding_base,
             multi_query=multi_query,
             dropout_prob=dropout_prob,
         )
@@ -142,6 +163,8 @@ class ConditionalTransformerBlock(nn.Module):
             hidden_channels=channels,
             out_channels=channels,
             num_heads=num_heads,
+            pos_encoding=pos_encoding,
+            pos_encoding_base=pos_encoding_base,
             multi_query=multi_query,
             dropout_prob=dropout_prob,
         )
@@ -181,6 +204,8 @@ class ConditionalTransformer(nn.Module):
         hidden_channels: int,
         num_blocks: int = 4,
         num_heads: int = 8,
+        pos_encoding: bool = False,
+        pos_encoding_base: int = 4096,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,
         multi_query: bool = False,
@@ -196,6 +221,8 @@ class ConditionalTransformer(nn.Module):
                     channels=hidden_channels,
                     condition_channels=hidden_channels,
                     num_heads=num_heads,
+                    pos_encoding=pos_encoding,
+                    pos_encoding_base=pos_encoding_base,
                     increase_hidden_channels=increase_hidden_channels,
                     multi_query=multi_query,
                     dropout_prob=dropout_prob,
