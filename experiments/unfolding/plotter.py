@@ -178,7 +178,7 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                         ]
                     )
                 )
-                logy = False
+                logy = True
                 plot_histogram(
                     file=file,
                     train=part_lvl[..., channel],
@@ -246,7 +246,10 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                         ]
                     )
                 )
-                logy = False
+                if channel in [0, 3]:
+                    logy = True
+                else:
+                    logy = False
                 plot_histogram(
                     file=file,
                     train=part_lvl[..., channel],
@@ -318,7 +321,10 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                         ]
                     )
                 )
-                logy = False
+                if channel in [0, 3]:
+                    logy = True
+                else:
+                    logy = False
                 plot_histogram(
                     file=file,
                     train=part_lvl[..., channel],

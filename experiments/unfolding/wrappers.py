@@ -465,9 +465,7 @@ class SimpleConditionalTransformerCFM(EventCFM):
         x1 = self.sample_base(x0.shape, x0.device, x0.dtype)
 
         vt = x1 - x0
-        vt[..., 1] = ensure_angle(vt[..., 1])
-        xt = ensure_angle(x0 + vt * t)
-        xt[..., 1] = ensure_angle(xt[..., 1])
+        xt = self.geometry._handle_periodic(x0 + vt * t)
 
         condition = self.get_condition(batch)
 
@@ -506,7 +504,7 @@ class SimpleConditionalTransformerCFM(EventCFM):
         attention_mask, crossattention_mask = self.get_masks(batch)
 
         def velocity(t, xt_straight):
-            xt_straight[..., 1] = ensure_angle(xt_straight[..., 1])
+            xt_straight = self.geometry._handle_periodic(xt_straight)
             t = t * torch.ones(
                 shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
             )
@@ -528,10 +526,8 @@ class SimpleConditionalTransformerCFM(EventCFM):
             **self.odeint,
         )[-1]
 
-        x0[..., 1] = ensure_angle(x0[..., 1])
-        sample_batch.x_gen = x0
+        sample_batch.x_gen = self.geometry._handle_periodic(x0)
 
-        """
         # sort generated events by pT
         pt = x0[..., 0].unsqueeze(-1)
         x_perm = torch.argsort(pt, dim=0, descending=True)
@@ -539,7 +535,6 @@ class SimpleConditionalTransformerCFM(EventCFM):
         index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
         index_perm = torch.argsort(index, dim=0, stable=True)
         x0 = x0.take_along_dim(index_perm, dim=0)
-        """
 
         return sample_batch
 

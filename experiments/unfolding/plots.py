@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 from experiments.unfolding.coordinates import LogPtPhiEtaLogM2
+from experiments.unfolding.utils import get_range
 
 # load fonts
 import matplotlib.font_manager as font_manager
@@ -16,9 +17,9 @@ font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
-plt.rcParams[
-    "text.latex.preamble"
-] = r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
+plt.rcParams["text.latex.preamble"] = (
+    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
+)
 
 # fontsize
 FONTSIZE = 18
@@ -492,4 +493,43 @@ def plot_correlations(file, det, part, gen, title, label, range, model_label):
     ax2.grid(False)
 
     plt.savefig(file, bbox_inches="tight", format="pdf")
+    plt.close()
+
+
+def plot_data(gen_jet, det_jet, filename):
+    gen_jet, det_jet = gen_jet.cpu().detach(), det_jet.cpu().detach()
+    if gen_jet.ndim == 3:
+        gen_jet = gen_jet.reshape(-1, 4)
+    if det_jet.ndim == 3:
+        det_jet = det_jet.reshape(-1, 4)
+
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+    # xlims = [[0, 600], [-3, 3], [-3.5, 3.5], [0, 1500]]
+
+    for i in range(4):
+        xlims = np.array(get_range([gen_jet[..., i], det_jet[..., i]]))
+        bins = np.linspace(xlims[0], xlims[1], 100)
+        axs[i // 2, i % 2].hist(
+            gen_jet[:, i],
+            bins=bins,
+            alpha=0.5,
+            label="gen_jet",
+            histtype="step",
+            density=True,
+        )
+        axs[i // 2, i % 2].hist(
+            det_jet[:, i],
+            bins=bins,
+            alpha=0.5,
+            label="det_jet",
+            histtype="step",
+            density=True,
+        )
+        axs[i // 2, i % 2].set_title(f"Variable {i}")
+        axs[i // 2, i % 2].set_xlim(xlims)
+        axs[i // 2, i % 2].legend()
+    axs[0, 0].set_yscale("log")
+    axs[1, 1].set_yscale("log")
+    plt.tight_layout()
+    plt.savefig(filename, bbox_inches="tight", format="pdf")
     plt.close()

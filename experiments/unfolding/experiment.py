@@ -14,6 +14,7 @@ from experiments.unfolding.utils import (
     get_ptr_from_batch,
 )
 import experiments.unfolding.plotter as plotter
+from experiments.unfolding.plots import plot_data
 from experiments.logger import LOGGER
 
 
@@ -108,6 +109,8 @@ class UnfoldingExperiment(BaseExperiment):
             data = load_zplusjet(data_path, self.cfg, self.dtype)
         elif self.cfg.data.dataset == "cms":
             data = load_cms(data_path, self.cfg, self.dtype)
+        else:
+            raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
         det_particles = data["det_particles"]
         det_mults = data["det_mults"]
         det_pids = data["det_pids"]
@@ -117,6 +120,12 @@ class UnfoldingExperiment(BaseExperiment):
         size = len(gen_particles)
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
+
+        plot_data(
+            gen_particles[:, :3, :],
+            det_particles[:, :3, :],
+            os.path.join(self.cfg.run_dir, "data.pdf"),
+        )
 
         gen_particles /= self.cfg.data.units
         det_particles /= self.cfg.data.units
@@ -177,16 +186,22 @@ class UnfoldingExperiment(BaseExperiment):
             gen_mask = (
                 torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
             )
-            gen_data = gen_particles[gen_mask]
-            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
-            gen_particles[gen_mask] = gen_data
-
             det_mask = (
                 torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
             )
+
+            gen_data = gen_particles[gen_mask]
+            LOGGER.info(f"gen_data shape: {gen_data.shape}")
+            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
+
             det_data = det_particles[det_mask]
+            LOGGER.info(f"det_data shape: {det_data.shape}")
             det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
+
+            gen_particles[gen_mask] = gen_data
             det_particles[det_mask] = det_data
+
+        # initialize geometry
 
         self.model.init_geometry()
 
@@ -201,20 +216,28 @@ class UnfoldingExperiment(BaseExperiment):
         else:
             self.spurions = None
 
+        if self.cfg.modelname == "SimpleConditionalTransformer":
+            fourm = False
+        else:
+            fourm = True
+
         self.train_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
+            fourm=fourm,
         )
         self.val_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
+            fourm=fourm,
         )
         self.test_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
+            fourm=fourm,
         )
         self.train_data.create_data_list(
             det_particles[:train_idx],
@@ -338,11 +361,13 @@ class UnfoldingExperiment(BaseExperiment):
                 sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
                     sample_batch.x_gen
                 )
-                sample_batch.x_det = self.model.coordinates.x_to_fourmomenta(
+                sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
                     sample_batch.x_det
                 )
                 batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
-                batch.x_det = self.model.coordinates.x_to_fourmomenta(batch.x_det)
+                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det
+                )
 
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())

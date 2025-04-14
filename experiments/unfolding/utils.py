@@ -2,6 +2,7 @@ import torch
 from xformers.ops.fmha import BlockDiagonalMask
 import math
 from torch import nn
+import numpy as np
 
 
 class GaussianFourierProjection(nn.Module):
@@ -198,9 +199,18 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
 def get_range(input):
     if type(input) in [list, tuple]:
         tensor = torch.cat(input, dim=0)
-    else:
+    elif isinstance(input, np.ndarray):
+        tensor = torch.from_numpy(input)
+    elif isinstance(input, torch.Tensor):
         tensor = input
-    quantiles = torch.quantile(tensor, torch.tensor([0.01, 0.99], device=tensor.device))
+    else:
+        raise ValueError("Input must be a list, tuple, numpy array, or torch tensor")
+    quantiles = torch.quantile(
+        tensor, torch.tensor([0.005, 0.995], device=tensor.device)
+    )
+    scale = quantiles[1] - quantiles[0]
+    quantiles[0] -= 0.05 * scale
+    quantiles[1] += 0.05 * scale
     return quantiles
 
 

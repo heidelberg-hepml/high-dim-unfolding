@@ -13,14 +13,16 @@ from experiments.unfolding.utils import (
 )
 from experiments.unfolding.embedding import event_to_GA_with_spurions
 from experiments.logger import LOGGER
+from experiments.unfolding.plots import plot_data
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, embed_into_GA=False, spurions=None):
+    def __init__(self, dtype, embed_into_GA=False, spurions=None, fourm=True):
         self.dtype = dtype
         self.embed_into_GA = embed_into_GA
         if embed_into_GA:
             self.spurions = spurions
+        self.fourm = fourm
 
     def __len__(self):
         return len(self.data_list)
@@ -36,25 +38,29 @@ class Dataset(torch.utils.data.Dataset):
         gen_particles,
         gen_pids,
         gen_mults,
-        fourm=True,
     ):
 
         self.data_list = []
         for i in range(det_particles.shape[0]):
-            if fourm:
-                det_pt = get_pt(det_particles[i])
-                gen_pt = get_pt(gen_particles[i])
-            else:
-                det_pt = det_particles[i, :, 0]
-                gen_pt = gen_particles[i, :, 0]
+            # if self.fourm:
+            #     det_pt = get_pt(det_particles[i])
+            #     gen_pt = get_pt(gen_particles[i])
+            # else:
+            #     det_pt = det_particles[i, :, 0]
+            #     gen_pt = gen_particles[i, :, 0]
 
-            det_idx = torch.argsort(det_pt, descending=True)[: det_mults[i]]
-            gen_idx = torch.argsort(gen_pt, descending=True)[: gen_mults[i]]
+            # det_idx = torch.argsort(det_pt, descending=True)[: det_mults[i]]
+            # gen_idx = torch.argsort(gen_pt, descending=True)[: gen_mults[i]]
 
-            det_event = det_particles[i, det_idx]
-            det_scalars = det_pids[i, det_idx]
-            gen_event = gen_particles[i, gen_idx]
-            gen_scalars = gen_pids[i, gen_idx]
+            # det_event = det_particles[i, det_idx]
+            # det_scalars = det_pids[i, det_idx]
+            # gen_event = gen_particles[i, gen_idx]
+            # gen_scalars = gen_pids[i, gen_idx]
+
+            det_event = det_particles[i, : det_mults[i]]
+            det_scalars = det_pids[i, : det_mults[i]]
+            gen_event = gen_particles[i, : gen_mults[i]]
+            gen_scalars = gen_pids[i, : gen_mults[i]]
 
             if self.embed_into_GA:
                 if self.spurions is not None:
@@ -105,6 +111,11 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
     gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
 
+    det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
+    gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
+    det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
+    gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
+
     # save pids before replacing with mass
     if cfg.data.pid_encoding:
         det_pids = det_particles[..., 3].clone().unsqueeze(-1)
@@ -117,6 +128,15 @@ def load_zplusjet(data_path, cfg, dtype):
 
     det_particles[..., 3] = cfg.data.mass**2
     gen_particles[..., 3] = cfg.data.mass**2
+
+    LOGGER.info(f"det_particles.shape: {det_particles.shape}")
+    LOGGER.info(f"gen_particles.shape: {gen_particles.shape}")
+
+    plot_data(
+        gen_particles[:, :3, :],
+        det_particles[:, :3, :],
+        os.path.join(cfg.run_dir, "data.pdf"),
+    )
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
