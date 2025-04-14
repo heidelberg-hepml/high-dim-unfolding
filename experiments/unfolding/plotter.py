@@ -246,7 +246,7 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                         ]
                     )
                 )
-                if channel in [0, 3]:
+                if channel == 0:
                     logy = True
                 else:
                     logy = False
@@ -321,7 +321,7 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                         ]
                     )
                 )
-                if channel in [0, 3]:
+                if channel == 0:
                     logy = True
                 else:
                     logy = False

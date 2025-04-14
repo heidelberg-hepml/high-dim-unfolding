@@ -512,6 +512,7 @@ class SimpleConditionalTransformerCFM(EventCFM):
                 xt_straight, t, condition, attention_mask, crossattention_mask
             )
             vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
+            vt_straight = self.handle_velocity(vt_straight)
             return vt_straight
 
         # sample fourmomenta from base distribution
