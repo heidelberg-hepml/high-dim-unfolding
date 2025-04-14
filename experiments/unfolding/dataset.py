@@ -136,14 +136,19 @@ def load_cms(data_path, cfg, dtype):
         torch.from_numpy(np.load(os.path.join(data_path, "gen_1725_delphes.npy")))
         .to(dtype)
         .reshape(-1, 3, 4)
-    )
+    )[: cfg.data.num_data]
     det_particles = (
         torch.from_numpy(np.load(os.path.join(data_path, "rec_1725_delphes.npy")))
         .to(dtype)
         .reshape(-1, 3, 4)
+    )[: cfg.data.num_data]
+    size = len(gen_particles)
+    gen_mults = (
+        torch.zeros(gen_particles.shape[0], dtype=torch.int) + cfg.data.max_constituents
     )
-    gen_mults = torch.ones(gen_particles.shape[0], dtype=torch.int)
-    det_mults = torch.ones(det_particles.shape[0], dtype=torch.int)
+    det_mults = (
+        torch.zeros(det_particles.shape[0], dtype=torch.int) + cfg.data.max_constituents
+    )
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     return {

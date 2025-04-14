@@ -6,16 +6,12 @@ from torch_geometric.data import Batch
 
 import os, time
 from omegaconf import open_dict
-import energyflow
 
 from gatr.interface import embed_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
-from experiments.unfolding.dataset import ZplusJetDataset
+from experiments.unfolding.dataset import Dataset, load_cms, load_zplusjet
 from experiments.unfolding.utils import (
-    ensure_angle,
-    pid_encoding,
     get_ptr_from_batch,
-    jetmomenta_to_fourmomenta,
 )
 import experiments.unfolding.plotter as plotter
 from experiments.logger import LOGGER
@@ -101,84 +97,24 @@ class UnfoldingExperiment(BaseExperiment):
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
-        if self.cfg.data.dataset == "zplusjet":
-            self._init_data(ZplusJetDataset, data_path)
-        else:
-            self._init_data("jets", data_path)
+        self._init_data(data_path)
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
         )
 
-    def _init_data(self, Dataset, data_path):
+    def _init_data(self, data_path):
         t0 = time.time()
-        if Dataset == ZplusJetDataset:
-            data = energyflow.zjets_delphes.load(
-                "Herwig",
-                num_data=self.cfg.data.num_data,
-                pad=True,
-                cache_dir=data_path,
-                include_keys=["particles", "mults", "jets"],
-            )
-            size = len(data["sim_particles"])
-
-            det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
-            det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
-            det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
-
-            gen_particles = torch.tensor(data["gen_particles"], dtype=self.dtype)
-            gen_jets = torch.tensor(data["gen_jets"], dtype=self.dtype)
-            gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
-
-            # undo the dataset scaling
-            det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
-            det_particles[..., 2] = ensure_angle(det_particles[..., 2])
-            det_particles[..., 0] = det_particles[..., 0] * 100
-
-            gen_particles[..., 1:3] = gen_particles[..., 1:3] + gen_jets[:, None, 1:3]
-            gen_particles[..., 2] = ensure_angle(gen_particles[..., 2])
-            gen_particles[..., 0] = gen_particles[..., 0] * 100
-
-            # swap eta and phi for consistency
-            det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
-            gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
-
-            # save pids before replacing with mass
-            if self.cfg.data.pid_encoding:
-                det_pids = det_particles[..., 3].clone().unsqueeze(-1)
-                det_pids = pid_encoding(det_pids)
-                gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
-                gen_pids = pid_encoding(gen_pids)
-            else:
-                det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
-                gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
-
-            det_particles[..., 3] = self.cfg.data.mass**2
-            gen_particles[..., 3] = self.cfg.data.mass**2
-
-            # det_particles = jetmomenta_to_fourmomenta(det_particles)
-            # gen_particles = jetmomenta_to_fourmomenta(gen_particles)
-
-        elif Dataset == "jets":
-            Dataset = ZplusJetDataset
-            gen_particles = (
-                torch.from_numpy(
-                    np.load(os.path.join(data_path, "gen_1725_delphes.npy"))
-                )
-                .to(self.dtype)
-                .reshape(-1, 3, 4)
-            )
-            det_particles = (
-                torch.from_numpy(
-                    np.load(os.path.join(data_path, "rec_1725_delphes.npy"))
-                )
-                .to(self.dtype)
-                .reshape(-1, 3, 4)
-            )
-            size = len(gen_particles)
-            gen_mults = torch.ones(gen_particles.shape[0], dtype=torch.int)
-            det_mults = torch.ones(det_particles.shape[0], dtype=torch.int)
-            gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
-            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
+        if self.cfg.data.dataset == "zplusjet":
+            data = load_zplusjet(data_path, self.cfg, self.dtype)
+        elif self.cfg.data.dataset == "cms":
+            data = load_cms(data_path, self.cfg, self.dtype)
+        det_particles = data["det_particles"]
+        det_mults = data["det_mults"]
+        det_pids = data["det_pids"]
+        gen_particles = data["gen_particles"]
+        gen_mults = data["gen_mults"]
+        gen_pids = data["gen_pids"]
+        size = len(gen_particles)
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
@@ -209,26 +145,48 @@ class UnfoldingExperiment(BaseExperiment):
         self.model.init_distribution()
         self.model.init_coordinates()
 
-        gen_mask = (
+        # initialize coordinates
+        train_gen_mask = (
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
-        fit_gen_data = gen_particles[:train_idx][gen_mask]
-        if self.cfg.cfm.coordinates[:2] == "St":
-            fit_gen_data = fit_gen_data.to(
-                self.device, self.model.coordinates.transforms[-1].mean.dtype
-            )
-        self.model.coordinates.init_fit(fit_gen_data)
-        self.model.distribution.coordinates.init_fit(fit_gen_data)
+        train_gen_data = gen_particles[:train_idx][train_gen_mask]
+        # try:
+        #     train_gen_data = train_gen_data.to(
+        #         self.device, self.model.coordinates.transforms[-1].mean.dtype
+        #     )
+        # except AttributeError:
+        #     pass
+        self.model.coordinates.init_fit(train_gen_data)
+        self.model.distribution.coordinates.init_fit(train_gen_data)
 
-        det_mask = (
+        # initialize condition_coordinates (might require data)
+        train_det_mask = (
             torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         )
-        fit_det_data = det_particles[:train_idx][det_mask]
-        if self.cfg.cfm.coordinates[:2] == "St":
-            fit_det_data = fit_det_data.to(
-                self.device, self.model.coordinates.transforms[-1].mean.dtype
+        train_det_data = det_particles[:train_idx][train_det_mask]
+        # try:
+        #     train_det_data = train_det_data.to(
+        #         self.device, self.model.condition_coordinates.transforms[-1].mean.dtype
+        #     )
+        # except AttributeError:
+        #     pass
+        self.model.condition_coordinates.init_fit(train_det_data)
+
+        # transform before training
+        if self.cfg.modelname == "SimpleConditionalTransformer":
+            gen_mask = (
+                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
             )
-        self.model.condition_coordinates.init_fit(fit_det_data)
+            gen_data = gen_particles[gen_mask]
+            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
+            gen_particles[gen_mask] = gen_data
+
+            det_mask = (
+                torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+            )
+            det_data = det_particles[det_mask]
+            det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
+            det_particles[det_mask] = det_data
 
         self.model.init_geometry()
 
@@ -376,6 +334,16 @@ class UnfoldingExperiment(BaseExperiment):
                 self.dtype,
             )
 
+            if self.cfg.modelname == "SimpleConditionalTransformer":
+                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen
+                )
+                sample_batch.x_det = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_det
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
+                batch.x_det = self.model.coordinates.x_to_fourmomenta(batch.x_det)
+
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
 
@@ -395,7 +363,7 @@ class UnfoldingExperiment(BaseExperiment):
                 for data in targets:
                     data.x_det = extract_vector(data.x_det).squeeze(-2)
 
-        self.data_raw["gen"] = Batch.from_data_list(
+        self.data_raw["samples"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
         )
         self.data_raw["truth"] = Batch.from_data_list(
@@ -424,6 +392,8 @@ class UnfoldingExperiment(BaseExperiment):
 
         if self.cfg.modelname == "ConditionalTransformer":
             model_label = "CondTr"
+        elif self.cfg.modelname == "SimpleConditionalTransformer":
+            model_label = "SCondTr"
         elif self.cfg.modelname == "ConditionalGATr":
             model_label = "CondGATr"
         elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
