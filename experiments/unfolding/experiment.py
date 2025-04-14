@@ -155,8 +155,8 @@ class UnfoldingExperiment(BaseExperiment):
             det_particles[..., 3] = self.cfg.data.mass**2
             gen_particles[..., 3] = self.cfg.data.mass**2
 
-            det_particles = jetmomenta_to_fourmomenta(det_particles)
-            gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+            # det_particles = jetmomenta_to_fourmomenta(det_particles)
+            # gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
         elif Dataset == "jets":
             Dataset = ZplusJetDataset
@@ -213,7 +213,7 @@ class UnfoldingExperiment(BaseExperiment):
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
         fit_gen_data = gen_particles[:train_idx][gen_mask]
-        if self.cfg.cfm.coordinates[:2] == 'St':
+        if self.cfg.cfm.coordinates[:2] == "St":
             fit_gen_data = fit_gen_data.to(
                 self.device, self.model.coordinates.transforms[-1].mean.dtype
             )
@@ -224,7 +224,7 @@ class UnfoldingExperiment(BaseExperiment):
             torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         )
         fit_det_data = det_particles[:train_idx][det_mask]
-        if self.cfg.cfm.coordinates[:2] == 'St':
+        if self.cfg.cfm.coordinates[:2] == "St":
             fit_det_data = fit_det_data.to(
                 self.device, self.model.coordinates.transforms[-1].mean.dtype
             )

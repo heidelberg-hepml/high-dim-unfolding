@@ -182,8 +182,9 @@ class CFM(nn.Module):
 
         # sample fourmomenta from base distribution
         shape = batch.x_gen.shape
-        x1_fourmomenta = self.sample_base(shape, device, dtype)
-        x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+        # x1_fourmomenta = self.sample_base(shape, device, dtype)
+        # x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+        x1_straight = self.sample_base(shape, device, dtype)
 
         # solve ODE in straight space
         x0_straight = odeint(
@@ -381,6 +382,8 @@ class EventCFM(CFM):
                 self.pt_min,
                 self.units,
             )
+        elif coordinates_label == "Normal":
+            coordinates = c.Normal()
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")
         return coordinates

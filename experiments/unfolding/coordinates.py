@@ -248,3 +248,14 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.M2_to_LogM2(),
             tr.StandardNormal([3]),
         ]
+
+
+class Normal(BaseCoordinates):
+    # standardization
+    def __init__(self):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.StandardNormal([1, 3]),
+        ]

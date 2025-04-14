@@ -72,8 +72,8 @@ plotting:
  fourmomenta: true
  jetmomenta: true
  preprocessed: true
- observables: ["jet"]
- n_pt: 0
+ observables: []
+ n_pt: 1
 
 defaults:
  - model: cond_tr_unfolding
