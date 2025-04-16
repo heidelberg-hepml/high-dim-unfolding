@@ -28,7 +28,7 @@ data:
  base_type: 4
  pt_min: 0.0
  units: 10
- mass: 0.1
+ mass: 1.0
 
 cfm:
  embed_t_dim: 8
@@ -41,7 +41,7 @@ cfm:
   periodic: true
  transforms_float64: true
  zero_condition: false
- masked_dims: []
+ masked_dims: [3]
 
 odeint:
  method: rk4
@@ -56,7 +56,7 @@ training:
  batchsize: 128
  lr: 1e-3
  scheduler: CosineAnnealingLR
- validate_every_n_steps: 5000
+ validate_every_n_steps: 1000
  force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
  clip_grad_norm: 5.
 
@@ -74,7 +74,7 @@ plotting:
  fourmomenta: true
  jetmomenta: true
  preprocessed: true
- observables: []
+ observables: ["jet"]
  n_pt: 3
 
 defaults:

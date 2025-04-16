@@ -414,7 +414,7 @@ class SimpleConditionalTransformerCFM(EventCFM):
             materialize=not torch.cuda.is_available(),
         )
 
-    def sample_base(self, shape, device, dtype, generator=None):
+    def sample_base(self, shape, device, dtype, mass=None, generator=None):
         sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
         sample[..., 1] = (
             torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
@@ -422,6 +422,8 @@ class SimpleConditionalTransformerCFM(EventCFM):
             * torch.pi
             - torch.pi
         )
+        if mass is not None:
+            sample[..., 3] = mass
         return sample
 
     def get_condition(self, batch):
@@ -462,7 +464,12 @@ class SimpleConditionalTransformerCFM(EventCFM):
             device=x0.device,
         )
         t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
-        x1 = self.sample_base(x0.shape, x0.device, x0.dtype)
+
+        if 3 in self.cfm.masked_dims:
+            mass = torch.mean(x0[..., 3])
+        else:
+            mass = None
+        x1 = self.sample_base(x0.shape, x0.device, x0.dtype, mass)
 
         vt = x1 - x0
         xt = self.geometry._handle_periodic(x0 + vt * t)
@@ -473,8 +480,8 @@ class SimpleConditionalTransformerCFM(EventCFM):
 
         vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
 
-        vp = mask_dims(vp, self.cfm.masked_dims)
-        vt = mask_dims(vt, self.cfm.masked_dims)
+        vp = self.handle_velocity(vp)
+        vt = self.handle_velocity(vt)
         # evaluate conditional flow matching objective
         distance = ((vp - vt) ** 2).mean()
         distance_particlewise = [((vp - vt) ** 2)[..., i].mean() / 2 for i in range(4)]
@@ -512,12 +519,18 @@ class SimpleConditionalTransformerCFM(EventCFM):
                 xt_straight, t, condition, attention_mask, crossattention_mask
             )
             vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
-            vt_straight = self.handle_velocity(vt_straight)
+            vt_straight = self.handle_velocity(
+                vt_straight
+            )  # manually set mass velocity to zero
             return vt_straight
 
         # sample fourmomenta from base distribution
         shape = batch.x_gen.shape
-        x1 = self.sample_base(shape, device, dtype)
+        if 3 in self.cfm.masked_dims:
+            mass = torch.mean(batch.x_det[..., 3])
+        else:
+            mass = None
+        x1 = self.sample_base(shape, device, dtype, mass)
 
         # solve ODE in straight space
         x0 = odeint(

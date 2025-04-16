@@ -12,6 +12,7 @@ net:
   dropout_prob: 0.1
 
   pos_encoding: true
+  pos_encoding_base: 256
 
 net_condition:
   _target_: experiments.baselines.Transformer
@@ -25,3 +26,4 @@ net_condition:
   dropout_prob: 0.1
 
   pos_encoding: true
+  pos_encoding_base: 256

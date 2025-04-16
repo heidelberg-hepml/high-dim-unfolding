@@ -381,9 +381,8 @@ class EventCFM(CFM):
             coordinates = c.StandardLogPtPhiEtaLogM2(
                 self.pt_min,
                 self.units,
+                fixed_dims=self.cfm.masked_dims,
             )
-        elif coordinates_label == "Normal":
-            coordinates = c.Normal()
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")
         return coordinates
@@ -411,7 +410,5 @@ class EventCFM(CFM):
         return fourmomenta
 
     def handle_velocity(self, v):
-        if self.coordinates.contains_mass:
-            # manually set mass velocity to zero
-            v[..., 3] = 0.0
+        v[..., self.cfm.masked_dims] = 0.0
         return v

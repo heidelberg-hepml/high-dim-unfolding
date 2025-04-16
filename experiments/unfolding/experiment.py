@@ -90,6 +90,12 @@ class UnfoldingExperiment(BaseExperiment):
                     self.cfg.model.autoregressive_tr.hidden_channels
                 )
 
+            if self.cfg.data.dataset == "cms":
+                self.cfg.data.pt_min = 30.0
+                self.cfg.data.units = 10.0
+                self.cfg.cfm.masked_dims = []
+                self.cfg.plotting.observables = []
+
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
@@ -198,8 +204,18 @@ class UnfoldingExperiment(BaseExperiment):
             LOGGER.info(f"det_data shape: {det_data.shape}")
             det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
 
+            if self.cfg.data.dataset == "zplusjet":
+                gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
+                det_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
+
             gen_particles[gen_mask] = gen_data
             det_particles[det_mask] = det_data
+
+            plot_data(
+                gen_data,
+                det_data,
+                os.path.join(self.cfg.run_dir, "prep_data.pdf"),
+            )
 
         # initialize geometry
 

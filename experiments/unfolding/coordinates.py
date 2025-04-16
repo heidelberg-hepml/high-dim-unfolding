@@ -237,7 +237,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, units):
+    def __init__(self, pt_min, units, fixed_dims=[3]):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -246,16 +246,5 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.Pt_to_LogPt(pt_min, units),
             tr.M2_to_LogM2(),
-            tr.StandardNormal([1, 3]),
-        ]
-
-
-class Normal(BaseCoordinates):
-    # standardization
-    def __init__(self):
-        super().__init__()
-        self.contains_phi = True
-        self.contains_mass = True
-        self.transforms = [
-            tr.StandardNormal([1, 3]),
+            tr.StandardNormal([1] + fixed_dims),
         ]
