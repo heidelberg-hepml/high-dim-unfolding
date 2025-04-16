@@ -98,6 +98,26 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
 
+            if self.cfg.model.net.pos_encoding_type == "absolute":
+                if self.cfg.data.max_constituents > 0:
+                    self.cfg.model.net.pos_encoding_base = (
+                        self.cfg.data.max_constituents
+                    )
+                else:
+                    self.cfg.model.net.pos_encoding_base = (
+                        self.cfg.data.max_num_particles
+                    )
+
+            if self.cfg.model.net_condition.pos_encoding_type == "absolute":
+                if self.cfg.data.max_constituents > 0:
+                    self.cfg.model.net_condition.pos_encoding_base = (
+                        self.cfg.data.max_constituents
+                    )
+                else:
+                    self.cfg.model.net_condition.pos_encoding_base = (
+                        self.cfg.data.max_num_particles
+                    )
+
         self.define_process_specifics()
 
     def init_data(self):
@@ -197,10 +217,6 @@ class UnfoldingExperiment(BaseExperiment):
             gen_particles[gen_mask] = gen_data
             det_particles[det_mask] = det_data
 
-            LOGGER.info(
-                f"train_gen_mask: {train_gen_mask.shape}, \
-                gen_parts : {gen_particles[:train_idx].shape}"
-            )
             self.gen_mean = (
                 gen_particles[:train_idx] * train_gen_mask.unsqueeze(-1)
             ).sum(dim=0, keepdim=True) / train_gen_mask.sum(
@@ -219,13 +235,17 @@ class UnfoldingExperiment(BaseExperiment):
             )
             det_particles = det_particles - self.det_mean * det_mask.unsqueeze(-1)
 
-            self.gen_std = (gen_particles[:train_idx] * train_gen_mask).std(dim=0)
-            self.det_std = (det_particles[:train_idx] * train_det_mask).std(dim=0)
+            self.gen_std = (
+                gen_particles[:train_idx] * train_gen_mask.unsqueeze(-1)
+            ).std(dim=0, keepdim=True)
+            self.gen_std[self.gen_std == 0] = 1.0
+            gen_particles = gen_particles / self.gen_std
 
-            LOGGER.info(f"gen_mean: {self.gen_mean}, {self.gen_mean.shape}")
-            LOGGER.info(f"det_mean: {self.det_mean}, {self.det_mean.shape}")
-            LOGGER.info(f"gen_std: {self.gen_std}, {self.gen_std.shape}")
-            LOGGER.info(f"det_std: {self.det_std}, {self.det_std.shape}")
+            self.det_std = (
+                det_particles[:train_idx] * train_det_mask.unsqueeze(-1)
+            ).std(dim=0, keepdim=True)
+            self.det_std[self.det_std == 0] = 1.0
+            det_particles = det_particles / self.det_std
 
             plot_data(
                 gen_data,
@@ -392,28 +412,27 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.modelname == "SimpleConditionalTransformer":
 
                 # undo gen standardization
-                gen_indices = torch.arange(
-                    batch.x_gen_ptr[-1], device=batch.x_gen.device
+                gen_indices = (
+                    torch.arange(len(batch.x_gen), device=batch.x_gen.device)
+                    - batch.x_gen_ptr[batch.x_gen_batch]
                 )
-                gen_mask = (gen_indices[:, None] >= batch.x_gen_ptr[:-1]) & (
-                    gen_indices[:, None] < batch.x_gen_ptr[1:]
-                )
-                gen_std_broadcasted = self.gen_std[gen_mask]
-                gen_mean_broadcasted = self.gen_mean[gen_mask]
+
+                gen_std_broadcasted = self.gen_std.squeeze(0)[gen_indices]
+                gen_mean_broadcasted = self.gen_mean.squeeze(0)[gen_indices]
+
                 sample_batch.x_gen = (
                     sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
                 )
                 batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
 
                 # undo det standardization
-                det_indices = torch.arange(
-                    batch.x_det_ptr[-1], device=batch.x_det.device
+                det_indices = (
+                    torch.arange(len(batch.x_det), device=batch.x_det.device)
+                    - batch.x_det_ptr[batch.x_det_batch]
                 )
-                det_mask = (det_indices[:, None] >= batch.x_det_ptr[:-1]) & (
-                    det_indices[:, None] < batch.x_det_ptr[1:]
-                )
-                det_std_broadcasted = self.det_std[det_mask]
-                det_mean_broadcasted = self.det_mean[det_mask]
+
+                det_std_broadcasted = self.det_std.squeeze(0)[det_indices]
+                det_mean_broadcasted = self.det_mean.squeeze(0)[det_indices]
                 sample_batch.x_det = (
                     sample_batch.x_det * det_std_broadcasted + det_mean_broadcasted
                 )

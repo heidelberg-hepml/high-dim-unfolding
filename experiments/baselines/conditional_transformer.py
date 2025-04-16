@@ -6,7 +6,7 @@ from einops import rearrange
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from gatr.layers import ApplyRotaryPositionalEncoding
+from gatr.layers import ApplyRotaryPositionalEncoding, ApplyAbsolutePositionalEncoding
 from gatr.primitives.attention import scaled_dot_product_attention
 from experiments.misc import to_nd
 
@@ -26,7 +26,8 @@ class CrossAttention(nn.Module):
         out_channels: int,
         num_heads: int,
         pos_encoding: bool = False,
-        pos_encoding_base: int = 4096,
+        pos_encoding_type: str = "absolute",
+        pos_encoding_base: int = 256,
         multi_query: bool = True,
         dropout_prob: Optional[float] = None,
     ):
@@ -43,9 +44,16 @@ class CrossAttention(nn.Module):
         self.out_linear = nn.Linear(hidden_channels * num_heads, out_channels)
 
         if pos_encoding:
-            self.pos_encoding = ApplyRotaryPositionalEncoding(
-                hidden_channels, item_dim=-2, base=pos_encoding_base
-            )
+            if pos_encoding_type == "absolute":
+                max_seq_len = pos_encoding_base
+                self.pos_encoding = ApplyAbsolutePositionalEncoding(
+                    hidden_channels, max_seq_len
+                )
+            elif pos_encoding_type == "rotary":
+                pos_encoding_base = pos_encoding_base
+                self.pos_encoding = ApplyRotaryPositionalEncoding(
+                    hidden_channels, item_dim=-2, base=pos_encoding_base
+                )
         else:
             self.pos_encoding = None
 
@@ -82,8 +90,8 @@ class CrossAttention(nn.Module):
 
         # Rotary positional encoding
         if self.pos_encoding is not None:
-            q = self.pos_encoding(q)
-            k = self.pos_encoding(k)
+            q = self.pos_encoding(q, attention_mask, dim=1)
+            k = self.pos_encoding(k, attention_mask, dim=0)
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask)
@@ -132,6 +140,7 @@ class ConditionalTransformerBlock(nn.Module):
         condition_channels: int,
         num_heads: int,
         pos_encoding: bool = False,
+        pos_encoding_type: str = "absolute",
         pos_encoding_base: int = 4096,
         increase_hidden_channels=1,
         multi_query: bool = True,
@@ -205,6 +214,7 @@ class ConditionalTransformer(nn.Module):
         num_blocks: int = 4,
         num_heads: int = 8,
         pos_encoding: bool = False,
+        pos_encoding_type: str = "absolute",
         pos_encoding_base: int = 4096,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,

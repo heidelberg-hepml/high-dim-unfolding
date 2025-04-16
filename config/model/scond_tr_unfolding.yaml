@@ -12,6 +12,7 @@ net:
   dropout_prob: 0.1
 
   pos_encoding: false
+  pos_encoding_type: "absolute"
   pos_encoding_base: 256
 
 net_condition:
@@ -26,4 +27,5 @@ net_condition:
   dropout_prob: 0.1
 
   pos_encoding: false
+  pos_encoding_type: "absolute"
   pos_encoding_base: 256

@@ -6,7 +6,7 @@ from einops import rearrange
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from gatr.layers import ApplyRotaryPositionalEncoding
+from gatr.layers import ApplyRotaryPositionalEncoding, ApplyAbsolutePositionalEncoding
 from gatr.primitives.attention import scaled_dot_product_attention
 from experiments.misc import to_nd
 
@@ -151,6 +151,7 @@ class BaselineSelfAttention(nn.Module):
         hidden_channels: int,
         num_heads: int = 8,
         pos_encoding: bool = False,
+        pos_encoding_type: str = "absolute",
         pos_encoding_base: int = 4096,
         multi_query: bool = True,
         dropout_prob=None,
@@ -168,9 +169,14 @@ class BaselineSelfAttention(nn.Module):
 
         # Optional positional encoding
         if pos_encoding:
-            self.pos_encoding = ApplyRotaryPositionalEncoding(
-                hidden_channels, item_dim=-2, base=pos_encoding_base
-            )
+            if pos_encoding_type == "absolute":
+                self.pos_encoding = ApplyAbsolutePositionalEncoding(
+                    hidden_channels, pos_encoding_base
+                )
+            elif pos_encoding_type == "rotary":
+                self.pos_encoding = ApplyRotaryPositionalEncoding(
+                    hidden_channels, item_dim=-2, base=pos_encoding_base
+                )
         else:
             self.pos_encoding = None
 
@@ -205,8 +211,8 @@ class BaselineSelfAttention(nn.Module):
 
         # Rotary positional encoding
         if self.pos_encoding is not None:
-            q = self.pos_encoding(q)
-            k = self.pos_encoding(k)
+            q = self.pos_encoding(q, attention_mask, dim=1)
+            k = self.pos_encoding(k, attention_mask, dim=1)
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask, is_causal=is_causal)
@@ -278,6 +284,7 @@ class BaselineTransformerBlock(nn.Module):
         channels,
         num_heads: int = 8,
         pos_encoding: bool = False,
+        pos_encoding_type: str = "absolute",
         pos_encoding_base: int = 4096,
         increase_hidden_channels=1,
         multi_query: bool = True,
@@ -382,7 +389,8 @@ class Transformer(nn.Module):
         num_blocks: int = 10,
         num_heads: int = 8,
         pos_encoding: bool = False,
-        pos_encoding_base: int = 4096,
+        pos_encoding_type: str = "absolute",
+        pos_encoding_base: int = 256,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,
         multi_query: bool = False,

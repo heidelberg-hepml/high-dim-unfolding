@@ -1,5 +1,8 @@
 from .attention.config import SelfAttentionConfig, CrossAttentionConfig
-from .attention.positional_encoding import ApplyRotaryPositionalEncoding
+from .attention.positional_encoding import (
+    ApplyRotaryPositionalEncoding,
+    ApplyAbsolutePositionalEncoding,
+)
 from .attention.self_attention import SelfAttention
 from .attention.cross_attention import CrossAttention
 from .dropout import GradeDropout

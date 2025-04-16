@@ -21,6 +21,7 @@ limitations under the License.
 import torch
 
 from gatr.utils.einsum import cached_einsum
+from experiments.logger import LOGGER
 
 
 class ApplyRotaryPositionalEncoding(torch.nn.Module):
@@ -133,3 +134,82 @@ class ApplyRotaryPositionalEncoding(torch.nn.Module):
             inputs[..., inputs.shape[-1] // 2 :],
         )
         return torch.cat((-x2, x1), dim=-1)
+
+
+class ApplyAbsolutePositionalEncoding(torch.nn.Module):
+    """Applies absolute position encodings to scalar tensors.
+
+    Parameters
+    ----------
+    num_channels : int
+        Number of channels (key and query size).
+    max_seq_len : int
+        Maximum sequence length.
+    """
+
+    def __init__(self, num_channels, max_seq_len):
+        super().__init__()
+        self.num_channels = num_channels
+        self.max_seq_len = max_seq_len
+
+        # Create positional encodings
+        position = torch.arange(max_seq_len).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, num_channels, 2)
+            * -(torch.log(torch.tensor(10000.0)) / num_channels)
+        )
+        pe = torch.zeros(max_seq_len, num_channels)
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("pe", pe)
+
+    def forward(
+        self, scalars: torch.Tensor, attention_mask: torch.Tensor, dim: int = 1
+    ) -> torch.Tensor:
+        """
+        Applies absolute positional encodings to inputs in a fully vectorized manner.
+
+        Parameters
+        ----------
+        scalars : torch.Tensor of shape (seq_len, num_channels)
+            Input data.
+        mask : torch.Tensor of shape (seq_len, seq_len)
+            Mask for the batch. Should be a square matrix.
+        dim : int
+            Dimension along which to sum to get the block size.
+
+        Returns
+        -------
+        outputs : torch.Tensor of shape (seq_len, num_channels)
+            Output data with absolute positional encodings added to the input tensor.
+        """
+
+        mask = (attention_mask == 0).to(dtype=torch.uint8)
+
+        if mask[0, 0] == 0:
+            mask += torch.eye(mask.size(0), device=mask.device)
+        column_sums = mask.sum(dim=dim)
+        ptr = []
+        start = 0
+        while start < column_sums.size(0):
+            ptr.append(start)
+            block_size = int(column_sums[start].item())
+            start += block_size
+        if start != column_sums.size(0):
+            raise ValueError("Pointer does not cover the entire sequence length.")
+        ptr = torch.tensor(ptr, device=mask.device)
+
+        idx = torch.arange(column_sums.size(0), device=scalars.device)
+        seq_idx = torch.bucketize(idx, ptr, right=True) - 1
+
+        # Get the position of each index in the corresponding event
+        pos = idx - ptr[seq_idx]
+
+        if not torch.all(pos < self.max_seq_len):
+            raise ValueError(
+                "One or more subsequences exceed the maximum sequence length."
+            )
+
+        outputs = scalars + self.pe[pos]
+
+        return outputs

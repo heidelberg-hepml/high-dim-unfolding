@@ -49,8 +49,12 @@ class Dataset(torch.utils.data.Dataset):
             #     det_pt = det_particles[i, :, 0]
             #     gen_pt = gen_particles[i, :, 0]
 
-            # det_idx = torch.argsort(det_pt, descending=True)[: det_mults[i]]
-            # gen_idx = torch.argsort(gen_pt, descending=True)[: gen_mults[i]]
+            # det_idx = torch.argsort(det_pt, descending=True, stable=True)[
+            #     : det_mults[i]
+            # ]
+            # gen_idx = torch.argsort(gen_pt, descending=True, stable=True)[
+            #     : gen_mults[i]
+            # ]
 
             # det_event = det_particles[i, det_idx]
             # det_scalars = det_pids[i, det_idx]
