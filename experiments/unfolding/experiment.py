@@ -128,8 +128,8 @@ class UnfoldingExperiment(BaseExperiment):
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
         plot_data(
-            gen_particles[:, :3, :],
-            det_particles[:, :3, :],
+            gen_particles[:, : self.cfg.data.max_constituents, :],
+            det_particles[:, : self.cfg.data.max_constituents, :],
             os.path.join(self.cfg.run_dir, "data.pdf"),
         )
 
@@ -165,12 +165,6 @@ class UnfoldingExperiment(BaseExperiment):
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
         train_gen_data = gen_particles[:train_idx][train_gen_mask]
-        # try:
-        #     train_gen_data = train_gen_data.to(
-        #         self.device, self.model.coordinates.transforms[-1].mean.dtype
-        #     )
-        # except AttributeError:
-        #     pass
         self.model.coordinates.init_fit(train_gen_data)
         self.model.distribution.coordinates.init_fit(train_gen_data)
 
@@ -179,12 +173,6 @@ class UnfoldingExperiment(BaseExperiment):
             torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         )
         train_det_data = det_particles[:train_idx][train_det_mask]
-        # try:
-        #     train_det_data = train_det_data.to(
-        #         self.device, self.model.condition_coordinates.transforms[-1].mean.dtype
-        #     )
-        # except AttributeError:
-        #     pass
         self.model.condition_coordinates.init_fit(train_det_data)
 
         # transform before training
@@ -197,11 +185,9 @@ class UnfoldingExperiment(BaseExperiment):
             )
 
             gen_data = gen_particles[gen_mask]
-            LOGGER.info(f"gen_data shape: {gen_data.shape}")
             gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
 
             det_data = det_particles[det_mask]
-            LOGGER.info(f"det_data shape: {det_data.shape}")
             det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
 
             if self.cfg.data.dataset == "zplusjet":
@@ -210,6 +196,36 @@ class UnfoldingExperiment(BaseExperiment):
 
             gen_particles[gen_mask] = gen_data
             det_particles[det_mask] = det_data
+
+            LOGGER.info(
+                f"train_gen_mask: {train_gen_mask.shape}, \
+                gen_parts : {gen_particles[:train_idx].shape}"
+            )
+            self.gen_mean = (
+                gen_particles[:train_idx] * train_gen_mask.unsqueeze(-1)
+            ).sum(dim=0, keepdim=True) / train_gen_mask.sum(
+                dim=0, keepdim=True
+            ).unsqueeze(
+                -1
+            )
+            gen_particles = gen_particles - self.gen_mean * gen_mask.unsqueeze(-1)
+
+            self.det_mean = (
+                det_particles[:train_idx] * train_det_mask.unsqueeze(-1)
+            ).sum(dim=0, keepdim=True) / train_det_mask.sum(
+                dim=0, keepdim=True
+            ).unsqueeze(
+                -1
+            )
+            det_particles = det_particles - self.det_mean * det_mask.unsqueeze(-1)
+
+            self.gen_std = (gen_particles[:train_idx] * train_gen_mask).std(dim=0)
+            self.det_std = (det_particles[:train_idx] * train_det_mask).std(dim=0)
+
+            LOGGER.info(f"gen_mean: {self.gen_mean}, {self.gen_mean.shape}")
+            LOGGER.info(f"det_mean: {self.det_mean}, {self.det_mean.shape}")
+            LOGGER.info(f"gen_std: {self.gen_std}, {self.gen_std.shape}")
+            LOGGER.info(f"det_std: {self.det_std}, {self.det_std.shape}")
 
             plot_data(
                 gen_data,
@@ -374,6 +390,35 @@ class UnfoldingExperiment(BaseExperiment):
             )
 
             if self.cfg.modelname == "SimpleConditionalTransformer":
+
+                # undo gen standardization
+                gen_indices = torch.arange(
+                    batch.x_gen_ptr[-1], device=batch.x_gen.device
+                )
+                gen_mask = (gen_indices[:, None] >= batch.x_gen_ptr[:-1]) & (
+                    gen_indices[:, None] < batch.x_gen_ptr[1:]
+                )
+                gen_std_broadcasted = self.gen_std[gen_mask]
+                gen_mean_broadcasted = self.gen_mean[gen_mask]
+                sample_batch.x_gen = (
+                    sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+                )
+                batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+
+                # undo det standardization
+                det_indices = torch.arange(
+                    batch.x_det_ptr[-1], device=batch.x_det.device
+                )
+                det_mask = (det_indices[:, None] >= batch.x_det_ptr[:-1]) & (
+                    det_indices[:, None] < batch.x_det_ptr[1:]
+                )
+                det_std_broadcasted = self.det_std[det_mask]
+                det_mean_broadcasted = self.det_mean[det_mask]
+                sample_batch.x_det = (
+                    sample_batch.x_det * det_std_broadcasted + det_mean_broadcasted
+                )
+                batch.x_det = batch.x_det * det_std_broadcasted + det_mean_broadcasted
+
                 sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
                     sample_batch.x_gen
                 )
