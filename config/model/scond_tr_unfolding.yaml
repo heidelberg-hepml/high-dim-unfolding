@@ -11,7 +11,7 @@ net:
   num_heads: 4
   dropout_prob: 0.1
 
-  pos_encoding: true
+  pos_encoding: false
   pos_encoding_base: 256
 
 net_condition:
@@ -25,5 +25,5 @@ net_condition:
   num_heads: 4
   dropout_prob: 0.1
 
-  pos_encoding: true
+  pos_encoding: false
   pos_encoding_base: 256

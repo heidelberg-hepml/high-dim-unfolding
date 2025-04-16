@@ -21,8 +21,6 @@ from experiments.logger import LOGGER
 class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
 
-        self.define_process_specifics()
-
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             # dynamically set channel dimensions
@@ -99,6 +97,8 @@ class UnfoldingExperiment(BaseExperiment):
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
+
+        self.define_process_specifics()
 
     def init_data(self):
         t0 = time.time()
