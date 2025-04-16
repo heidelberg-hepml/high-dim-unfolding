@@ -406,10 +406,10 @@ class SimpleConditionalTransformerCFM(EventCFM):
         self.net_condition = net_condition
 
     def get_masks(self, batch):
-        return xformers_sa_mask(batch.x_gen_batch, materialize=False), xformers_sa_mask(
+        return xformers_sa_mask(batch.x_gen_batch, materialize=True), xformers_sa_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
-            materialize=False,
+            materialize=True,
         )
 
     def sample_base(self, shape, device, dtype, mass=None, generator=None):
