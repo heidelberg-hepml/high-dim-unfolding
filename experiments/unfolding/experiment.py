@@ -89,6 +89,7 @@ class UnfoldingExperiment(BaseExperiment):
                 )
 
             if self.cfg.data.dataset == "cms":
+                self.cfg.data.max_num_particles = 3
                 self.cfg.data.pt_min = 30.0
                 self.cfg.data.units = 10.0
                 self.cfg.cfm.masked_dims = []
@@ -146,12 +147,6 @@ class UnfoldingExperiment(BaseExperiment):
         size = len(gen_particles)
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
-
-        plot_data(
-            gen_particles[:, : self.cfg.data.max_constituents, :],
-            det_particles[:, : self.cfg.data.max_constituents, :],
-            os.path.join(self.cfg.run_dir, "data.pdf"),
-        )
 
         gen_particles /= self.cfg.data.units
         det_particles /= self.cfg.data.units
@@ -247,14 +242,7 @@ class UnfoldingExperiment(BaseExperiment):
             self.det_std[self.det_std == 0] = 1.0
             det_particles = det_particles / self.det_std
 
-            plot_data(
-                gen_data,
-                det_data,
-                os.path.join(self.cfg.run_dir, "prep_data.pdf"),
-            )
-
         # initialize geometry
-
         self.model.init_geometry()
 
         if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:

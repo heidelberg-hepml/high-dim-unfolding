@@ -58,7 +58,7 @@ class CrossAttention(nn.Module):
                     hidden_channels, item_dim=-2, base=pos_encoding_base
                 )
         else:
-            self.pos_encoding = None
+            self.q_pos_encoding = None
 
         self.dropout = nn.Dropout(dropout_prob) if dropout_prob is not None else None
 

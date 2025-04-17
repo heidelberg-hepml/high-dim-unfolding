@@ -133,9 +133,6 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., 3] = cfg.data.mass**2
     gen_particles[..., 3] = cfg.data.mass**2
 
-    LOGGER.info(f"det_particles.shape: {det_particles.shape}")
-    LOGGER.info(f"gen_particles.shape: {gen_particles.shape}")
-
     plot_data(
         gen_particles[:, :3, :],
         det_particles[:, :3, :],
