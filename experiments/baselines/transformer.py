@@ -171,7 +171,7 @@ class BaselineSelfAttention(nn.Module):
         if pos_encoding:
             if pos_encoding_type == "absolute":
                 self.pos_encoding = ApplyAbsolutePositionalEncoding(
-                    hidden_channels, pos_encoding_base
+                    hidden_channels, pos_encoding_base, seq="q"
                 )
             elif pos_encoding_type == "rotary":
                 self.pos_encoding = ApplyRotaryPositionalEncoding(
@@ -209,10 +209,10 @@ class BaselineSelfAttention(nn.Module):
             inputs
         )  # each: (..., num_heads, num_items, num_channels, 16)
 
-        # Rotary positional encoding
+        # Positional encoding
         if self.pos_encoding is not None:
-            q = self.pos_encoding(q, attention_mask, dim=1)
-            k = self.pos_encoding(k, attention_mask, dim=1)
+            q = self.pos_encoding(q.transpose(-2, -3), attention_mask).transpose(-2, -3)
+            k = self.pos_encoding(k.transpose(-2, -3), attention_mask).transpose(-2, -3)
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask, is_causal=is_causal)

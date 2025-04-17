@@ -19,6 +19,7 @@ limitations under the License.
 """
 
 import torch
+from xformers.ops.fmha.attn_bias import BlockDiagonalMask
 
 from gatr.utils.einsum import cached_einsum
 from experiments.logger import LOGGER
@@ -147,10 +148,24 @@ class ApplyAbsolutePositionalEncoding(torch.nn.Module):
         Maximum sequence length.
     """
 
-    def __init__(self, num_channels, max_seq_len):
+    def __init__(
+        self,
+        num_channels: int,
+        max_seq_len: int = 256,
+        seq: str = "q",
+        force_xformers: bool = torch.cuda.is_available(),
+    ):
         super().__init__()
         self.num_channels = num_channels
         self.max_seq_len = max_seq_len
+        if seq == "q":
+            self.ptr = lambda mask: mask.q_seqinfo.seqstart
+            self.dim = 1
+        elif seq == "k":
+            self.ptr = lambda mask: mask.k_seqinfo.seqstart
+            self.dim = 0
+        else:
+            raise ValueError("seq must be either 'q' or 'k'.")
 
         # Create positional encodings
         position = torch.arange(max_seq_len).unsqueeze(1)
@@ -163,53 +178,41 @@ class ApplyAbsolutePositionalEncoding(torch.nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer("pe", pe)
 
+        LOGGER.info(f"Using {'xFormers' if force_xformers else 'torch'} for encoding.")
+
+        if force_xformers:
+            self.forward = self.forward_xformers
+        else:
+            self.forward = self.forward_torch
+
     def forward(
-        self, scalars: torch.Tensor, attention_mask: torch.Tensor, dim: int = 1
+        self, scalars: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
-        """
-        Applies absolute positional encodings to inputs in a fully vectorized manner.
+        if isinstance(attention_mask, torch.Tensor):
+            mask = (attention_mask == 0).to(dtype=torch.uint8)
 
-        Parameters
-        ----------
-        scalars : torch.Tensor of shape (seq_len, num_channels)
-            Input data.
-        mask : torch.Tensor of shape (seq_len, seq_len)
-            Mask for the batch. Should be a square matrix.
-        dim : int
-            Dimension along which to sum to get the block size.
+            if mask[0, 0] == 0:
+                mask += torch.eye(mask.size(0), device=mask.device)
+            column_sums = mask.sum(dim=self.dim)
+            ptr = []
+            start = 0
+            while start < column_sums.size(0):
+                ptr.append(start)
+                block_size = int(column_sums[start].item())
+                start += block_size
+            if start != column_sums.size(0):
+                raise ValueError("Pointer does not cover the entire sequence length.")
+            ptr = torch.tensor(ptr, device=mask.device)
 
-        Returns
-        -------
-        outputs : torch.Tensor of shape (seq_len, num_channels)
-            Output data with absolute positional encodings added to the input tensor.
-        """
+        elif isinstance(attention_mask, BlockDiagonalMask):
+            ptr = self.ptr(attention_mask)
 
-        mask = (attention_mask == 0).to(dtype=torch.uint8)
-
-        if mask[0, 0] == 0:
-            mask += torch.eye(mask.size(0), device=mask.device)
-        column_sums = mask.sum(dim=dim)
-        ptr = []
-        start = 0
-        while start < column_sums.size(0):
-            ptr.append(start)
-            block_size = int(column_sums[start].item())
-            start += block_size
-        if start != column_sums.size(0):
-            raise ValueError("Pointer does not cover the entire sequence length.")
-        ptr = torch.tensor(ptr, device=mask.device)
-
-        idx = torch.arange(column_sums.size(0), device=scalars.device)
+        idx = torch.arange(scalars.size(-3), device=scalars.device)
         seq_idx = torch.bucketize(idx, ptr, right=True) - 1
 
         # Get the position of each index in the corresponding event
         pos = idx - ptr[seq_idx]
 
-        if not torch.all(pos < self.max_seq_len):
-            raise ValueError(
-                "One or more subsequences exceed the maximum sequence length."
-            )
-
-        outputs = scalars + self.pe[pos]
+        outputs = scalars + self.pe[None, pos, None, :]
 
         return outputs

@@ -46,8 +46,11 @@ class CrossAttention(nn.Module):
         if pos_encoding:
             if pos_encoding_type == "absolute":
                 max_seq_len = pos_encoding_base
-                self.pos_encoding = ApplyAbsolutePositionalEncoding(
-                    hidden_channels, max_seq_len
+                self.q_pos_encoding = ApplyAbsolutePositionalEncoding(
+                    hidden_channels, max_seq_len, seq="q"
+                )
+                self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
+                    hidden_channels, max_seq_len, seq="k"
                 )
             elif pos_encoding_type == "rotary":
                 pos_encoding_base = pos_encoding_base
@@ -88,10 +91,14 @@ class CrossAttention(nn.Module):
                 num_heads=self.num_heads,
             )
 
-        # Rotary positional encoding
+        # Positional encoding
         if self.pos_encoding is not None:
-            q = self.pos_encoding(q, attention_mask, dim=1)
-            k = self.pos_encoding(k, attention_mask, dim=0)
+            q = self.q_pos_encoding(q.transpose(-2, -3), attention_mask).transpose(
+                -2, -3
+            )
+            k = self.k_pos_encoding(k.transpose(-2, -3), attention_mask).transpose(
+                -2, -3
+            )
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask)

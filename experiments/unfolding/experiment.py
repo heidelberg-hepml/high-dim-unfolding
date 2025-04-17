@@ -400,6 +400,12 @@ class UnfoldingExperiment(BaseExperiment):
         elif n_batches == -1:
             n_batches = len(loader)
         LOGGER.info(f"Sampling {n_batches} batches for evaluation")
+
+        self.gen_mean = self.gen_mean.to(self.device)
+        self.gen_std = self.gen_std.to(self.device)
+        self.det_mean = self.det_mean.to(self.device)
+        self.det_std = self.det_std.to(self.device)
+
         for i in range(n_batches):
             batch = next(it).to(self.device)
 

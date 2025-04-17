@@ -51,15 +51,15 @@ class Dataset(torch.utils.data.Dataset):
 
             # det_idx = torch.argsort(det_pt, descending=True, stable=True)[
             #     : det_mults[i]
-            # ]
+            # ].unsqueeze(-1)
             # gen_idx = torch.argsort(gen_pt, descending=True, stable=True)[
             #     : gen_mults[i]
-            # ]
+            # ].unsqueeze(-1)
 
-            # det_event = det_particles[i, det_idx]
-            # det_scalars = det_pids[i, det_idx]
-            # gen_event = gen_particles[i, gen_idx]
-            # gen_scalars = gen_pids[i, gen_idx]
+            # det_event = det_particles[i].take_along_dim(det_idx, dim=0)
+            # det_scalars = det_pids[i].take_along_dim(det_idx, dim=0)
+            # gen_event = gen_particles[i].take_along_dim(gen_idx, dim=0)
+            # gen_scalars = gen_pids[i].take_along_dim(gen_idx, dim=0)
 
             det_event = det_particles[i, : det_mults[i]]
             det_scalars = det_pids[i, : det_mults[i]]
