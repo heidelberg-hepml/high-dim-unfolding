@@ -153,17 +153,16 @@ class ApplyAbsolutePositionalEncoding(torch.nn.Module):
         num_channels: int,
         max_seq_len: int = 256,
         seq: str = "q",
-        force_xformers: bool = torch.cuda.is_available(),
     ):
         super().__init__()
         self.num_channels = num_channels
         self.max_seq_len = max_seq_len
         if seq == "q":
             self.ptr = lambda mask: mask.q_seqinfo.seqstart
-            self.dim = 1
+            self.dim = 0
         elif seq == "k":
             self.ptr = lambda mask: mask.k_seqinfo.seqstart
-            self.dim = 0
+            self.dim = 1
         else:
             raise ValueError("seq must be either 'q' or 'k'.")
 
@@ -178,29 +177,27 @@ class ApplyAbsolutePositionalEncoding(torch.nn.Module):
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer("pe", pe)
 
-        LOGGER.info(f"Using {'xFormers' if force_xformers else 'torch'} for encoding.")
-
-        if force_xformers:
-            self.forward = self.forward_xformers
-        else:
-            self.forward = self.forward_torch
-
     def forward(
         self, scalars: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
         if isinstance(attention_mask, torch.Tensor):
-            mask = (attention_mask == 0).to(dtype=torch.uint8)
 
+            mask = (attention_mask == 0).to(dtype=torch.uint8)
             if mask[0, 0] == 0:
                 mask += torch.eye(mask.size(0), device=mask.device)
-            column_sums = mask.sum(dim=self.dim)
+
+            sums = mask.sum(dim=self.dim)
+            tr_sums = mask.sum(dim=1 - self.dim)
             ptr = []
             start = 0
-            while start < column_sums.size(0):
+            tr_start = 0
+            while start < mask.size(self.dim):
                 ptr.append(start)
-                block_size = int(column_sums[start].item())
+                tr_block_size = int(tr_sums[start].item())
+                block_size = int(sums[tr_start].item())
+                tr_start += tr_block_size
                 start += block_size
-            if start != column_sums.size(0):
+            if start != mask.size(self.dim):
                 raise ValueError("Pointer does not cover the entire sequence length.")
             ptr = torch.tensor(ptr, device=mask.device)
 

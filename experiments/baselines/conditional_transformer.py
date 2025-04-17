@@ -92,7 +92,7 @@ class CrossAttention(nn.Module):
             )
 
         # Positional encoding
-        if self.pos_encoding is not None:
+        if self.q_pos_encoding is not None:
             q = self.q_pos_encoding(q.transpose(-2, -3), attention_mask).transpose(
                 -2, -3
             )
