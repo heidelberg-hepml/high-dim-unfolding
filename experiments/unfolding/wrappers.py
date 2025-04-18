@@ -543,12 +543,12 @@ class SimpleConditionalTransformerCFM(EventCFM):
         sample_batch.x_gen = self.geometry._handle_periodic(x0)
 
         # sort generated events by pT
-        pt = x0[..., 0].unsqueeze(-1)
-        x_perm = torch.argsort(pt, dim=0, descending=True)
-        x0 = x0.take_along_dim(x_perm, dim=0)
-        index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
-        index_perm = torch.argsort(index, dim=0, stable=True)
-        x0 = x0.take_along_dim(index_perm, dim=0)
+        # pt = x0[..., 0].unsqueeze(-1)
+        # x_perm = torch.argsort(pt, dim=0, descending=True)
+        # x0 = x0.take_along_dim(x_perm, dim=0)
+        # index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+        # index_perm = torch.argsort(index, dim=0, stable=True)
+        # x0 = x0.take_along_dim(index_perm, dim=0)
 
         return sample_batch
 
