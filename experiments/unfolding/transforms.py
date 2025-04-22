@@ -434,7 +434,7 @@ class StandardNormal(BaseTransform):
     def init_fit(self, x):
         self.mean = torch.mean(x, dim=0, keepdim=True)
         self.std = torch.std(x, dim=0, keepdim=True)
-        self.mean[:, self.dims_fixed] = 0
+        # self.mean[:, self.dims_fixed] = 0
         self.std[:, self.dims_fixed] = 1
 
     def init_unit(self, device, dtype):

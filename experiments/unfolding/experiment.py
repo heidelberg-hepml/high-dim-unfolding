@@ -9,7 +9,12 @@ from omegaconf import open_dict
 
 from gatr.interface import embed_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
-from experiments.unfolding.dataset import Dataset, load_cms, load_zplusjet
+from experiments.unfolding.dataset import (
+    Dataset,
+    load_cms,
+    load_zplusjet,
+    positional_encoding,
+)
 from experiments.unfolding.utils import (
     get_ptr_from_batch,
 )
@@ -87,6 +92,67 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.mlp.hidden_channels = (
                     self.cfg.model.autoregressive_tr.hidden_channels
                 )
+            elif self.cfg.modelname == "SimpleConditionalTransformer":
+                self.cfg.data.embed_det_in_GA = False
+                self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
+                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.net.hidden_channels
+                )
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
+                    self.cfg.model.net_condition.in_channels += 6
+                if self.cfg.model.net.pos_encoding_type == "absolute":
+                    if self.cfg.data.max_constituents > 0:
+                        self.cfg.model.net.pos_encoding_base = (
+                            self.cfg.data.max_constituents
+                        )
+                    else:
+                        self.cfg.model.net.pos_encoding_base = (
+                            self.cfg.data.max_num_particles
+                        )
+
+                if self.cfg.model.net_condition.pos_encoding_type == "absolute":
+                    if self.cfg.data.max_constituents > 0:
+                        self.cfg.model.net_condition.pos_encoding_base = (
+                            self.cfg.data.max_constituents
+                        )
+                    else:
+                        self.cfg.model.net_condition.pos_encoding_base = (
+                            self.cfg.data.max_num_particles
+                        )
+
+            elif self.cfg.modelname == "SimpleConditionalGATr":
+                self.cfg.data.embed_det_in_GA = True
+                self.cfg.model.net.in_s_channels = (
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.in_s_channels = (
+                    self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.out_mv_channels = (
+                    self.cfg.model.net.hidden_mv_channels
+                )
+                self.cfg.model.net_condition.out_s_channels = (
+                    self.cfg.model.net.hidden_s_channels
+                )
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_s_channels += 6
+                    self.cfg.model.net_condition.in_s_channels += 6
+                if self.cfg.data.add_scalar_features:
+                    self.cfg.model.net_condition.in_s_channels += 7
+                if not self.cfg.data.beam_token:
+                    self.cfg.model.net_condition.in_mv_channels += (
+                        2
+                        if (
+                            self.cfg.data.two_beams
+                            and self.cfg.data.beam_reference != "xyplane"
+                        )
+                        else 1
+                    )
+                    if self.cfg.data.add_time_reference:
+                        self.cfg.model.net_condition.in_mv_channels += 1
+                self.cfg.model.cfg_data = self.cfg.data
 
             if self.cfg.data.dataset == "cms":
                 self.cfg.data.max_num_particles = 3
@@ -98,26 +164,6 @@ class UnfoldingExperiment(BaseExperiment):
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
-
-            if self.cfg.model.net.pos_encoding_type == "absolute":
-                if self.cfg.data.max_constituents > 0:
-                    self.cfg.model.net.pos_encoding_base = (
-                        self.cfg.data.max_constituents
-                    )
-                else:
-                    self.cfg.model.net.pos_encoding_base = (
-                        self.cfg.data.max_num_particles
-                    )
-
-            if self.cfg.model.net_condition.pos_encoding_type == "absolute":
-                if self.cfg.data.max_constituents > 0:
-                    self.cfg.model.net_condition.pos_encoding_base = (
-                        self.cfg.data.max_constituents
-                    )
-                else:
-                    self.cfg.model.net_condition.pos_encoding_base = (
-                        self.cfg.data.max_num_particles
-                    )
 
         self.define_process_specifics()
 
@@ -168,7 +214,7 @@ class UnfoldingExperiment(BaseExperiment):
         # initialize cfm (might require data)
         self.model.init_physics(
             units=self.cfg.data.units,
-            pt_min=0,
+            pt_min=self.cfg.data.pt_min,
             base_type=self.cfg.data.base_type,
             onshell_mass=self.cfg.data.mass,
         )
@@ -212,35 +258,86 @@ class UnfoldingExperiment(BaseExperiment):
             gen_particles[gen_mask] = gen_data
             det_particles[det_mask] = det_data
 
-            self.gen_mean = (
-                gen_particles[:train_idx] * train_gen_mask.unsqueeze(-1)
-            ).sum(dim=0, keepdim=True) / train_gen_mask.sum(
-                dim=0, keepdim=True
-            ).unsqueeze(
-                -1
+            if self.cfg.data.standardize:
+                train_gen_mask = train_gen_mask.unsqueeze(-1)
+                train_det_mask = train_det_mask.unsqueeze(-1)
+
+                self.gen_mean = (gen_particles[:train_idx] * train_gen_mask).sum(
+                    dim=0, keepdim=True
+                ) / train_gen_mask.sum(dim=0, keepdim=True)
+
+                self.gen_std = torch.sqrt(
+                    (
+                        (
+                            gen_particles[:train_idx] * train_gen_mask
+                            - self.gen_mean * train_gen_mask
+                        )
+                        ** 2
+                    ).sum(dim=0, keepdim=True)
+                    / train_gen_mask.sum(dim=0, keepdim=True)
+                )
+                self.gen_std[self.gen_std == 0] = 1.0
+
+                self.det_mean = (det_particles[:train_idx] * train_det_mask).sum(
+                    dim=0, keepdim=True
+                ) / train_det_mask.sum(dim=0, keepdim=True)
+
+                self.det_std = torch.sqrt(
+                    (
+                        (
+                            det_particles[:train_idx] * train_det_mask
+                            - self.det_mean * train_det_mask
+                        )
+                        ** 2
+                    ).sum(dim=0, keepdim=True)
+                    / train_det_mask.sum(dim=0, keepdim=True)
+                )
+                self.det_std[self.det_std == 0] = 1.0
+
+                if self.model.coordinates.contains_phi:
+                    self.gen_std[..., 1] = 1.0
+                if self.model.condition_coordinates.contains_phi:
+                    self.det_std[..., 1] = 1.0
+                self.gen_std[..., self.cfg.cfm.masked_dims] = 1.0
+                self.det_std[..., self.cfg.cfm.masked_dims] = 1.0
+
+                gen_particles = gen_particles - self.gen_mean
+                det_particles = det_particles - self.det_mean
+                gen_particles = gen_particles / self.gen_std
+                det_particles = det_particles / self.det_std
+
+            else:
+                self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
+                self.gen_std = torch.ones(1, *gen_particles.shape[1:])
+                self.det_mean = torch.zeros(1, *det_particles.shape[1:])
+                self.det_std = torch.ones(1, *det_particles.shape[1:])
+
+        if self.cfg.modelname == "SimpleConditionalGATr":
+            gen_particles /= self.cfg.data.units
+            det_particles /= self.cfg.data.units
+
+            gen_mask = (
+                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
             )
-            gen_particles = gen_particles - self.gen_mean * gen_mask.unsqueeze(-1)
 
-            self.det_mean = (
-                det_particles[:train_idx] * train_det_mask.unsqueeze(-1)
-            ).sum(dim=0, keepdim=True) / train_det_mask.sum(
-                dim=0, keepdim=True
-            ).unsqueeze(
-                -1
+            gen_data = gen_particles[gen_mask]
+            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
+
+            if self.cfg.data.dataset == "zplusjet":
+                gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
+
+            gen_particles[gen_mask] = gen_data
+
+        if self.cfg.data.pos_encoding_dim > 0:
+            if self.cfg.data.max_constituents > 0:
+                seq_length = self.cfg.data.max_constituents
+            else:
+                seq_length = self.cfg.data.max_num_particles
+            pos_encoding = positional_encoding(
+                seq_length, self.cfg.data.pos_encoding_dim
             )
-            det_particles = det_particles - self.det_mean * det_mask.unsqueeze(-1)
-
-            self.gen_std = (
-                gen_particles[:train_idx] * train_gen_mask.unsqueeze(-1)
-            ).std(dim=0, keepdim=True)
-            self.gen_std[self.gen_std == 0] = 1.0
-            gen_particles = gen_particles / self.gen_std
-
-            self.det_std = (
-                det_particles[:train_idx] * train_det_mask.unsqueeze(-1)
-            ).std(dim=0, keepdim=True)
-            self.det_std[self.det_std == 0] = 1.0
-            det_particles = det_particles / self.det_std
+        else:
+            pos_encoding = None
 
         # initialize geometry
         self.model.init_geometry()
@@ -266,18 +363,21 @@ class UnfoldingExperiment(BaseExperiment):
             self.cfg.data.embed_det_in_GA,
             self.spurions,
             fourm=fourm,
+            pos_encoding=pos_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
             fourm=fourm,
+            pos_encoding=pos_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
             fourm=fourm,
+            pos_encoding=pos_encoding,
         )
         self.train_data.create_data_list(
             det_particles[:train_idx],
@@ -389,10 +489,11 @@ class UnfoldingExperiment(BaseExperiment):
             n_batches = len(loader)
         LOGGER.info(f"Sampling {n_batches} batches for evaluation")
 
-        self.gen_mean = self.gen_mean.to(self.device)
-        self.gen_std = self.gen_std.to(self.device)
-        self.det_mean = self.det_mean.to(self.device)
-        self.det_std = self.det_std.to(self.device)
+        if self.cfg.modelname == "SimpleConditionalTransformer":
+            self.gen_mean = self.gen_mean.to(self.device)
+            self.gen_std = self.gen_std.to(self.device)
+            self.det_mean = self.det_mean.to(self.device)
+            self.det_std = self.det_std.to(self.device)
 
         for i in range(n_batches):
             batch = next(it).to(self.device)
@@ -442,6 +543,12 @@ class UnfoldingExperiment(BaseExperiment):
                 batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
                     batch.x_det
                 )
+
+            elif self.cfg.modelname == "SimpleConditionalGATr":
+                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
 
             samples.extend(sample_batch.to_data_list())
             targets.extend(batch.to_data_list())
@@ -495,6 +602,8 @@ class UnfoldingExperiment(BaseExperiment):
             model_label = "SCondTr"
         elif self.cfg.modelname == "ConditionalGATr":
             model_label = "CondGATr"
+        elif self.cfg.modelname == "SimpleConditionalGATr":
+            model_label = "SCondGATr"
         elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
             model_label = "CondARTr"
         elif self.cfg.modelname == "ConditionalMLP":
@@ -552,11 +661,10 @@ class UnfoldingExperiment(BaseExperiment):
         batch = batch.to(self.device)
         loss, component_loss = self.model.batch_loss(batch)
         mse = loss.cpu().item()
-        component_mse = [x.cpu().item() for x in component_loss]
         assert torch.isfinite(loss).all()
         metrics = {"mse": mse}
         for k in range(4):
-            metrics[f"mse_{k}"] = component_mse[k]
+            metrics[f"mse_{k}"] = component_loss[k].cpu().item()
         return loss, metrics
 
     def _init_metrics(self):

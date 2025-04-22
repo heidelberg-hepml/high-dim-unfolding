@@ -138,7 +138,7 @@ def stable_arctanh(x, eps=EPS2):
 def get_mass(fourmomenta, eps=EPS2):
     m2 = fourmomenta[..., 0] ** 2 - torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
     m2 = torch.abs(m2)
-    m = torch.sqrt(m2.clamp(min=EPS2))
+    m = torch.sqrt(m2.clamp(min=eps))
     return m
 
 
