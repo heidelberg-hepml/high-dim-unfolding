@@ -62,7 +62,6 @@ class SelfAttention(nn.Module):
             elif config.pos_encoding_type == "absolute":
                 self.pos_encoding = ApplyAbsolutePositionalEncoding(
                     config.hidden_s_channels,
-                    item_dim=-2,
                     max_seq_len=config.pos_encoding_base,
                 )
         else:

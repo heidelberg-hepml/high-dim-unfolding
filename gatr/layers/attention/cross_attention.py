@@ -88,20 +88,14 @@ class CrossAttention(nn.Module):
                     max_seq_len=config.pos_encoding_base,
                     seq="q",
                 )
-                if config.multi_query:
-                    self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
-                        config.hidden_s_channels,
-                        max_seq_len=config.pos_encoding_base,
-                        seq="k",
-                    )
-                else:
-                    self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
-                        config.hidden_s_channels * config.num_heads,
-                        max_seq_len=config.pos_encoding_base,
-                        seq="k",
-                    )
+                self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
+                    config.hidden_s_channels,
+                    max_seq_len=config.pos_encoding_base,
+                    seq="k",
+                )
         else:
-            self.pos_encoding = nn.Identity()
+            self.q_pos_encoding = nn.Identity()
+            self.k_pos_encoding = nn.Identity()
 
         # Attention
         self.attention = GeometricAttention(config)
@@ -219,12 +213,8 @@ class CrossAttention(nn.Module):
                     hidden_channels=self.config.hidden_s_channels,
                 )
 
-            q_s = self.q_pos_encoding(q_s.transpose(-2, -3), attention_mask).transpose(
-                -2, -3
-            )
-            k_s = self.k_pos_encoding(k_s.transpose(-2, -3), attention_mask).transpose(
-                -2, -3
-            )
+            q_s = self.q_pos_encoding(q_s, attention_mask)
+            k_s = self.k_pos_encoding(k_s, attention_mask)
         else:
             q_s, k_s, v_s = None, None, None
 

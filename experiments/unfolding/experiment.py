@@ -359,12 +359,6 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.data.dataset == "zplusjet":
                 gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
 
-            plot_data(
-                gen_data,
-                gen_data,
-                os.path.join(self.cfg.run_dir, "gen_data.pdf"),
-            )
-
             gen_particles[gen_mask] = gen_data
 
             if self.cfg.data.standardize:
@@ -397,12 +391,6 @@ class UnfoldingExperiment(BaseExperiment):
             else:
                 self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
                 self.gen_std = torch.ones(1, *gen_particles.shape[1:])
-
-            plot_data(
-                gen_particles,
-                gen_particles,
-                os.path.join(self.cfg.run_dir, "gen_particles.pdf"),
-            )
 
             self.model.set_ms(self.gen_mean, self.gen_std)
 
