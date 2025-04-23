@@ -616,6 +616,10 @@ class SimpleConditionalGATrCFM(EventCFM):
         self.net = net
         self.net_condition = net_condition
 
+    def set_ms(self, mean, std):
+        self.gen_mean = mean.squeeze()
+        self.gen_std = std.squeeze()
+
     def sample_base(self, shape, device, dtype, mass=None, generator=None):
         sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
         sample[..., 1] = (
@@ -648,6 +652,13 @@ class SimpleConditionalGATrCFM(EventCFM):
     ):
         assert self.coordinates is not None
 
+        gen_indices = (
+            torch.arange(len(xt), device=xt.device) - batch.x_gen_ptr[batch.x_gen_batch]
+        )
+        gen_std_broadcasted = self.gen_std.to(xt.device)[gen_indices]
+        gen_mean_broadcasted = self.gen_mean.to(xt.device)[gen_indices]
+        xt = xt * gen_std_broadcasted + gen_mean_broadcasted
+
         fourmomenta = self.coordinates.x_to_fourmomenta(xt)
         condition_mv, condition_s = condition
 
@@ -670,10 +681,12 @@ class SimpleConditionalGATrCFM(EventCFM):
             v_fourmomenta,
             fourmomenta,
         )[0]
+        v_straight = v_straight / gen_std_broadcasted
 
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
         v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
+
         return v_straight
 
     def batch_loss(self, batch):

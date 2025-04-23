@@ -204,12 +204,12 @@ class ApplyAbsolutePositionalEncoding(torch.nn.Module):
         elif isinstance(attention_mask, BlockDiagonalMask):
             ptr = self.ptr(attention_mask)
 
-        idx = torch.arange(scalars.size(-3), device=scalars.device)
+        idx = torch.arange(scalars.size(-1), device=scalars.device)
         seq_idx = torch.bucketize(idx, ptr, right=True) - 1
 
         # Get the position of each index in the corresponding event
         pos = idx - ptr[seq_idx]
 
-        outputs = scalars + self.pe[None, pos, None, :]
+        outputs = scalars + self.pe[None, None, pos, :]
 
         return outputs

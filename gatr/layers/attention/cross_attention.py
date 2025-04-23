@@ -8,6 +8,10 @@ from torch import nn
 
 from gatr.layers.attention.attention import GeometricAttention
 from gatr.layers.attention.config import SelfAttentionConfig
+from gatr.layers.attention.positional_encoding import (
+    ApplyRotaryPositionalEncoding,
+    ApplyAbsolutePositionalEncoding,
+)
 from gatr.layers.dropout import GradeDropout
 from gatr.layers.linear import EquiLinear
 
@@ -71,6 +75,33 @@ class CrossAttention(nn.Module):
             out_s_channels=config.out_s_channels,
             initialization=config.output_init,
         )
+
+        self.pos_encoding: nn.Module
+        if config.pos_encoding:
+            if config.pos_encoding_type == "rotary":
+                self.pos_encoding = ApplyRotaryPositionalEncoding(
+                    config.hidden_s_channels, item_dim=-2, base=config.pos_encoding_base
+                )
+            elif config.pos_encoding_type == "absolute":
+                self.q_pos_encoding = ApplyAbsolutePositionalEncoding(
+                    config.hidden_s_channels,
+                    max_seq_len=config.pos_encoding_base,
+                    seq="q",
+                )
+                if config.multi_query:
+                    self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
+                        config.hidden_s_channels,
+                        max_seq_len=config.pos_encoding_base,
+                        seq="k",
+                    )
+                else:
+                    self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
+                        config.hidden_s_channels * config.num_heads,
+                        max_seq_len=config.pos_encoding_base,
+                        seq="k",
+                    )
+        else:
+            self.pos_encoding = nn.Identity()
 
         # Attention
         self.attention = GeometricAttention(config)
@@ -160,6 +191,7 @@ class CrossAttention(nn.Module):
 
         # Same for scalars
         if q_s is not None:
+
             q_s = rearrange(
                 q_s,
                 "... items (hidden_channels num_heads) -> ... num_heads items hidden_channels",
@@ -186,6 +218,13 @@ class CrossAttention(nn.Module):
                     num_heads=self.config.num_heads,
                     hidden_channels=self.config.hidden_s_channels,
                 )
+
+            q_s = self.q_pos_encoding(q_s.transpose(-2, -3), attention_mask).transpose(
+                -2, -3
+            )
+            k_s = self.k_pos_encoding(k_s.transpose(-2, -3), attention_mask).transpose(
+                -2, -3
+            )
         else:
             q_s, k_s, v_s = None, None, None
 

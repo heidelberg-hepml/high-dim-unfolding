@@ -154,7 +154,42 @@ class UnfoldingExperiment(BaseExperiment):
                         self.cfg.model.net_condition.in_mv_channels += 1
                 self.cfg.model.cfg_data = self.cfg.data
 
+                if self.cfg.model.net.attention.pos_encoding_type == "absolute":
+                    if self.cfg.data.max_constituents > 0:
+                        self.cfg.model.net.attention.pos_encoding_base = (
+                            self.cfg.data.max_constituents
+                        )
+                    else:
+                        self.cfg.model.net.attention.pos_encoding_base = (
+                            self.cfg.data.max_num_particles
+                        )
+
+                if self.cfg.model.net.crossattention.pos_encoding_type == "absolute":
+                    if self.cfg.data.max_constituents > 0:
+                        self.cfg.model.net.crossattention.pos_encoding_base = (
+                            self.cfg.data.max_constituents
+                        )
+                    else:
+                        self.cfg.model.net.crossattention.pos_encoding_base = (
+                            self.cfg.data.max_num_particles
+                        )
+
+                if (
+                    self.cfg.model.net_condition.attention.pos_encoding_type
+                    == "absolute"
+                ):
+                    if self.cfg.data.max_constituents > 0:
+                        self.cfg.model.net_condition.attention.pos_encoding_base = (
+                            self.cfg.data.max_constituents
+                        )
+                    else:
+                        self.cfg.model.net_condition.attention.pos_encoding_base = (
+                            self.cfg.data.max_num_particles
+                        )
+
             if self.cfg.data.dataset == "cms":
+                if self.cfg.data.max_constituents == -1:
+                    self.cfg.data.max_constituents = 3
                 self.cfg.data.max_num_particles = 3
                 self.cfg.data.pt_min = 30.0
                 self.cfg.data.units = 10.0
@@ -313,8 +348,6 @@ class UnfoldingExperiment(BaseExperiment):
                 self.det_std = torch.ones(1, *det_particles.shape[1:])
 
         if self.cfg.modelname == "SimpleConditionalGATr":
-            gen_particles /= self.cfg.data.units
-            det_particles /= self.cfg.data.units
 
             gen_mask = (
                 torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
@@ -326,7 +359,52 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.data.dataset == "zplusjet":
                 gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
 
+            plot_data(
+                gen_data,
+                gen_data,
+                os.path.join(self.cfg.run_dir, "gen_data.pdf"),
+            )
+
             gen_particles[gen_mask] = gen_data
+
+            if self.cfg.data.standardize:
+                train_gen_mask = train_gen_mask.unsqueeze(-1)
+
+                self.gen_mean = (gen_particles[:train_idx] * train_gen_mask).sum(
+                    dim=0, keepdim=True
+                ) / train_gen_mask.sum(dim=0, keepdim=True)
+
+                self.gen_std = torch.sqrt(
+                    (
+                        (
+                            gen_particles[:train_idx] * train_gen_mask
+                            - self.gen_mean * train_gen_mask
+                        )
+                        ** 2
+                    ).sum(dim=0, keepdim=True)
+                    / train_gen_mask.sum(dim=0, keepdim=True)
+                )
+                self.gen_std[self.gen_std == 0] = 1.0
+
+                if self.model.coordinates.contains_phi:
+                    self.gen_std[..., 1] = 1.0
+
+                self.gen_std[..., self.cfg.cfm.masked_dims] = 1.0
+
+                gen_particles = gen_particles - self.gen_mean
+                gen_particles = gen_particles / self.gen_std
+
+            else:
+                self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
+                self.gen_std = torch.ones(1, *gen_particles.shape[1:])
+
+            plot_data(
+                gen_particles,
+                gen_particles,
+                os.path.join(self.cfg.run_dir, "gen_particles.pdf"),
+            )
+
+            self.model.set_ms(self.gen_mean, self.gen_std)
 
         if self.cfg.data.pos_encoding_dim > 0:
             if self.cfg.data.max_constituents > 0:
@@ -495,6 +573,10 @@ class UnfoldingExperiment(BaseExperiment):
             self.det_mean = self.det_mean.to(self.device)
             self.det_std = self.det_std.to(self.device)
 
+        elif self.cfg.modelname == "SimpleConditionalGATr":
+            self.gen_mean = self.gen_mean.to(self.device)
+            self.gen_std = self.gen_std.to(self.device)
+
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
@@ -545,6 +627,20 @@ class UnfoldingExperiment(BaseExperiment):
                 )
 
             elif self.cfg.modelname == "SimpleConditionalGATr":
+                # undo gen standardization
+                gen_indices = (
+                    torch.arange(len(batch.x_gen), device=batch.x_gen.device)
+                    - batch.x_gen_ptr[batch.x_gen_batch]
+                )
+
+                gen_std_broadcasted = self.gen_std.squeeze(0)[gen_indices]
+                gen_mean_broadcasted = self.gen_mean.squeeze(0)[gen_indices]
+
+                sample_batch.x_gen = (
+                    sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+                )
+                batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+
                 sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
                     sample_batch.x_gen
                 )
