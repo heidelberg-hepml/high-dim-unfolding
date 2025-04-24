@@ -616,9 +616,10 @@ class SimpleConditionalGATrCFM(EventCFM):
         self.net = net
         self.net_condition = net_condition
 
-    def set_ms(self, mean, std):
+    def set_ms(self, mean, std, spurions=None):
         self.gen_mean = mean.squeeze()
         self.gen_std = std.squeeze()
+        self.spurions = spurions
 
     def sample_base(self, shape, device, dtype, mass=None, generator=None):
         sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
@@ -644,6 +645,9 @@ class SimpleConditionalGATrCFM(EventCFM):
     def get_condition(self, batch):
         attention_mask = xformers_sa_mask(batch.x_det_batch)
         mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
+        fixed_t = torch.zeros(s.shape[1], 1, dtype=s.dtype, device=s.device)
+        t = self.t_embedding(fixed_t).unsqueeze(0)
+        s = torch.cat([s, t], dim=-1)
         condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
         return condition_mv, condition_s
 
@@ -796,6 +800,7 @@ class SimpleConditionalGATrCFM(EventCFM):
         s = torch.cat([scalars, t], dim=-1)
 
         mv = embed_vector(fourmomenta).unsqueeze(-2)
+        # mv = torch.cat([mv, self.spurions], dim=-2)
 
         return mv, s
 

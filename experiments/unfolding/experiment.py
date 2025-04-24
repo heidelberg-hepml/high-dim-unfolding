@@ -28,6 +28,20 @@ class UnfoldingExperiment(BaseExperiment):
 
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
+
+            if self.cfg.data.add_spurions:
+                self.spurions = embed_spurions(
+                    self.cfg.data.beam_reference,
+                    self.cfg.data.add_time_reference,
+                    self.cfg.data.two_beams,
+                    self.cfg.data.add_xzplane,
+                    self.cfg.data.add_yzplane,
+                )
+                self.cfg.data.num_spurions = self.spurions.size(-2)
+            else:
+                self.spurions = None
+                self.cfg.data.num_spurions = 0
+
             # dynamically set channel dimensions
             if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.data.embed_det_in_GA = True
@@ -128,7 +142,7 @@ class UnfoldingExperiment(BaseExperiment):
                     self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
                 self.cfg.model.net_condition.in_s_channels = (
-                    self.cfg.data.pos_encoding_dim
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
@@ -157,21 +171,21 @@ class UnfoldingExperiment(BaseExperiment):
                 if self.cfg.model.net.attention.pos_encoding_type == "absolute":
                     if self.cfg.data.max_constituents > 0:
                         self.cfg.model.net.attention.pos_encoding_base = (
-                            self.cfg.data.max_constituents
+                            self.cfg.data.max_constituents + self.cfg.data.num_spurions
                         )
                     else:
                         self.cfg.model.net.attention.pos_encoding_base = (
-                            self.cfg.data.max_num_particles
+                            self.cfg.data.max_num_particles + self.cfg.data.num_spurions
                         )
 
                 if self.cfg.model.net.crossattention.pos_encoding_type == "absolute":
                     if self.cfg.data.max_constituents > 0:
                         self.cfg.model.net.crossattention.pos_encoding_base = (
-                            self.cfg.data.max_constituents
+                            self.cfg.data.max_constituents + self.cfg.data.num_spurions
                         )
                     else:
                         self.cfg.model.net.crossattention.pos_encoding_base = (
-                            self.cfg.data.max_num_particles
+                            self.cfg.data.max_num_particles + self.cfg.data.num_spurions
                         )
 
                 if (
@@ -180,11 +194,11 @@ class UnfoldingExperiment(BaseExperiment):
                 ):
                     if self.cfg.data.max_constituents > 0:
                         self.cfg.model.net_condition.attention.pos_encoding_base = (
-                            self.cfg.data.max_constituents
+                            self.cfg.data.max_constituents + self.cfg.data.num_spurions
                         )
                     else:
                         self.cfg.model.net_condition.attention.pos_encoding_base = (
-                            self.cfg.data.max_num_particles
+                            self.cfg.data.max_num_particles + self.cfg.data.num_spurions
                         )
 
             if self.cfg.data.dataset == "cms":
