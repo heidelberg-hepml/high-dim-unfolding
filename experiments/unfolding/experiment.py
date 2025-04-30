@@ -138,6 +138,7 @@ class UnfoldingExperiment(BaseExperiment):
 
             elif self.cfg.modelname == "SimpleConditionalGATr":
                 self.cfg.data.embed_det_in_GA = True
+                self.cfg.data.add_spurions = True
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
