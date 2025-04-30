@@ -173,7 +173,7 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     get_range(
                         [
                             part_lvl[..., channel],
-                            det_lvl[..., channel],
+                            # det_lvl[..., channel],
                             model[..., channel],
                         ]
                     )
@@ -241,7 +241,7 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     get_range(
                         [
                             part_lvl[..., channel],
-                            det_lvl[..., channel],
+                            # det_lvl[..., channel],
                             model[..., channel],
                         ]
                     )
@@ -316,7 +316,7 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                     get_range(
                         [
                             part_lvl[..., channel],
-                            det_lvl[..., channel],
+                            # det_lvl[..., channel],
                             model[..., channel],
                         ]
                     )

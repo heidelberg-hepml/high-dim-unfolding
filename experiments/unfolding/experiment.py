@@ -648,8 +648,8 @@ class UnfoldingExperiment(BaseExperiment):
                 )
                 batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
 
-            samples.extend(sample_batch.to_data_list())
-            targets.extend(batch.to_data_list())
+            samples.extend(sample_batch.detach().to_data_list())
+            targets.extend(batch.detach().to_data_list())
 
         if self.cfg.data.embed_det_in_GA:
             if self.spurions is not None and len(self.spurions) > 0:
