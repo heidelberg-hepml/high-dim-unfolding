@@ -218,3 +218,27 @@ def mask_dims(input, dims):
     mask = torch.ones_like(input)
     mask[..., dims] = 0
     return input * mask
+
+
+def remove_det_jet(batch):
+    new_batch = batch.clone()
+    seq = new_batch.x_det
+    scalars = new_batch.scalars_det
+    ptr = new_batch.x_det_ptr
+
+    n_constituents = ptr[1:] - ptr[:-1] - 1
+
+    new_ptr = torch.zeros(len(ptr), dtype=ptr.dtype, device=ptr.device)
+    new_ptr[1:] = torch.cumsum(n_constituents, dim=0)
+
+    full_idx = torch.arange(seq.shape[0], device=seq.device)
+    new_idx = torch.cat(
+        [full_idx[ptr[i] + 1 : ptr[i + 1]] for i in range(len(ptr) - 1)]
+    )
+
+    new_batch.x_det = seq[new_idx]
+    new_batch.scalars_det = scalars[new_idx]
+    new_batch.x_det_ptr = new_ptr
+    new_batch.x_det_batch = get_batch_from_ptr(new_ptr)
+
+    return new_batch

@@ -579,9 +579,9 @@ class BaseExperiment:
                 if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
                     self.scheduler.step(val_loss)
 
-            gc.collect()
-            if self.device == torch.device("cuda"):
-                torch.cuda.empty_cache()
+            # gc.collect()
+            # if self.device == torch.device("cuda"):
+            #     torch.cuda.empty_cache()
 
             # output
             dt = time.time() - self.training_start_time

@@ -31,6 +31,7 @@ data:
  pt_min: 0.0
  units: 10
  mass: 1.0
+ add_jet: false
 
 cfm:
  embed_t_dim: 8
@@ -69,15 +70,18 @@ evaluation:
  sample: true
  n_batches: -1
  eval_loss: []
+ save_samples: false
+ load_samples: false
 
 plot: true
 plotting:
  log_prob: false
  fourmomenta: false
- jetmomenta: true
- preprocessed: true
- observables: ["jet"]
+ jetmomenta: false
+ preprocessed: false
+ observables: ["nsubjettiness"]
  n_pt: 3
+ correlations: false
 
 defaults:
  - model: scond_tr_unfolding

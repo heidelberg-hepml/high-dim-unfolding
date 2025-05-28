@@ -1,4 +1,5 @@
 import numpy as np
+import torch
 import math
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -12,6 +13,7 @@ from experiments.unfolding.plots import (
     plot_correlations,
 )
 from experiments.unfolding.utils import get_range, fourmomenta_to_jetmomenta
+from experiments.logger import LOGGER
 
 
 def plot_losses(exp, filename, model_label):
@@ -130,8 +132,8 @@ def plot_classifier(exp, filename, model_label):
 def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
 
     with PdfPages(filename) as file:
-        for name in exp.obs.keys():
-            extract = exp.obs[name]
+        for name in exp.obs_coords.keys():
+            extract = exp.obs_coords[name]
             det_lvl = (
                 extract(
                     exp.data_raw["samples"].x_det,
@@ -165,10 +167,9 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 "p_{y," + name + "}",
                 "p_{z," + name + "}",
             ]
-            # xranges = exp.obs_ranges[name]["fourmomenta"]
+
             for channel in range(4):
                 xlabel = obs_names[channel]
-                # xrange = xranges[channel]
                 xrange = np.array(
                     get_range(
                         [
@@ -192,23 +193,24 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     weights=weights,
                     mask_dict=mask_dict,
                 )
-                plot_correlations(
-                    file=file,
-                    det=det_lvl[..., channel],
-                    part=part_lvl[..., channel],
-                    gen=model[..., channel],
-                    title=exp.plot_title,
-                    label=xlabel,
-                    range=xrange,
-                    model_label=model_label,
-                )
+                if exp.cfg.plotting.correlations:
+                    plot_correlations(
+                        file=file,
+                        det=det_lvl[..., channel],
+                        part=part_lvl[..., channel],
+                        gen=model[..., channel],
+                        title=exp.plot_title,
+                        label=xlabel,
+                        range=xrange,
+                        model_label=model_label,
+                    )
 
 
 def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
 
     with PdfPages(filename) as file:
-        for name in exp.obs.keys():
-            extract = exp.obs[name]
+        for name in exp.obs_coords.keys():
+            extract = exp.obs_coords[name]
             det_lvl = extract(
                 exp.data_raw["samples"].x_det,
                 exp.data_raw["samples"].x_det_batch,
@@ -227,16 +229,17 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
             det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()
             model = fourmomenta_to_jetmomenta(model).cpu().detach()
+            part_lvl[..., 3] = torch.sqrt(part_lvl[..., 3])
+            det_lvl[..., 3] = torch.sqrt(det_lvl[..., 3])
+            model[..., 3] = torch.sqrt(model[..., 3])
             obs_names = [
                 r"p_{T," + name + "}",
                 "\phi_{" + name + "}",
                 "\eta_{" + name + "}",
-                "m^2_{" + name + "}",
+                "m_{" + name + "}",
             ]
-            # xranges = exp.obs_ranges[name]["jetmomenta"]
             for channel in range(4):
                 xlabel = obs_names[channel]
-                # xrange = xranges[channel]
                 xrange = np.array(
                     get_range(
                         [
@@ -263,16 +266,17 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     weights=weights,
                     mask_dict=mask_dict,
                 )
-                plot_correlations(
-                    file=file,
-                    det=det_lvl[..., channel],
-                    part=part_lvl[..., channel],
-                    gen=model[..., channel],
-                    title=exp.plot_title,
-                    label=xlabel,
-                    range=xrange,
-                    model_label=model_label,
-                )
+                if exp.cfg.plotting.correlations:
+                    plot_correlations(
+                        file=file,
+                        det=det_lvl[..., channel],
+                        part=part_lvl[..., channel],
+                        gen=model[..., channel],
+                        title=exp.plot_title,
+                        label=xlabel,
+                        range=xrange,
+                        model_label=model_label,
+                    )
 
 
 def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
@@ -281,8 +285,8 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
     det_lvl_coords = exp.model.condition_coordinates
 
     with PdfPages(filename) as file:
-        for name in exp.obs.keys():
-            extract = exp.obs[name]
+        for name in exp.obs_coords.keys():
+            extract = exp.obs_coords[name]
             det_lvl = extract(
                 exp.data_raw["samples"].x_det,
                 exp.data_raw["samples"].x_det_batch,
@@ -308,10 +312,9 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 "\eta_{" + name + "}",
                 "\log m^2_{" + name + "}",
             ]
-            # xranges = exp.obs_ranges[name][coords.__class__.__name__]
+
             for channel in range(4):
                 xlabel = obs_names[channel]
-                # xrange = xranges[channel]
                 xrange = np.array(
                     get_range(
                         [
@@ -338,11 +341,88 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                     weights=weights,
                     mask_dict=mask_dict,
                 )
+                if exp.cfg.plotting.correlations:
+                    plot_correlations(
+                        file=file,
+                        det=det_lvl[..., channel],
+                        part=part_lvl[..., channel],
+                        gen=model[..., channel],
+                        title=exp.plot_title,
+                        label=xlabel,
+                        range=xrange,
+                        model_label=model_label,
+                    )
+
+
+def plot_observables(
+    exp,
+    filename,
+    model_label,
+    weights=None,
+    mask_dict=None,
+):
+    with PdfPages(filename) as file:
+        for name in exp.obs.keys():
+            extract = exp.obs[name]
+            det_lvl = (
+                extract(
+                    exp.data_raw["samples"].x_det,
+                    exp.data_raw["samples"].x_det_batch,
+                    exp.data_raw["samples"].x_gen_batch,
+                )
+                .cpu()
+                .detach()
+            )
+            part_lvl = (
+                extract(
+                    exp.data_raw["truth"].x_gen,
+                    exp.data_raw["truth"].x_gen_batch,
+                    exp.data_raw["truth"].x_det_batch,
+                )[: len(det_lvl)]
+                .cpu()
+                .detach()
+            )
+            model = (
+                extract(
+                    exp.data_raw["samples"].x_gen,
+                    exp.data_raw["samples"].x_gen_batch,
+                    exp.data_raw["samples"].x_det_batch,
+                )
+                .cpu()
+                .detach()
+            )
+
+            xrange = np.array(
+                get_range(
+                    [
+                        part_lvl,
+                        # det_lvl[..., channel],
+                        model,
+                    ]
+                )
+            )
+            xlabel = name
+            logy = False
+
+            plot_histogram(
+                file=file,
+                train=part_lvl,
+                test=det_lvl,
+                model=model,
+                title=exp.plot_title,
+                xlabel=xlabel,
+                xrange=xrange,
+                logy=logy,
+                model_label=model_label,
+                weights=weights,
+                mask_dict=mask_dict,
+            )
+            if exp.cfg.plotting.correlations:
                 plot_correlations(
                     file=file,
-                    det=det_lvl[..., channel],
-                    part=part_lvl[..., channel],
-                    gen=model[..., channel],
+                    det=det_lvl,
+                    part=part_lvl,
+                    gen=model,
                     title=exp.plot_title,
                     label=xlabel,
                     range=xrange,

@@ -210,6 +210,10 @@ class ApplyAbsolutePositionalEncoding(torch.nn.Module):
         # Get the position of each index in the corresponding event
         pos = idx - ptr[seq_idx]
 
+        # LOGGER.info(f"scalars: {scalars.shape}")
+        # LOGGER.info(f"pe: {self.pe.shape}")
+        # LOGGER.info(f"pos: {pos}")
+
         outputs = scalars + self.pe[None, None, pos, :]
 
         return outputs
