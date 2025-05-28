@@ -50,6 +50,7 @@ class SelfAttentionConfig:
     additional_qk_mv_channels: int = 0
     additional_qk_s_channels: int = 0
     pos_encoding: bool = False
+    pos_encoding_type: str = "absolute"
     pos_encoding_base: int = 4096
     output_init: str = "default"
     checkpoint: bool = True
@@ -157,6 +158,9 @@ class CrossAttentionConfig:
     additional_k_mv_channels: int = 0
     additional_k_s_channels: int = 0
     multi_query: bool = True
+    pos_encoding: bool = False
+    pos_encoding_type: str = "absolute"
+    pos_encoding_base: int = 4096
     output_init: str = "default"
     checkpoint: bool = True
     increase_hidden_channels: int = 2

@@ -1,5 +1,6 @@
 import hydra
 import torch
+import fastjet_contribs
 import torch.multiprocessing as mp
 import torch.distributed as dist
 from experiments.amplitudes.experiment import AmplitudeExperiment

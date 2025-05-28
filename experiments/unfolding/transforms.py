@@ -174,11 +174,11 @@ class EPPP_to_EPhiPtPz(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_E = torch.stack((one, zero, zero, zero), dim=-1)
         jac_px = torch.stack(
-            (zero, -py / pt**2, px / pt, zero),
+            (zero, -torch.sin(phi) / pt, torch.cos(phi), zero),
             dim=-1,
         )
         jac_py = torch.stack(
-            (zero, px / pt**2, py / pt, zero),
+            (zero, torch.cos(phi) / pt, torch.sin(phi), zero),
             dim=-1,
         )
         jac_pz = torch.stack((zero, zero, zero, one), dim=-1)
@@ -237,11 +237,21 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_E = torch.stack((zero, zero, zero, one), dim=-1)
         jac_px = torch.stack(
-            (px / pt, -py / pt**2, -px * pz / (pt**3 * torch.cosh(eta)), zero),
+            (
+                torch.cos(phi),
+                -torch.sin(phi) / pt,
+                -torch.cos(phi) * torch.tanh(eta) / pt,
+                zero,
+            ),
             dim=-1,
         )
         jac_py = torch.stack(
-            (py / pt, px / pt**2, -py * pz / (pt**3 * torch.cosh(eta)), zero),
+            (
+                torch.sin(phi),
+                torch.cos(phi) / pt,
+                -torch.sin(phi) * torch.tanh(eta) / pt,
+                zero,
+            ),
             dim=-1,
         )
         jac_pz = torch.stack((zero, zero, 1 / (pt * torch.cosh(eta)), zero), dim=-1)
@@ -434,7 +444,7 @@ class StandardNormal(BaseTransform):
     def init_fit(self, x):
         self.mean = torch.mean(x, dim=0, keepdim=True)
         self.std = torch.std(x, dim=0, keepdim=True)
-        self.mean[:, self.dims_fixed] = 0
+        # self.mean[:, self.dims_fixed] = 0
         self.std[:, self.dims_fixed] = 1
 
     def init_unit(self, device, dtype):

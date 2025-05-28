@@ -211,8 +211,8 @@ class BaselineSelfAttention(nn.Module):
 
         # Positional encoding
         if self.pos_encoding is not None:
-            q = self.pos_encoding(q.transpose(-2, -3), attention_mask).transpose(-2, -3)
-            k = self.pos_encoding(k.transpose(-2, -3), attention_mask).transpose(-2, -3)
+            q = self.pos_encoding(q, attention_mask)
+            k = self.pos_encoding(k, attention_mask)
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask, is_causal=is_causal)

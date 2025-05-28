@@ -58,7 +58,7 @@ class CrossAttention(nn.Module):
                     hidden_channels, item_dim=-2, base=pos_encoding_base
                 )
         else:
-            self.pos_encoding = None
+            self.q_pos_encoding = None
 
         self.dropout = nn.Dropout(dropout_prob) if dropout_prob is not None else None
 
@@ -93,12 +93,8 @@ class CrossAttention(nn.Module):
 
         # Positional encoding
         if self.q_pos_encoding is not None:
-            q = self.q_pos_encoding(q.transpose(-2, -3), attention_mask).transpose(
-                -2, -3
-            )
-            k = self.k_pos_encoding(k.transpose(-2, -3), attention_mask).transpose(
-                -2, -3
-            )
+            q = self.q_pos_encoding(q, attention_mask)
+            k = self.k_pos_encoding(k, attention_mask)
 
         # Attention layer
         h = self._attend(q, k, v, attention_mask)
