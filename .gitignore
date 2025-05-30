@@ -15,6 +15,9 @@ scripts/
 logs/
 *~
 
+.claude/
+CLAUDE.md
+
 *.png
 *.pdf
 *.pt

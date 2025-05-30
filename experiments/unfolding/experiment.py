@@ -46,7 +46,7 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.data.add_jet:
                 self.cfg.data.max_constituents += 1
 
-            if self.cfg.modelname == "SimpleConditionalGATr":
+            if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.data.embed_det_in_GA = True
                 self.cfg.data.add_spurions = True
 
@@ -63,46 +63,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.spurions = None
                 self.cfg.data.num_spurions = 0
 
-            # dynamically set channel dimensions
-            if self.cfg.modelname == "ConditionalGATr":
-                self.cfg.data.embed_det_in_GA = True
-                self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net_condition.in_s_channels = 0
-                self.cfg.model.net_condition.out_mv_channels = (
-                    self.cfg.model.net.hidden_mv_channels
-                )
-                self.cfg.model.net_condition.out_s_channels = (
-                    self.cfg.model.net.hidden_s_channels
-                )
-                if self.cfg.data.pid_encoding:
-                    self.cfg.model.net.in_s_channels += 6
-                    self.cfg.model.net_condition.in_s_channels += 6
-                if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net_condition.in_s_channels += 7
-                if not self.cfg.data.beam_token:
-                    self.cfg.model.net_condition.in_mv_channels += (
-                        2
-                        if (
-                            self.cfg.data.two_beams
-                            and self.cfg.data.beam_reference != "xyplane"
-                        )
-                        else 1
-                    )
-                    if self.cfg.data.add_time_reference:
-                        self.cfg.model.net_condition.in_mv_channels += 1
-                self.cfg.model.cfg_data = self.cfg.data
-
-            elif self.cfg.modelname == "ConditionalTransformer":
-                self.cfg.data.embed_det_in_GA = False
-                self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net_condition.in_channels = 4
-                self.cfg.model.net_condition.out_channels = (
-                    self.cfg.model.net.hidden_channels
-                )
-                if self.cfg.data.pid_encoding:
-                    self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net_condition.in_channels += 6
-            elif self.cfg.modelname == "ConditionalMLP":
+            if self.cfg.modelname == "ConditionalMLP":
                 self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.net.in_shape = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net.out_shape = 4
@@ -127,7 +88,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.mlp.hidden_channels = (
                     self.cfg.model.autoregressive_tr.hidden_channels
                 )
-            elif self.cfg.modelname == "SimpleConditionalTransformer":
+            elif self.cfg.modelname == "ConditionalTransformer":
                 self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net_condition.in_channels = 4
@@ -147,7 +108,7 @@ class UnfoldingExperiment(BaseExperiment):
                         self.cfg.data.max_constituents
                     )
 
-            elif self.cfg.modelname == "SimpleConditionalGATr":
+            elif self.cfg.modelname == "ConditionalGATr":
                 self.cfg.data.embed_det_in_GA = True
                 self.cfg.data.add_spurions = True
                 self.cfg.model.net.in_s_channels = (
@@ -284,7 +245,7 @@ class UnfoldingExperiment(BaseExperiment):
         self.model.condition_coordinates.init_fit(train_det_data)
 
         # transform before training
-        if self.cfg.modelname == "SimpleConditionalTransformer":
+        if self.cfg.modelname == "ConditionalTransformer":
             gen_mask = (
                 torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
             )
@@ -359,7 +320,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.det_mean = torch.zeros(1, *det_particles.shape[1:])
                 self.det_std = torch.ones(1, *det_particles.shape[1:])
 
-        if self.cfg.modelname == "SimpleConditionalGATr":
+        if self.cfg.modelname == "ConditionalGATr":
 
             gen_mask = (
                 torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
@@ -428,7 +389,7 @@ class UnfoldingExperiment(BaseExperiment):
         else:
             self.spurions = None
 
-        if self.cfg.modelname == "SimpleConditionalTransformer":
+        if self.cfg.modelname == "ConditionalTransformer":
             fourm = False
         else:
             fourm = True
@@ -572,13 +533,13 @@ class UnfoldingExperiment(BaseExperiment):
             n_batches = len(loader)
         LOGGER.info(f"Sampling {n_batches} batches for evaluation")
 
-        if self.cfg.modelname == "SimpleConditionalTransformer":
+        if self.cfg.modelname == "ConditionalTransformer":
             self.gen_mean = self.gen_mean.to(self.device)
             self.gen_std = self.gen_std.to(self.device)
             self.det_mean = self.det_mean.to(self.device)
             self.det_std = self.det_std.to(self.device)
 
-        elif self.cfg.modelname == "SimpleConditionalGATr":
+        elif self.cfg.modelname == "ConditionalGATr":
             self.gen_mean = self.gen_mean.to(self.device)
             self.gen_std = self.gen_std.to(self.device)
 
@@ -591,7 +552,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            if self.cfg.modelname == "SimpleConditionalTransformer":
+            if self.cfg.modelname == "ConditionalTransformer":
 
                 # undo gen standardization
                 gen_indices = (
@@ -631,7 +592,7 @@ class UnfoldingExperiment(BaseExperiment):
                     batch.x_det
                 )
 
-            elif self.cfg.modelname == "SimpleConditionalGATr":
+            elif self.cfg.modelname == "ConditionalGATr":
                 # undo gen standardization
                 gen_indices = (
                     torch.arange(len(batch.x_gen), device=batch.x_gen.device)
@@ -728,12 +689,8 @@ class UnfoldingExperiment(BaseExperiment):
 
         if self.cfg.modelname == "ConditionalTransformer":
             model_label = "CondTr"
-        elif self.cfg.modelname == "SimpleConditionalTransformer":
-            model_label = "SCondTr"
         elif self.cfg.modelname == "ConditionalGATr":
             model_label = "CondGATr"
-        elif self.cfg.modelname == "SimpleConditionalGATr":
-            model_label = "SCondGATr"
         elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
             model_label = "CondARTr"
         elif self.cfg.modelname == "ConditionalMLP":

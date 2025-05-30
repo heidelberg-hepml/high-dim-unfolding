@@ -85,60 +85,6 @@ def cross_attention_mask(Q_batch, KV_batch):
     )
 
 
-class ConditionalTransformerCFM(EventCFM):
-    """
-    Conditional Transformer velocity network
-    """
-
-    def __init__(
-        self,
-        net,
-        net_condition,
-        cfm,
-        odeint,
-    ):
-        # See GATrCFM.__init__ for documentation
-        super().__init__(
-            cfm,
-            odeint,
-        )
-        self.net = net
-        self.net_condition = net_condition
-
-    def get_condition(self, batch):
-        condition_x = self.condition_coordinates.fourmomenta_to_x(batch.x_det)
-        condition = torch.cat([condition_x, batch.scalars_det], dim=-1)
-        attention_mask = xformers_sa_mask(
-            batch.x_det_batch, materialize=not torch.cuda.is_available()
-        )
-        processed_condition = self.net_condition(
-            inputs=condition.unsqueeze(0),
-            attention_mask=attention_mask,
-        )
-        return processed_condition
-
-    def get_velocity(self, xt, t, batch, processed_condition):
-        t_embedding = self.t_embedding(t)
-
-        x = torch.cat([xt, batch.scalars_gen, t_embedding], dim=-1)
-
-        attention_mask = xformers_sa_mask(
-            batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        )
-        crossattention_mask = xformers_sa_mask(
-            batch.x_gen_batch,
-            batch.x_det_batch,
-            materialize=not torch.cuda.is_available(),
-        )
-
-        v = self.net(
-            x=x.unsqueeze(0),
-            processed_condition=processed_condition,
-            attention_mask=attention_mask,
-            crossattention_mask=crossattention_mask,
-        )
-        v = v.squeeze(0)
-        return v
 
 
 class ConditionalMLPCFM(EventCFM):
@@ -181,100 +127,6 @@ class ConditionalMLPCFM(EventCFM):
         return v
 
 
-class ConditionalGATrCFM(EventCFM):
-    """
-    GATr velocity network
-    """
-
-    def __init__(
-        self,
-        net,
-        net_condition,
-        cfm,
-        scalar_dims,
-        odeint,
-        cfg_data,
-    ):
-        """
-        Parameters
-        ----------
-        net : torch.nn.Module
-        net_condition : torch.nn.Module
-        cfm : Dict
-            Information about how to set up CFM (used in parent classes)
-        scalar_dims : List[int]
-            Components within the used parametrization
-            for which the equivariantly predicted velocity (using multivector channels)
-            is overwritten by a scalar network output (using scalar channels)
-            This is required when cfm.coordinates contains log-transforms
-        odeint : Dict
-            ODE solver settings to be passed to torchdiffeq.odeint
-        cfg_data : Dict
-            Data settings to be passed to the CFM
-        """
-        super().__init__(
-            cfm,
-            odeint,
-        )
-        self.scalar_dims = scalar_dims
-        assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
-        self.cfg_data = cfg_data
-        self.net = net
-        self.net_condition = net_condition
-
-    def get_condition(self, batch):
-        attention_mask = xformers_sa_mask(batch.x_det_batch)
-        mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
-        condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
-        return condition_mv, condition_s
-
-    def get_velocity(self, xt, t, batch, condition):
-        assert self.coordinates is not None
-
-        fourmomenta = self.coordinates.x_to_fourmomenta(xt)
-        condition_mv, condition_s = condition
-
-        mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
-
-        attention_mask = xformers_sa_mask(batch.x_gen_batch)
-        crossattention_mask = xformers_sa_mask(batch.x_gen_batch, batch.x_det_batch)
-
-        mv_outputs, s_outputs = self.net(
-            multivectors=mv.unsqueeze(0),
-            multivectors_condition=condition_mv,
-            scalars=s.unsqueeze(0),
-            scalars_condition=condition_s,
-            attention_mask=attention_mask,
-            crossattention_mask=crossattention_mask,
-        )
-        mv_outputs = mv_outputs.squeeze(0)
-        s_outputs = s_outputs.squeeze(0)
-
-        v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs)
-
-        v_straight = self.coordinates.velocity_fourmomenta_to_x(
-            v_fourmomenta,
-            fourmomenta,
-        )[0]
-
-        # Overwrite transformed velocities with scalar outputs
-        # (this is specific to GATr to avoid large jacobians from from log-transforms)
-        v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
-        return v_straight
-
-    def embed_into_ga(self, fourmomenta, scalars, t):
-
-        # scalar embedding
-        t = self.t_embedding(t)
-        s = torch.cat([scalars, t], dim=-1)
-
-        mv = embed_vector(fourmomenta).unsqueeze(-2)
-
-        return mv, s
-
-    def extract_from_ga(self, mv, s):
-        v = extract_vector(mv).squeeze(dim=-2)
-        return v, s
 
 
 class ConditionalAutoregressiveTransformerCFM(EventCFM):
@@ -383,7 +235,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
         return samples
 
 
-class SimpleConditionalTransformerCFM(EventCFM):
+class ConditionalTransformerCFM(EventCFM):
     """
     Base class for all CFM models
     - event-generation-specific features are implemented in EventCFM
@@ -575,7 +427,7 @@ class SimpleConditionalTransformerCFM(EventCFM):
         raise NotImplementedError
 
 
-class SimpleConditionalGATrCFM(EventCFM):
+class ConditionalGATrCFM(EventCFM):
     """
     GATr velocity network
     """
