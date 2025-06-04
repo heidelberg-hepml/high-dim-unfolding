@@ -3,15 +3,7 @@ import torch
 import fastjet_contribs
 import torch.multiprocessing as mp
 import torch.distributed as dist
-from experiments.amplitudes.experiment import AmplitudeExperiment
-from experiments.tagging.experiment import TopTaggingExperiment, QGTaggingExperiment
-from experiments.eventgen.processes import (
-    ttbarExperiment,
-    zmumuExperiment,
-    ttbarOnshellExperiment,
-)
-from experiments.tagging.jetclassexperiment import JetClassTaggingExperiment
-from experiments.tagging.finetuneexperiment import TopTaggingFineTuneExperiment
+
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.unfolding.experiment import UnfoldingExperiment
 
@@ -42,23 +34,7 @@ def ddp_worker(rank, cfg, world_size):
         )
         torch.cuda.set_device(rank)
 
-    if cfg.exp_type == "amplitudes":
-        constructor = AmplitudeExperiment
-    elif cfg.exp_type == "toptagging":
-        constructor = TopTaggingExperiment
-    elif cfg.exp_type == "qgtagging":
-        constructor = QGTaggingExperiment
-    elif cfg.exp_type == "jctagging":
-        constructor = JetClassTaggingExperiment
-    elif cfg.exp_type == "toptaggingft":
-        constructor = TopTaggingFineTuneExperiment
-    elif cfg.exp_type == "ttbar":
-        constructor = ttbarExperiment
-    elif cfg.exp_type == "ttbar-onshell":
-        constructor = ttbarOnshellExperiment
-    elif cfg.exp_type == "zmumu":
-        constructor = zmumuExperiment
-    elif cfg.exp_type == "multiplicity":
+    if cfg.exp_type == "multiplicity":
         constructor = MultiplicityExperiment
     elif cfg.exp_type == "unfolding":
         constructor = UnfoldingExperiment

@@ -392,6 +392,15 @@ def plot_observables(
                 .detach()
             )
 
+            nan_mask = torch.isnan(part_lvl) | torch.isnan(det_lvl) | torch.isnan(model)
+
+            LOGGER.info(
+                f"Masking {nan_mask.sum()} NaNs in {name} observable, keeping {(~nan_mask).sum()} valid entries"
+            )
+            part_lvl = part_lvl[~nan_mask]
+            det_lvl = det_lvl[~nan_mask]
+            model = model[~nan_mask]
+
             xrange = np.array(
                 get_range(
                     [
@@ -401,6 +410,9 @@ def plot_observables(
                     ]
                 )
             )
+
+            if name == "z_g":
+                xrange[0] = 0.0
             xlabel = name
             logy = False
 

@@ -2,6 +2,7 @@ import torch
 from torch_geometric.data import Data
 import energyflow
 import numpy as np
+import awkward as ak
 import os
 
 from gatr.interface import embed_vector
@@ -176,6 +177,53 @@ def load_cms(data_path, cfg, dtype):
     )
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
+    return {
+        "det_particles": det_particles,
+        "det_mults": det_mults,
+        "det_pids": det_pids,
+        "gen_particles": gen_particles,
+        "gen_mults": gen_mults,
+        "gen_pids": gen_pids,
+    }
+
+
+def load_ttbar(data_path, cfg, dtype):
+    part1 = ak.from_parquet(os.path.join(data_path, "ttbar-t.parquet"))
+    part2 = ak.from_parquet(os.path.join(data_path, "ttbar-tbar.parquet"))
+    data = ak.concatenate([part1, part2], axis=0)
+
+    size = len(data["rec_particles"])
+    shape = (size, cfg.data.max_num_particles, 4)
+
+    det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
+    det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)
+    det_particles = torch.zeros(shape, dtype=dtype)
+    array = ak.to_torch(ak.flatten(data["rec_particles"], axis=1))
+    start = 0
+    for i, length in enumerate(det_mults):
+        stop = start + length
+        det_particles[i, :length] = array[start:stop]
+        start = stop
+
+    gen_mults = ak.to_torch(ak.num(data["gen_particles"], axis=1))
+    gen_jets = (ak.to_torch(data["gen_jets"])).to(dtype)
+    gen_particles = torch.zeros(shape, dtype=dtype)
+    array = ak.to_torch(ak.flatten(data["gen_particles"], axis=1))
+    start = 0
+    for i, length in enumerate(gen_mults):
+        stop = start + length
+        gen_particles[i, :length] = array[start:stop]
+        start = stop
+
+    det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
+    gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
+
+    det_particles[..., 3] = cfg.data.mass**2
+    gen_particles[..., 3] = cfg.data.mass**2
+
+    det_particles = jetmomenta_to_fourmomenta(det_particles)
+    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+
     return {
         "det_particles": det_particles,
         "det_mults": det_mults,

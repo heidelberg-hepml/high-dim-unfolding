@@ -7,7 +7,11 @@ from torch_geometric.data import Batch
 import os, time
 from omegaconf import open_dict
 
-from fastjet_contribs import compute_nsubjettiness
+from fastjet_contribs import (
+    compute_nsubjettiness,
+    apply_soft_drop,
+    compute_soft_drop_symmetry,
+)
 
 from gatr.interface import embed_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
@@ -15,6 +19,7 @@ from experiments.unfolding.dataset import (
     Dataset,
     load_cms,
     load_zplusjet,
+    load_ttbar,
     positional_encoding,
 )
 from experiments.unfolding.utils import (
@@ -39,6 +44,18 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.data.pt_min = 30.0
                 self.cfg.data.units = 10.0
                 self.cfg.cfm.masked_dims = []
+
+            if self.cfg.data.dataset == "zplusjet":
+                self.cfg.data.max_num_particles = 152
+                self.cfg.data.pt_min = 0.0
+                self.cfg.data.units = 10.0
+                self.cfg.cfm.masked_dims = [3]
+
+            if self.cfg.data.dataset == "ttbar":
+                self.cfg.data.max_num_particles = 238
+                self.cfg.data.pt_min = 0.0
+                self.cfg.data.units = 10.0
+                self.cfg.cfm.masked_dims = [3]
 
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
@@ -183,6 +200,8 @@ class UnfoldingExperiment(BaseExperiment):
             data = load_zplusjet(data_path, self.cfg, self.dtype)
         elif self.cfg.data.dataset == "cms":
             data = load_cms(data_path, self.cfg, self.dtype)
+        elif self.cfg.data.dataset == "ttbar":
+            data = load_ttbar(data_path, self.cfg, self.dtype)
         else:
             raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
         det_particles = data["det_particles"]
@@ -259,7 +278,7 @@ class UnfoldingExperiment(BaseExperiment):
             det_data = det_particles[det_mask]
             det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
 
-            if self.cfg.data.dataset == "zplusjet":
+            if self.cfg.data.dataset == "zplusjet" or self.cfg.data.dataset == "ttbar":
                 gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
                 det_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
 
@@ -329,7 +348,7 @@ class UnfoldingExperiment(BaseExperiment):
             gen_data = gen_particles[gen_mask]
             gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
 
-            if self.cfg.data.dataset == "zplusjet":
+            if self.cfg.data.dataset == "zplusjet" or self.cfg.data.dataset == "ttbar":
                 gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
 
             gen_particles[gen_mask] = gen_data
@@ -832,22 +851,6 @@ class UnfoldingExperiment(BaseExperiment):
                 for j in range(i + 1, 3):
                     self.obs[r"M_{" + str(i + 1) + str(j + 1) + "}"] = dimass(i, j)
 
-        if "trimass" in self.cfg.plotting.observables:
-
-            def trimass(constituents, batch_idx, other_batch_idx):
-                batch_ptr = get_ptr_from_batch(batch_idx)
-                other_batch_ptr = get_ptr_from_batch(other_batch_idx)
-                trimass = []
-                for n in range(len(batch_ptr) - 1):
-                    if batch_ptr[n + 1] - batch_ptr[n] == 3:
-                        jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
-                        trimass.append(
-                            torch.sqrt(jet[0] ** 2 - (jet[1:] ** 2).sum(dim=-1))
-                        )
-                return torch.stack(trimass) * self.cfg.data.units
-
-            self.obs[r"M_{jjj}"] = trimass
-
         if "deltaR" in self.cfg.plotting.observables:
 
             def deltaR(i, j):
@@ -878,35 +881,45 @@ class UnfoldingExperiment(BaseExperiment):
                         i, j
                     )
 
-        if "nsubjettiness" in self.cfg.plotting.observables:
+        if self.cfg.data.dataset == "zplusjet":
+            R0 = 0.4
+            R0SoftDrop = 0.8
+        elif self.cfg.data.dataset == "cms":
+            R0 = 1.2
+            R0SoftDrop = 1.2
+        elif self.cfg.data.dataset == "ttbar":
+            R0 = 1.2
+            R0SoftDrop = 1.2
 
-            if self.cfg.data.dataset == "zplusjet":
-                R0 = 0.4
-            elif self.cfg.data.dataset == "cms":
-                R0 = 1.2
+        def tau1(constituents, batch_idx, other_batch_idx):
+            constituents = np.array(constituents.detach().cpu())
+            batch_ptr = get_ptr_from_batch(batch_idx)
+            taus = []
+            for i in range(len(batch_ptr) - 1):
+                event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
+                tau = compute_nsubjettiness(
+                    event[..., [1, 2, 3, 0]], N=1, beta=1.0, R0=R0, axis_mode=3
+                )
+                taus.append(tau)
+            return torch.tensor(taus)
 
-            def tau1(constituents, batch_idx, other_batch_idx):
-                constituents = np.array(constituents.detach().cpu())
-                batch_ptr = get_ptr_from_batch(batch_idx)
-                taus = []
-                for i in range(len(batch_ptr) - 1):
-                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-                    tau = compute_nsubjettiness(event, N=1, beta=1.0, R0=R0)
-                    taus.append(tau)
-                return torch.tensor(taus)
+        def tau2(constituents, batch_idx, other_batch_idx):
+            constituents = np.array(constituents.detach().cpu())
+            batch_ptr = get_ptr_from_batch(batch_idx)
+            taus = []
+            for i in range(len(batch_ptr) - 1):
+                event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
+                tau = compute_nsubjettiness(
+                    event[..., [1, 2, 3, 0]], N=2, beta=1.0, R0=R0, axis_mode=3
+                )
+                taus.append(tau)
+            return torch.tensor(taus)
 
-            def tau2(constituents, batch_idx, other_batch_idx):
-                constituents = np.array(constituents.detach().cpu())
-                batch_ptr = get_ptr_from_batch(batch_idx)
-                taus = []
-                for i in range(len(batch_ptr) - 1):
-                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-                    tau = compute_nsubjettiness(event, N=2, beta=1.0, R0=R0)
-                    taus.append(tau)
-                return torch.tensor(taus)
-
+        if "tau1" in self.cfg.plotting.observables:
             self.obs[r"\tau_1"] = tau1
+        if "tau2" in self.cfg.plotting.observables:
             self.obs[r"\tau_2"] = tau2
+        if "tau21" in self.cfg.plotting.observables:
             self.obs[r"\tau_{21}"] = (
                 lambda constituents, batch_idx, other_batch_idx: torch.where(
                     tau1(constituents, batch_idx, other_batch_idx) != 0,
@@ -915,3 +928,53 @@ class UnfoldingExperiment(BaseExperiment):
                     torch.tensor(0.0),
                 )
             )
+        if "sd_mass" in self.cfg.plotting.observables:
+
+            def sd_mass(constituents, batch_idx, other_batch_idx):
+                constituents = np.array(constituents.detach().cpu())
+                batch_ptr = get_ptr_from_batch(batch_idx)
+                log_rhos = []
+                for i in range(len(batch_ptr) - 1):
+                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
+                    sd_fourm = np.array(
+                        apply_soft_drop(
+                            event[..., [1, 2, 3, 0]], R0=R0SoftDrop, beta=0.0, zcut=0.1
+                        )
+                    )
+                    mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
+                    pt2 = np.sum(np.sum(event[..., 1:3], axis=0) ** 2)
+                    log_rho = np.log(mass2 / pt2)
+                    log_rhos.append(log_rho)
+                return torch.tensor(log_rhos)
+
+            self.obs[r"\log \rho"] = sd_mass
+
+        if "momentum_fraction" in self.cfg.plotting.observables:
+
+            def compute_zg(constituents, batch_idx, other_batch_idx):
+                constituents = np.array(constituents.detach().cpu())
+                batch_ptr = get_ptr_from_batch(batch_idx)
+                zgs = []
+                for i in range(len(batch_ptr) - 1):
+                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
+                    zg = apply_soft_drop(
+                        event[..., [1, 2, 3, 0]], R0=R0SoftDrop, beta=0.0, zcut=0.1
+                    )[-1]
+                    zgs.append(zg)
+                return torch.tensor(zgs)
+
+            self.obs[r"z_g"] = compute_zg
+
+        if "jet_mass" in self.cfg.plotting.observables:
+
+            def jet_mass(constituents, batch_idx, other_batch_idx):
+                batch_ptr = get_ptr_from_batch(batch_idx)
+                other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+                jet_masses = []
+                for n in range(len(batch_ptr) - 1):
+                    jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
+                    mass2 = jet[0] ** 2 - (jet[1:] ** 2).sum(dim=-1)
+                    jet_masses.append(torch.sqrt(mass2))
+                return torch.stack(jet_masses) * self.cfg.data.units
+
+            self.obs[r"M_{jet}"] = jet_mass

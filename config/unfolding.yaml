@@ -84,6 +84,6 @@ plotting:
  correlations: false
 
 defaults:
- - model: scond_tr_unfolding
+ - model: cond_tr_unfolding
  - default
  - _self_

@@ -206,7 +206,7 @@ def get_range(input):
     else:
         raise ValueError("Input must be a list, tuple, numpy array, or torch tensor")
     quantiles = torch.quantile(
-        tensor, torch.tensor([0.005, 0.995], device=tensor.device)
+        tensor, torch.tensor([0.005, 0.995], device=tensor.device, dtype=tensor.dtype)
     )
     scale = quantiles[1] - quantiles[0]
     quantiles[0] -= 0.05 * scale
