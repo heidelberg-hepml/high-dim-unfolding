@@ -214,14 +214,6 @@ class UnfoldingExperiment(BaseExperiment):
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
-        plot_kinematics(
-            self.cfg.run_dir,
-            det_particles[:, 0, :],
-            gen_particles[:, 0, :],
-            gen_particles[:, 0, :],
-        )
-        # plot_kinematics(self.cfg.run_dir, gen_jets, det_jets, true_det_jets)
-
         if self.cfg.data.add_jet:
             det_jets = det_particles.sum(dim=1, keepdim=True)
             det_particles = torch.cat([det_jets, det_particles], dim=1)
