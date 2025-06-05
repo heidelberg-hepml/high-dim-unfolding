@@ -48,21 +48,34 @@ def plot_mixer(cfg, plot_path, plot_dict):
             )
 
     if cfg.evaluate:
+        if cfg.data.dataset == "zplusjet":
+            xrange = [0, 70]
+            diff_xrange = [-5, 30]
+        elif cfg.data.dataset == "ttbar":
+            xrange = [30, 130]
+            diff_xrange = [0, 50]
         if cfg.plotting.distributions:
             file = f"{plot_path}/distributions.pdf"
             if cfg.dist.diff:
-                xrange = [-5, 30]
+                plot_distributions(
+                    file,
+                    plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
+                    plot_dict["results_test"]["samples"].numpy(),
+                    xrange=diff_xrange,
+                    distribution_label=cfg.dist.type,
+                    diff=cfg.dist.diff,
+                    diff_min=cfg.data.diff[0],
+                )
             else:
-                xrange = [0, 70]
-            plot_distributions(
-                file,
-                plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
-                plot_dict["results_test"]["samples"].numpy(),
-                xrange=xrange,
-                distribution_label=cfg.dist.type,
-                diff=cfg.dist.diff,
-                diff_min=cfg.data.diff[0],
-            )
+                plot_distributions(
+                    file,
+                    plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
+                    plot_dict["results_test"]["samples"].numpy(),
+                    xrange=xrange,
+                    distribution_label=cfg.dist.type,
+                    diff=cfg.dist.diff,
+                    diff_min=cfg.data.diff[0],
+                )
 
         if cfg.plotting.histogram:
             file = f"{plot_path}/main_histogram.pdf"
@@ -71,7 +84,7 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 plot_dict["results_test"]["samples"][:, 1].numpy(),
                 plot_dict["results_test"]["samples"][:, 0].numpy(),
                 xlabel=r"\text{Multiplicity}",
-                xrange=[0, 70],
+                xrange=xrange,
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
         if cfg.plotting.diff:
@@ -83,7 +96,7 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 plot_dict["results_test"]["samples"][:, 0].numpy()
                 - plot_dict["results_test"]["samples"][:, 2].numpy(),
                 xlabel=r"\text{Multiplicity difference}",
-                xrange=[-5, 30],
+                xrange=diff_xrange,
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
         if cfg.plotting.corr:
@@ -93,23 +106,29 @@ def plot_mixer(cfg, plot_path, plot_dict):
                 plot_dict["results_train"]["samples"][:, 2].numpy(),
                 plot_dict["results_train"]["samples"][:, 0].numpy(),
                 plot_dict["results_train"]["samples"][:, 1].numpy(),
-                range=[0, 50],
+                range=xrange,
                 model_label=cfg.model.net._target_.rsplit(".", 1)[-1],
             )
         if cfg.plotting.components:
             file = f"{plot_path}/components.pdf"
             if cfg.dist.diff:
-                xrange = [-5, 30]
+                plot_components(
+                    file,
+                    plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
+                    plot_dict["results_test"]["samples"].numpy(),
+                    xrange=diff_xrange,
+                    distribution_label=cfg.dist.type,
+                    diff=cfg.dist.diff,
+                )
             else:
-                xrange = [0, 70]
-            plot_components(
-                file,
-                plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
-                plot_dict["results_test"]["samples"].numpy(),
-                xrange=xrange,
-                distribution_label=cfg.dist.type,
-                diff=cfg.dist.diff,
-            )
+                plot_components(
+                    file,
+                    plot_dict["results_test"]["params"][: cfg.plotting.n_distributions],
+                    plot_dict["results_test"]["samples"].numpy(),
+                    xrange=xrange,
+                    distribution_label=cfg.dist.type,
+                    diff=cfg.dist.diff,
+                )
 
 
 def plot_histogram(
