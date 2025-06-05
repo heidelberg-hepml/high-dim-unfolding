@@ -141,8 +141,8 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.data.mass**2
-    gen_particles[..., 3] = cfg.data.mass**2
+    det_particles[..., 3] = cfg.data.mass
+    gen_particles[..., 3] = cfg.data.mass
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
@@ -190,9 +190,9 @@ def load_cms(data_path, cfg, dtype):
 def load_ttbar(data_path, cfg, dtype):
     part1 = ak.from_parquet(os.path.join(data_path, "ttbar-t.parquet"))
     part2 = ak.from_parquet(os.path.join(data_path, "ttbar-tbar.parquet"))
-    data = ak.concatenate([part1, part2], axis=0)
+    data = ak.concatenate([part1, part2], axis=0)[: cfg.data.num_data]
 
-    size = len(data["rec_particles"])
+    size = cfg.data.num_data if cfg.data.num_data > 0 else len(data)
     shape = (size, cfg.data.max_num_particles, 4)
 
     det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
@@ -218,17 +218,22 @@ def load_ttbar(data_path, cfg, dtype):
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.data.mass**2
-    gen_particles[..., 3] = cfg.data.mass**2
+    det_particles[..., 3] = cfg.data.mass
+    gen_particles[..., 3] = cfg.data.mass
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
+    det_jets = jetmomenta_to_fourmomenta(det_jets)
+    gen_jets = jetmomenta_to_fourmomenta(gen_jets)
+
     return {
         "det_particles": det_particles,
+        "det_jets": det_jets,
         "det_mults": det_mults,
         "det_pids": det_pids,
         "gen_particles": gen_particles,
+        "gen_jets": gen_jets,
         "gen_mults": gen_mults,
         "gen_pids": gen_pids,
     }

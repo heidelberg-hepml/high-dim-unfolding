@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
 from experiments.unfolding.coordinates import LogPtPhiEtaLogM2
-from experiments.unfolding.utils import get_range
+from experiments.unfolding.utils import get_range, fourmomenta_to_jetmomenta
 
 # load fonts
 import matplotlib.font_manager as font_manager
@@ -399,7 +399,7 @@ def plot_kinematics(path, samples, targets, base):
     labels = ["Energy", "p_x", "p_y", "p_z"]
     xrange = [[0, 1000], [-400, 400], [-400, 400], [-750, 750]]
     for i, ax in enumerate(axs.flatten()):
-        bins = np.linspace(xrange[i][0], xrange[i][1], 30)
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
         ax.hist(
             samples[:, i].cpu(),
             bins=bins,
@@ -431,6 +431,45 @@ def plot_kinematics(path, samples, targets, base):
     plt.tight_layout()
     plt.savefig(path + "/kinematics.pdf", format="pdf", bbox_inches="tight")
     plt.close()
+    jet_samples = fourmomenta_to_jetmomenta(samples)
+    jet_targets = fourmomenta_to_jetmomenta(targets)
+    jet_base = fourmomenta_to_jetmomenta(base)
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["pt", "phi", "eta", "m"]
+    xrange = [[300, 1000], [-np.pi, np.pi], [-3, 3], [0, 300]]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
+        ax.hist(
+            jet_samples[:, i].cpu(),
+            bins=bins,
+            range=None,
+            label="samples",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            jet_targets[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="targets",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            jet_base[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="base",
+            density=True,
+            histtype="step",
+        )
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics_jet.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
     coords = LogPtPhiEtaLogM2(pt_min=0.0, units=1.0)
     samples = coords.fourmomenta_to_x(samples)
     targets = coords.fourmomenta_to_x(targets)
@@ -439,7 +478,7 @@ def plot_kinematics(path, samples, targets, base):
     labels = ["log pt", "phi", "eta", "log m2"]
     xrange = [[-10, 10], [-np.pi, np.pi], [-3, 3], [-5, -4.2]]
     for i, ax in enumerate(axs.flatten()):
-        bins = np.linspace(xrange[i][0], xrange[i][1], 30)
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
         ax.hist(
             samples[:, i].cpu(),
             bins=bins,
@@ -469,7 +508,7 @@ def plot_kinematics(path, samples, targets, base):
         ax.set_xlabel(labels[i], fontsize=FONTSIZE)
         ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     plt.tight_layout()
-    plt.savefig(path + "/kinematics_alt.pdf", format="pdf", bbox_inches="tight")
+    plt.savefig(path + "/kinematics_prep.pdf", format="pdf", bbox_inches="tight")
     plt.close()
 
 

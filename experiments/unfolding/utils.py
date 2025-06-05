@@ -45,7 +45,7 @@ def fourmomenta_to_jetmomenta(fourmomenta):
     eta = get_eta(fourmomenta)
     mass = get_mass(fourmomenta)
 
-    jetmomenta = torch.stack((pt, phi, eta, mass**2), dim=-1)
+    jetmomenta = torch.stack((pt, phi, eta, mass), dim=-1)
     assert torch.isfinite(jetmomenta).all()
     return jetmomenta.to(in_dtype)
 
@@ -53,12 +53,12 @@ def fourmomenta_to_jetmomenta(fourmomenta):
 def jetmomenta_to_fourmomenta(jetmomenta):
     in_dtype = jetmomenta.dtype
     jetmomenta = jetmomenta.to(dtype=torch.float64)
-    pt, phi, eta, m2 = unpack_last(jetmomenta)
+    pt, phi, eta, mass = unpack_last(jetmomenta)
 
     px = pt * torch.cos(phi)
     py = pt * torch.sin(phi)
     pz = pt * torch.sinh(eta.clamp(min=-CUTOFF, max=CUTOFF))
-    E = torch.sqrt(m2 + px**2 + py**2 + pz**2)
+    E = torch.sqrt(mass**2 + px**2 + py**2 + pz**2)
 
     fourmomenta = torch.stack((E, px, py, pz), dim=-1)
     assert torch.isfinite(fourmomenta).all()

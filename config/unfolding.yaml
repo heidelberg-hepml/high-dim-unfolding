@@ -77,9 +77,9 @@ plot: true
 plotting:
  log_prob: false
  fourmomenta: false
- jetmomenta: false
+ jetmomenta: true
  preprocessed: false
- observables: ["nsubjettiness"]
+ observables: ["jet"]
  n_pt: 3
  correlations: false
 

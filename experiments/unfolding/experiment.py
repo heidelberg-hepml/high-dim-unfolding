@@ -29,7 +29,7 @@ from experiments.unfolding.utils import (
     ensure_angle,
 )
 import experiments.unfolding.plotter as plotter
-from experiments.unfolding.plots import plot_data
+from experiments.unfolding.plots import plot_kinematics
 from experiments.logger import LOGGER
 
 
@@ -213,6 +213,14 @@ class UnfoldingExperiment(BaseExperiment):
         size = len(gen_particles)
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_particles[:, 0, :],
+            gen_particles[:, 0, :],
+            gen_particles[:, 0, :],
+        )
+        # plot_kinematics(self.cfg.run_dir, gen_jets, det_jets, true_det_jets)
 
         if self.cfg.data.add_jet:
             det_jets = det_particles.sum(dim=1, keepdim=True)
