@@ -221,6 +221,11 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles[..., 3] = cfg.data.mass
     gen_particles[..., 3] = cfg.data.mass
 
+    det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
+    gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
+    det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
+    gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
+
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
