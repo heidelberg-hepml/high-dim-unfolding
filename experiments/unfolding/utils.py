@@ -220,7 +220,7 @@ def mask_dims(input, dims):
     return input * mask
 
 
-def remove_det_jet(batch):
+def remove_jet(batch):
     new_batch = batch.clone()
     seq = new_batch.x_det
     scalars = new_batch.scalars_det

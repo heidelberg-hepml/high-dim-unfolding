@@ -25,7 +25,7 @@ from experiments.unfolding.dataset import (
 from experiments.unfolding.utils import (
     get_ptr_from_batch,
     fourmomenta_to_jetmomenta,
-    remove_det_jet,
+    remove_jet,
     ensure_angle,
 )
 import experiments.unfolding.plotter as plotter
@@ -215,10 +215,17 @@ class UnfoldingExperiment(BaseExperiment):
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
         if self.cfg.data.add_jet:
+            # add det jet as first particle to condition
             det_jets = det_particles.sum(dim=1, keepdim=True)
             det_particles = torch.cat([det_jets, det_particles], dim=1)
             det_pids = torch.cat([torch.zeros_like(det_pids[:, :1]), det_pids], dim=1)
             det_mults += 1
+
+            # add gen jet as first particle to condition
+            gen_jets = gen_particles.sum(dim=1, keepdim=True)
+            det_particles = torch.cat([gen_jets, gen_particles], dim=1)
+            gen_pids = torch.cat([torch.zeros_like(gen_pids[:, :1]), gen_pids], dim=1)
+            gen_mults += 1
 
         gen_particles /= self.cfg.data.units
         det_particles /= self.cfg.data.units
@@ -659,8 +666,9 @@ class UnfoldingExperiment(BaseExperiment):
         )
 
         if self.cfg.data.add_jet:
-            self.data_raw["samples"] = remove_det_jet(self.data_raw["samples"])
-            self.data_raw["truth"] = remove_det_jet(self.data_raw["truth"])
+            # remove gen jet from the condition
+            self.data_raw["samples"] = remove_jet(self.data_raw["samples"])
+            self.data_raw["truth"] = remove_jet(self.data_raw["truth"])
 
         # convert the list into a dataloader
         sampler = torch.utils.data.DistributedSampler(
