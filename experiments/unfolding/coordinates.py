@@ -22,7 +22,7 @@ class BaseCoordinates(torch.nn.Module):
         x = fourmomenta.clone()
         for transform in self.transforms[:-1]:
             x = transform.forward(x, batch)
-        self.transforms[-1].init_fit(x)
+        self.transforms[-1].init_fit(x, batch)
 
     def fourmomenta_to_x(self, a_in, batch=None):
         assert torch.isfinite(a_in).all()
@@ -235,7 +235,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, units, fixed_dims=[3]):
+    def __init__(self, pt_min, units, fixed_dims=[3], fixed_jets=False):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -244,7 +244,7 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.Pt_to_LogPt(pt_min, units),
             tr.M2_to_LogM2(),
-            tr.StandardNormal([1] + fixed_dims),
+            tr.StandardNormal([1] + fixed_dims, fixed_jets),
         ]
 
 

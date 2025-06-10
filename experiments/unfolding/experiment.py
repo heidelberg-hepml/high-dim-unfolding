@@ -216,13 +216,13 @@ class UnfoldingExperiment(BaseExperiment):
             # add det jet as first particle to condition
             det_jets = det_particles.sum(dim=1, keepdim=True)
             det_particles = torch.cat([det_jets, det_particles], dim=1)
-            det_pids = torch.cat([torch.zeros_like(det_pids[:, :1]), det_pids], dim=1)
+            det_pids = torch.cat([torch.zeros_like(det_pids[:1, :]), det_pids], dim=1)
             det_mults += 1
 
             # add gen jet as first particle to condition
             gen_jets = gen_particles.sum(dim=1, keepdim=True)
             gen_particles = torch.cat([gen_jets, gen_particles], dim=1)
-            gen_pids = torch.cat([torch.zeros_like(gen_pids[:, :1]), gen_pids], dim=1)
+            gen_pids = torch.cat([torch.zeros_like(gen_pids[:1, :]), gen_pids], dim=1)
             gen_mults += 1
 
         gen_particles /= self.cfg.data.units
@@ -247,6 +247,26 @@ class UnfoldingExperiment(BaseExperiment):
 
         # initialize geometry
         self.model.init_geometry()
+
+        train_gen_mask = (
+            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
+        )
+        self.model.coordinates.init_fit(
+            gen_particles[:train_idx][train_gen_mask],
+            torch.cumsum(
+                torch.cat([torch.zeros(1), gen_mults[:train_idx]]), dim=0, dtype=int
+            ),
+        )
+
+        train_det_mask = (
+            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
+        )
+        self.model.condition_coordinates.init_fit(
+            det_particles[:train_idx][train_det_mask],
+            torch.cumsum(
+                torch.cat([torch.zeros(1), det_mults[:train_idx]]), dim=0, dtype=int
+            ),
+        )
 
         if self.cfg.data.transform:
             det_mask = (
@@ -278,16 +298,19 @@ class UnfoldingExperiment(BaseExperiment):
 
         self.train_data = Dataset(
             self.dtype,
+            self.cfg.data.add_jet,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.val_data = Dataset(
             self.dtype,
+            self.cfg.data.add_jet,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
         )
         self.test_data = Dataset(
             self.dtype,
+            self.cfg.data.add_jet,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
         )

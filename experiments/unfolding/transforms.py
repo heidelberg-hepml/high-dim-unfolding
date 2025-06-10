@@ -436,13 +436,17 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, dims_fixed=[]):
+    def __init__(self, dims_fixed=[], fixed_jets=False):
         super().__init__()
         self.dims_fixed = dims_fixed
+        self.fixed_jets = fixed_jets
         self.mean = torch.zeros(1, 4)
         self.std = torch.ones(1, 4)
 
-    def init_fit(self, x):
+    def init_fit(self, x, batch_ptr=None):
+        if self.fixed_jets:
+            mask = ~torch.isin(torch.arange(x.size(0)), batch_ptr[:-1])
+            x = x[mask]
         self.mean = torch.mean(x, dim=0, keepdim=True)
         self.std = torch.std(x, dim=0, keepdim=True)
         # self.mean[:, self.dims_fixed] = 0
@@ -456,29 +460,43 @@ class StandardNormal(BaseTransform):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
             x.device, dtype=x.dtype
         )
+        if self.fixed_jets and batch_ptr is not None:
+            xunit[batch_ptr[:-1]] = x[batch_ptr[:-1]]  # keep jets fixed
         return xunit
 
     def _inverse(self, xunit, batch_ptr=None):
         x = xunit * self.std.to(xunit.device, dtype=xunit.dtype) + self.mean.to(
             xunit.device, dtype=xunit.dtype
         )
+        if self.fixed_jets and batch_ptr is not None:
+            x[batch_ptr[:-1]] = xunit[batch_ptr[:-1]]  # keep jets fixed
         return x
 
     def _jac_forward(self, x, xunit, batch_ptr=None):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
         std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
         jac[..., torch.arange(4), torch.arange(4)] = 1 / std
+        if self.fixed_jets and batch_ptr is not None:
+            jac[batch_ptr[:-1]] = torch.eye(
+                4, device=x.device, dtype=x.dtype
+            ).unsqueeze(0)
         return jac
 
     def _jac_inverse(self, xunit, x, batch_ptr=None):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
         std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
         jac[..., torch.arange(4), torch.arange(4)] = std
+        if self.fixed_jets and batch_ptr is not None:
+            jac[batch_ptr[:-1]] = torch.eye(
+                4, device=x.device, dtype=x.dtype
+            ).unsqueeze(0)
         return jac
 
     def _detjac_forward(self, x, xunit, batch_ptr=None):
         detjac = 1 / torch.prod(self.std, dim=-1)
         detjac = detjac.unsqueeze(0).expand(x.shape[0], x.shape[1])
+        if self.fixed_jets and batch_ptr is not None:
+            detjac[batch_ptr[:-1]] = 1
         return detjac
 
 

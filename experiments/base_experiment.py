@@ -596,7 +596,7 @@ class BaseExperiment:
 
         dt = time.time() - self.training_start_time
         LOGGER.info(
-            f"Finished training for {step} iterations = {step / len(self.train_loader):.1f} epochs "
+            f"Finished training for {step + 1} iterations = {step / len(self.train_loader):.1f} epochs "
             f"after {dt/60:.2f}min = {dt/60**2:.2f}h"
         )
 

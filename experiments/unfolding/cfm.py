@@ -377,6 +377,7 @@ class EventCFM(CFM):
                 self.pt_min,
                 self.units,
                 fixed_dims=self.cfm.masked_dims,
+                fixed_jets=self.cfm.mask_jets,
             )
         elif coordinates_label == "JetScaledPtPhiEtaM2":
             coordinates = c.JetScaledPtPhiEtaM2()

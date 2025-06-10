@@ -19,11 +19,12 @@ from experiments.unfolding.plots import plot_data
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, embed_into_GA=False, spurions=None):
+    def __init__(self, dtype, add_jet=False, embed_into_GA=False, spurions=None):
         self.dtype = dtype
         self.embed_into_GA = embed_into_GA
         if embed_into_GA:
             self.spurions = spurions
+        self.add_jet = add_jet
 
     def __len__(self):
         return len(self.data_list)
@@ -56,6 +57,14 @@ class Dataset(torch.utils.data.Dataset):
                     )
                 else:
                     det_event = embed_vector(det_event).unsqueeze(-2)
+
+            if self.add_jet:
+                det_scalar = torch.zeros(det_scalars.shape[0], 1, dtype=self.dtype)
+                det_scalar[0] = 1
+                det_scalars = torch.cat([det_scalars, det_scalar], dim=-1)
+                gen_scalar = torch.zeros(gen_scalars.shape[0], 1, dtype=self.dtype)
+                gen_scalar[0] = 1
+                gen_scalars = torch.cat([gen_scalars, gen_scalar], dim=-1)
 
             graph = Data(
                 x_det=det_event,
@@ -119,23 +128,14 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
-    LOGGER.info(f"det jet shape: {det_jets.shape}, gen jet shape: {gen_jets.shape}")
-    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
-
     det_jets = jetmomenta_to_fourmomenta(det_jets)
     gen_jets = jetmomenta_to_fourmomenta(gen_jets)
-
-    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
 
     det_jets = fourmomenta_to_jetmomenta(det_jets)
     gen_jets = fourmomenta_to_jetmomenta(gen_jets)
 
-    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
-
     det_jets = jetmomenta_to_fourmomenta(det_jets)
     gen_jets = jetmomenta_to_fourmomenta(gen_jets)
-
-    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
 
     return {
         "det_particles": det_particles,
