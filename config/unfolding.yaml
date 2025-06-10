@@ -28,7 +28,7 @@ data:
  pt_min: 0.0
  units: 10
  mass: 1.0
- add_jet: true
+ add_jet: false
  transform: true
 
 cfm:

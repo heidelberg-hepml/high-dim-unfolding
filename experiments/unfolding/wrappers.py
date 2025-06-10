@@ -331,8 +331,8 @@ class ConditionalTransformerCFM(EventCFM):
 
         vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
 
-        vp = self.handle_velocity(vp, batch.x_gen_ptr)
-        vt = self.handle_velocity(vt, batch.x_gen_ptr)
+        # vp = self.handle_velocity(vp, batch.x_gen_ptr)
+        # vt = self.handle_velocity(vt, batch.x_gen_ptr)
 
         # evaluate conditional flow matching objective
         distance = ((vp - vt) ** 2).mean()
@@ -559,8 +559,8 @@ class ConditionalGATrCFM(EventCFM):
             xt, t, batch, condition, attention_mask, crossattention_mask
         )
 
-        vp = self.handle_velocity(vp, batch.x_gen_ptr)
-        vt = self.handle_velocity(vt, batch.x_gen_ptr)
+        # vp = self.handle_velocity(vp, batch.x_gen_ptr)
+        # vt = self.handle_velocity(vt, batch.x_gen_ptr)
 
         # evaluate conditional flow matching objective
         distance = ((vp - vt) ** 2).mean()

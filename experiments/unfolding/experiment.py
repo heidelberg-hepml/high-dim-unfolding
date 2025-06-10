@@ -216,13 +216,13 @@ class UnfoldingExperiment(BaseExperiment):
             # add det jet as first particle to condition
             det_jets = det_particles.sum(dim=1, keepdim=True)
             det_particles = torch.cat([det_jets, det_particles], dim=1)
-            det_pids = torch.cat([torch.zeros_like(det_pids[:1, :]), det_pids], dim=1)
+            det_pids = torch.cat([torch.zeros_like(det_pids[:, :1]), det_pids], dim=1)
             det_mults += 1
 
             # add gen jet as first particle to condition
             gen_jets = gen_particles.sum(dim=1, keepdim=True)
             gen_particles = torch.cat([gen_jets, gen_particles], dim=1)
-            gen_pids = torch.cat([torch.zeros_like(gen_pids[:1, :]), gen_pids], dim=1)
+            gen_pids = torch.cat([torch.zeros_like(gen_pids[:, :1]), gen_pids], dim=1)
             gen_mults += 1
 
         gen_particles /= self.cfg.data.units
