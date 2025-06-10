@@ -15,6 +15,7 @@ class BaseCoordinates(torch.nn.Module):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = False
+        self.contains_jet = False
         self.transforms = []
 
     def init_fit(self, fourmomenta, batch=None):
@@ -253,6 +254,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
+        self.contains_jet = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),

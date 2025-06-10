@@ -3,14 +3,7 @@ from torch import nn
 from torch.autograd import grad
 
 from torchdiffeq import odeint
-from experiments.unfolding.distributions import (
-    BaseDistribution,
-    NaivePPP,
-    StandardPPP,
-    LogPtPhiEta,
-    StandardLogPtPhiEta,
-    StandardPtPhiEta,
-)
+import experiments.unfolding.distributions as d
 from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
@@ -61,7 +54,7 @@ class CFM(nn.Module):
         self.cfm = cfm
 
         # initialize to base objects, this will be overwritten later
-        self.distribution = BaseDistribution()
+        self.distribution = d.BaseDistribution()
         self.coordinates = c.BaseCoordinates()
         self.condition_coordinates = c.BaseCoordinates()
         self.geometry = BaseGeometry()
@@ -120,7 +113,7 @@ class CFM(nn.Module):
             dtype=x0_fourmomenta.dtype,
             device=x0_fourmomenta.device,
         )
-        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
+        t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
         x1_fourmomenta = self.sample_base(
             x0_fourmomenta.shape, x0_fourmomenta.device, x0_fourmomenta.dtype
         )
@@ -332,16 +325,18 @@ class EventCFM(CFM):
             self.pt_min,
             self.units,
         ]
-        if self.base_type == 1:
-            self.distribution = NaivePPP(*args)
-        elif self.base_type == 2:
-            self.distribution = StandardPPP(*args)
-        elif self.base_type == 3:
-            self.distribution = LogPtPhiEta(*args)
-        elif self.base_type == 4:
-            self.distribution = StandardLogPtPhiEta(*args)
-        elif self.base_type == 5:
-            self.distribution = StandardPtPhiEta(*args)
+        if self.base_type == "NaivePPP":
+            self.distribution = d.NaivePPP(*args)
+        elif self.base_type == "StandardPPP":
+            self.distribution = d.StandardPPP(*args)
+        elif self.base_type == "LogPtPhiEta":
+            self.distribution = d.LogPtPhiEta(*args)
+        elif self.base_type == "StandardLogPtPhiEta":
+            self.distribution = d.StandardLogPtPhiEta(*args)
+        elif self.base_type == "StandardPtPhiEta":
+            self.distribution = d.StandardPtPhiEta(*args)
+        elif self.base_type == "PtPhiEta":
+            self.distribution = d.PtPhiEta(*args)
         else:
             raise ValueError(f"base_type={self.base_type} not implemented")
 
@@ -383,6 +378,8 @@ class EventCFM(CFM):
                 self.units,
                 fixed_dims=self.cfm.masked_dims,
             )
+        elif coordinates_label == "JetScaledPtPhiEtaM2":
+            coordinates = c.JetScaledPtPhiEtaM2()
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")
         return coordinates

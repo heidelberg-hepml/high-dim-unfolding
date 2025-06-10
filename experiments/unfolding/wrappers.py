@@ -311,13 +311,16 @@ class ConditionalTransformerCFM(EventCFM):
             dtype=x0.dtype,
             device=x0.device,
         )
-        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
+        t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
 
         if 3 in self.cfm.masked_dims:
-            mass = torch.mean(x0[..., 3])
+            mass = self.onshell_mass
         else:
             mass = None
         x1 = self.sample_base(x0.shape, x0.device, x0.dtype, mass)
+
+        if self.cfm.mask_jets:
+            x1[batch.x_gen_ptr[:-1]] = x0[batch.x_gen_ptr[:-1]]
 
         vt = x1 - x0
         xt = self.geometry._handle_periodic(x0 + vt * t)
@@ -376,7 +379,7 @@ class ConditionalTransformerCFM(EventCFM):
         # sample fourmomenta from base distribution
         shape = batch.x_gen.shape
         if 3 in self.cfm.masked_dims:
-            mass = torch.mean(batch.x_det[..., 3])
+            mass = self.onshell_mass
         else:
             mass = None
         x1 = self.sample_base(shape, device, dtype, mass)
@@ -464,11 +467,6 @@ class ConditionalGATrCFM(EventCFM):
         self.net = net
         self.net_condition = net_condition
 
-    def set_ms(self, mean, std, spurions=None):
-        self.gen_mean = mean.squeeze()
-        self.gen_std = std.squeeze()
-        self.spurions = spurions
-
     def sample_base(self, shape, device, dtype, mass=None, generator=None):
         sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
         sample[..., 1] = (
@@ -504,14 +502,7 @@ class ConditionalGATrCFM(EventCFM):
     ):
         assert self.coordinates is not None
 
-        gen_indices = (
-            torch.arange(len(xt), device=xt.device) - batch.x_gen_ptr[batch.x_gen_batch]
-        )
-        gen_std_broadcasted = self.gen_std.to(xt.device)[gen_indices]
-        gen_mean_broadcasted = self.gen_mean.to(xt.device)[gen_indices]
-        xt = xt * gen_std_broadcasted + gen_mean_broadcasted
-
-        fourmomenta = self.coordinates.x_to_fourmomenta(xt)
+        fourmomenta = self.coordinates.x_to_fourmomenta(xt, batch.x_gen_ptr)
         condition_mv, condition_s = condition
 
         mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
@@ -532,8 +523,8 @@ class ConditionalGATrCFM(EventCFM):
         v_straight = self.coordinates.velocity_fourmomenta_to_x(
             v_fourmomenta,
             fourmomenta,
+            batch.x_gen_ptr,
         )[0]
-        v_straight = v_straight / gen_std_broadcasted
 
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
@@ -549,10 +540,10 @@ class ConditionalGATrCFM(EventCFM):
             dtype=x0.dtype,
             device=x0.device,
         )
-        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
+        t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
 
         if 3 in self.cfm.masked_dims:
-            mass = torch.mean(x0[..., 3])
+            mass = self.onshell_mass
         else:
             mass = None
         x1 = self.sample_base(x0.shape, x0.device, x0.dtype, mass)
@@ -568,8 +559,8 @@ class ConditionalGATrCFM(EventCFM):
             xt, t, batch, condition, attention_mask, crossattention_mask
         )
 
-        # vp = self.handle_velocity(vp)
-        # vt = self.handle_velocity(vt)
+        vp = self.handle_velocity(vp, batch.x_gen_ptr)
+        vt = self.handle_velocity(vt, batch.x_gen_ptr)
 
         # evaluate conditional flow matching objective
         distance = ((vp - vt) ** 2).mean()
@@ -616,7 +607,7 @@ class ConditionalGATrCFM(EventCFM):
         # sample fourmomenta from base distribution
         shape = batch.x_gen.shape
         if 3 in self.cfm.masked_dims:
-            mass = torch.mean(batch.x_det[..., 3])
+            mass = self.onshell_mass
         else:
             mass = None
         x1 = self.sample_base(shape, device, dtype, mass)
@@ -648,7 +639,6 @@ class ConditionalGATrCFM(EventCFM):
         s = torch.cat([scalars, t], dim=-1)
 
         mv = embed_vector(fourmomenta).unsqueeze(-2)
-        # mv = torch.cat([mv, self.spurions], dim=-2)
 
         return mv, s
 

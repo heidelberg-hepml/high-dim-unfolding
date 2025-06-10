@@ -13,9 +13,6 @@ data:
  pid_encoding: false
  max_num_particles: 152
  max_constituents: -1
- det_mult: 1
- standardize: true
- pos_encoding_dim: 0
  add_spurions: false
  embed_det_in_GA: false
  beam_reference: xyplane
@@ -27,18 +24,19 @@ data:
  add_pid: false
  add_scalar_features: false
  reinsert_channels: false
- base_type: 4
+ base_type: PtPhiEta
  pt_min: 0.0
  units: 10
  mass: 1.0
- add_jet: false
+ add_jet: true
+ transform: true
 
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.
  hutchinson: true
- coordinates: StandardLogPtPhiEtaLogM2
- condition_coordinates: StandardLogPtPhiEtaLogM2
+ coordinates: JetScaledPtPhiEtaM2
+ condition_coordinates: JetScaledPtPhiEtaM2
  geometry:
   type: simple
   periodic: true

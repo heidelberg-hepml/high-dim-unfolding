@@ -11,6 +11,7 @@ from experiments.unfolding.utils import (
     ensure_angle,
     pid_encoding,
     jetmomenta_to_fourmomenta,
+    fourmomenta_to_jetmomenta,
 )
 from experiments.unfolding.embedding import event_to_GA_with_spurions
 from experiments.logger import LOGGER
@@ -18,15 +19,11 @@ from experiments.unfolding.plots import plot_data
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(
-        self, dtype, embed_into_GA=False, spurions=None, fourm=True, pos_encoding=None
-    ):
+    def __init__(self, dtype, embed_into_GA=False, spurions=None):
         self.dtype = dtype
         self.embed_into_GA = embed_into_GA
         if embed_into_GA:
             self.spurions = spurions
-        self.fourm = fourm
-        self.pos_encoding = pos_encoding
 
     def __len__(self):
         return len(self.data_list)
@@ -46,24 +43,6 @@ class Dataset(torch.utils.data.Dataset):
 
         self.data_list = []
         for i in range(det_particles.shape[0]):
-            # if self.fourm:
-            #     det_pt = get_pt(det_particles[i])
-            #     gen_pt = get_pt(gen_particles[i])
-            # else:
-            #     det_pt = det_particles[i, :, 0]
-            #     gen_pt = gen_particles[i, :, 0]
-
-            # det_idx = torch.argsort(det_pt, descending=True, stable=True)[
-            #     : det_mults[i]
-            # ].unsqueeze(-1)
-            # gen_idx = torch.argsort(gen_pt, descending=True, stable=True)[
-            #     : gen_mults[i]
-            # ].unsqueeze(-1)
-
-            # det_event = det_particles[i].take_along_dim(det_idx, dim=0)
-            # det_scalars = det_pids[i].take_along_dim(det_idx, dim=0)
-            # gen_event = gen_particles[i].take_along_dim(gen_idx, dim=0)
-            # gen_scalars = gen_pids[i].take_along_dim(gen_idx, dim=0)
 
             det_event = det_particles[i, : det_mults[i]]
             det_scalars = det_pids[i, : det_mults[i]]
@@ -77,13 +56,6 @@ class Dataset(torch.utils.data.Dataset):
                     )
                 else:
                     det_event = embed_vector(det_event).unsqueeze(-2)
-
-            if self.pos_encoding is not None:
-                gen_pe = self.pos_encoding[: gen_event.shape[0]]
-                det_pe = self.pos_encoding[: det_event.shape[0]]
-
-                gen_scalars = torch.cat([gen_scalars, gen_pe], dim=-1)
-                det_scalars = torch.cat([det_scalars, det_pe], dim=-1)
 
             graph = Data(
                 x_det=det_event,
@@ -147,11 +119,31 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
+    LOGGER.info(f"det jet shape: {det_jets.shape}, gen jet shape: {gen_jets.shape}")
+    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
+
+    det_jets = jetmomenta_to_fourmomenta(det_jets)
+    gen_jets = jetmomenta_to_fourmomenta(gen_jets)
+
+    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
+
+    det_jets = fourmomenta_to_jetmomenta(det_jets)
+    gen_jets = fourmomenta_to_jetmomenta(gen_jets)
+
+    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
+
+    det_jets = jetmomenta_to_fourmomenta(det_jets)
+    gen_jets = jetmomenta_to_fourmomenta(gen_jets)
+
+    LOGGER.info(f"det jet: {det_jets[0]}, gen jet: {gen_jets[0]}")
+
     return {
         "det_particles": det_particles,
+        "det_jets": det_jets,
         "det_mults": det_mults,
         "det_pids": det_pids,
         "gen_particles": gen_particles,
+        "gen_jets": gen_jets,
         "gen_mults": gen_mults,
         "gen_pids": gen_pids,
     }
@@ -168,7 +160,6 @@ def load_cms(data_path, cfg, dtype):
         .to(dtype)
         .reshape(-1, 3, 4)
     )[: cfg.data.num_data]
-    size = len(gen_particles)
     gen_mults = (
         torch.zeros(gen_particles.shape[0], dtype=torch.int) + cfg.data.max_constituents
     )
@@ -177,6 +168,7 @@ def load_cms(data_path, cfg, dtype):
     )
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
+
     return {
         "det_particles": det_particles,
         "det_mults": det_mults,

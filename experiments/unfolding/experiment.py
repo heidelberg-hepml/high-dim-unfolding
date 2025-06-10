@@ -25,6 +25,7 @@ from experiments.unfolding.dataset import (
 from experiments.unfolding.utils import (
     get_ptr_from_batch,
     fourmomenta_to_jetmomenta,
+    jetmomenta_to_fourmomenta,
     remove_jet,
     ensure_angle,
 )
@@ -65,6 +66,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.cfm.mask_jets = True
 
             if self.cfg.modelname == "ConditionalGATr":
+                self.cfg.data.transform = False
                 self.cfg.data.embed_det_in_GA = True
                 self.cfg.data.add_spurions = True
 
@@ -127,14 +129,9 @@ class UnfoldingExperiment(BaseExperiment):
                     )
 
             elif self.cfg.modelname == "ConditionalGATr":
-                self.cfg.data.embed_det_in_GA = True
-                self.cfg.data.add_spurions = True
-                self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
-                )
-                self.cfg.model.net_condition.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
-                )
+                self.cfg.cfm.condition_coordinates = "Fourmomenta"
+                self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
+                self.cfg.model.net_condition.in_s_channels = self.cfg.cfm.embed_t_dim
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
                 )
@@ -224,7 +221,7 @@ class UnfoldingExperiment(BaseExperiment):
 
             # add gen jet as first particle to condition
             gen_jets = gen_particles.sum(dim=1, keepdim=True)
-            det_particles = torch.cat([gen_jets, gen_particles], dim=1)
+            gen_particles = torch.cat([gen_jets, gen_particles], dim=1)
             gen_pids = torch.cat([torch.zeros_like(gen_pids[:, :1]), gen_pids], dim=1)
             gen_mults += 1
 
@@ -248,154 +245,25 @@ class UnfoldingExperiment(BaseExperiment):
         self.model.init_distribution()
         self.model.init_coordinates()
 
-        # initialize coordinates
-        train_gen_mask = (
-            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
-        )
-        train_gen_data = gen_particles[:train_idx][train_gen_mask]
-        self.model.coordinates.init_fit(train_gen_data)
-        self.model.distribution.coordinates.init_fit(train_gen_data)
+        # initialize geometry
+        self.model.init_geometry()
 
-        # initialize condition_coordinates (might require data)
-        train_det_mask = (
-            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
-        )
-        train_det_data = det_particles[:train_idx][train_det_mask]
-        self.model.condition_coordinates.init_fit(train_det_data)
-
-        # transform before training
-        if self.cfg.modelname == "ConditionalTransformer":
-            gen_mask = (
-                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-            )
+        if self.cfg.data.transform:
             det_mask = (
                 torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
             )
-
-            gen_data = gen_particles[gen_mask]
-            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
-
-            det_data = det_particles[det_mask]
-            det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
-
-            if self.cfg.data.dataset == "zplusjet" or self.cfg.data.dataset == "ttbar":
-                gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
-                det_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
-
-            gen_particles[gen_mask] = gen_data
-            det_particles[det_mask] = det_data
-
-            if self.cfg.data.standardize:
-                train_gen_mask = train_gen_mask.unsqueeze(-1)
-                train_det_mask = train_det_mask.unsqueeze(-1)
-
-                self.gen_mean = (gen_particles[:train_idx] * train_gen_mask).sum(
-                    dim=0, keepdim=True
-                ) / train_gen_mask.sum(dim=0, keepdim=True)
-
-                self.gen_std = torch.sqrt(
-                    (
-                        (
-                            gen_particles[:train_idx] * train_gen_mask
-                            - self.gen_mean * train_gen_mask
-                        )
-                        ** 2
-                    ).sum(dim=0, keepdim=True)
-                    / train_gen_mask.sum(dim=0, keepdim=True)
-                )
-                self.gen_std[self.gen_std == 0] = 1.0
-
-                self.det_mean = (det_particles[:train_idx] * train_det_mask).sum(
-                    dim=0, keepdim=True
-                ) / train_det_mask.sum(dim=0, keepdim=True)
-
-                self.det_std = torch.sqrt(
-                    (
-                        (
-                            det_particles[:train_idx] * train_det_mask
-                            - self.det_mean * train_det_mask
-                        )
-                        ** 2
-                    ).sum(dim=0, keepdim=True)
-                    / train_det_mask.sum(dim=0, keepdim=True)
-                )
-                self.det_std[self.det_std == 0] = 1.0
-
-                if self.model.coordinates.contains_phi:
-                    self.gen_std[..., 1] = 1.0
-                if self.model.condition_coordinates.contains_phi:
-                    self.det_std[..., 1] = 1.0
-                self.gen_std[..., self.cfg.cfm.masked_dims] = 1.0
-                self.det_std[..., self.cfg.cfm.masked_dims] = 1.0
-
-                gen_particles = gen_particles - self.gen_mean
-                det_particles = det_particles - self.det_mean
-                gen_particles = gen_particles / self.gen_std
-                det_particles = det_particles / self.det_std
-
-            else:
-                self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
-                self.gen_std = torch.ones(1, *gen_particles.shape[1:])
-                self.det_mean = torch.zeros(1, *det_particles.shape[1:])
-                self.det_std = torch.ones(1, *det_particles.shape[1:])
-
-        if self.cfg.modelname == "ConditionalGATr":
+            det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
+                det_particles[det_mask],
+                torch.cumsum(torch.cat([torch.zeros(1), det_mults]), dim=0, dtype=int),
+            )
 
             gen_mask = (
                 torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
             )
-
-            gen_data = gen_particles[gen_mask]
-            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
-
-            if self.cfg.data.dataset == "zplusjet" or self.cfg.data.dataset == "ttbar":
-                gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
-
-            gen_particles[gen_mask] = gen_data
-
-            if self.cfg.data.standardize:
-                train_gen_mask = train_gen_mask.unsqueeze(-1)
-
-                self.gen_mean = (gen_particles[:train_idx] * train_gen_mask).sum(
-                    dim=0, keepdim=True
-                ) / train_gen_mask.sum(dim=0, keepdim=True)
-
-                self.gen_std = torch.sqrt(
-                    (
-                        (
-                            gen_particles[:train_idx] * train_gen_mask
-                            - self.gen_mean * train_gen_mask
-                        )
-                        ** 2
-                    ).sum(dim=0, keepdim=True)
-                    / train_gen_mask.sum(dim=0, keepdim=True)
-                )
-                self.gen_std[self.gen_std == 0] = 1.0
-
-                if self.model.coordinates.contains_phi:
-                    self.gen_std[..., 1] = 1.0
-
-                self.gen_std[..., self.cfg.cfm.masked_dims] = 1.0
-
-                gen_particles = gen_particles - self.gen_mean
-                gen_particles = gen_particles / self.gen_std
-
-            else:
-                self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
-                self.gen_std = torch.ones(1, *gen_particles.shape[1:])
-
-            self.model.set_ms(self.gen_mean, self.gen_std)
-
-        if self.cfg.data.pos_encoding_dim > 0:
-            seq_length = self.cfg.data.max_constituents
-            pos_encoding = positional_encoding(
-                seq_length, self.cfg.data.pos_encoding_dim
+            gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
+                gen_particles[gen_mask],
+                torch.cumsum(torch.cat([torch.zeros(1), gen_mults]), dim=0, dtype=int),
             )
-        else:
-            pos_encoding = None
-
-        # initialize geometry
-        self.model.init_geometry()
 
         if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
             self.spurions = embed_spurions(
@@ -408,31 +276,20 @@ class UnfoldingExperiment(BaseExperiment):
         else:
             self.spurions = None
 
-        if self.cfg.modelname == "ConditionalTransformer":
-            fourm = False
-        else:
-            fourm = True
-
         self.train_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
-            fourm=fourm,
-            pos_encoding=pos_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
-            fourm=fourm,
-            pos_encoding=pos_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
             self.cfg.data.embed_det_in_GA,
             self.spurions,
-            fourm=fourm,
-            pos_encoding=pos_encoding,
         )
         self.train_data.create_data_list(
             det_particles[:train_idx],
@@ -552,16 +409,6 @@ class UnfoldingExperiment(BaseExperiment):
             n_batches = len(loader)
         LOGGER.info(f"Sampling {n_batches} batches for evaluation")
 
-        if self.cfg.modelname == "ConditionalTransformer":
-            self.gen_mean = self.gen_mean.to(self.device)
-            self.gen_std = self.gen_std.to(self.device)
-            self.det_mean = self.det_mean.to(self.device)
-            self.det_std = self.det_std.to(self.device)
-
-        elif self.cfg.modelname == "ConditionalGATr":
-            self.gen_mean = self.gen_mean.to(self.device)
-            self.gen_std = self.gen_std.to(self.device)
-
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
@@ -571,65 +418,19 @@ class UnfoldingExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            if self.cfg.modelname == "ConditionalTransformer":
-
-                # undo gen standardization
-                gen_indices = (
-                    torch.arange(len(batch.x_gen), device=batch.x_gen.device)
-                    - batch.x_gen_ptr[batch.x_gen_batch]
-                )
-
-                gen_std_broadcasted = self.gen_std.squeeze(0)[gen_indices]
-                gen_mean_broadcasted = self.gen_mean.squeeze(0)[gen_indices]
-
-                sample_batch.x_gen = (
-                    sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
-                )
-                batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
-
-                # undo det standardization
-                det_indices = (
-                    torch.arange(len(batch.x_det), device=batch.x_det.device)
-                    - batch.x_det_ptr[batch.x_det_batch]
-                )
-
-                det_std_broadcasted = self.det_std.squeeze(0)[det_indices]
-                det_mean_broadcasted = self.det_mean.squeeze(0)[det_indices]
-                sample_batch.x_det = (
-                    sample_batch.x_det * det_std_broadcasted + det_mean_broadcasted
-                )
-                batch.x_det = batch.x_det * det_std_broadcasted + det_mean_broadcasted
-
-                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen
-                )
+            if self.cfg.data.transform:
                 sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                    sample_batch.x_det
+                    sample_batch.x_det, sample_batch.x_det_ptr
                 )
-                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
-                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                    batch.x_det
-                )
-
-            elif self.cfg.modelname == "ConditionalGATr":
-                # undo gen standardization
-                gen_indices = (
-                    torch.arange(len(batch.x_gen), device=batch.x_gen.device)
-                    - batch.x_gen_ptr[batch.x_gen_batch]
-                )
-
-                gen_std_broadcasted = self.gen_std.squeeze(0)[gen_indices]
-                gen_mean_broadcasted = self.gen_mean.squeeze(0)[gen_indices]
-
-                sample_batch.x_gen = (
-                    sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
-                )
-                batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
-
                 sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen
+                    sample_batch.x_gen, sample_batch.x_gen_ptr
                 )
-                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
+                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det, batch.x_det_ptr
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    batch.x_gen, batch.x_gen_ptr
+                )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
@@ -649,6 +450,13 @@ class UnfoldingExperiment(BaseExperiment):
                     data.x_det = extract_vector(data.x_det).squeeze(-2)
                 for data in targets:
                     data.x_det = extract_vector(data.x_det).squeeze(-2)
+        if self.cfg.data.add_jet:
+            for data in samples:
+                data.x_gen = data.x_gen[1:]
+                data.x_det = data.x_det[1:]
+            for data in targets:
+                data.x_gen = data.x_gen[1:]
+                data.x_det = data.x_det[1:]
 
         self.data_raw["samples"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
@@ -657,11 +465,6 @@ class UnfoldingExperiment(BaseExperiment):
         self.data_raw["truth"] = Batch.from_data_list(
             targets, follow_batch=["x_gen", "x_det"]
         )
-
-        if self.cfg.data.add_jet:
-            # remove gen jet from the condition
-            self.data_raw["samples"] = remove_jet(self.data_raw["samples"])
-            self.data_raw["truth"] = remove_jet(self.data_raw["truth"])
 
         # convert the list into a dataloader
         sampler = torch.utils.data.DistributedSampler(
@@ -698,7 +501,22 @@ class UnfoldingExperiment(BaseExperiment):
             os.path.join(path, "truth.pt"), weights_only=False
         )
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
-        self.sample_loader = None
+
+        samples = self.data_raw["samples"].to_data_list()
+        # convert the list into a dataloader
+        sampler = torch.utils.data.DistributedSampler(
+            samples,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+        self.sample_loader = DataLoader(
+            dataset=samples,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+
         LOGGER.info(f"Loaded samples in {time.time() - t0:.2f}s")
 
     def plot(self):
