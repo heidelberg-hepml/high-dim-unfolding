@@ -62,6 +62,7 @@ class UnfoldingExperiment(BaseExperiment):
 
             if self.cfg.data.add_jet:
                 self.cfg.data.max_constituents += 1
+                self.cfg.cfm.mask_jets = True
 
             if self.cfg.modelname == "ConditionalGATr":
                 self.cfg.data.embed_det_in_GA = True
@@ -231,14 +232,6 @@ class UnfoldingExperiment(BaseExperiment):
         det_particles /= self.cfg.data.units
 
         if self.cfg.data.max_constituents > 0:
-            # if self.cfg.data.det_mult == 1:
-            #     det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
-            # elif self.cfg.data.det_mult == 2:
-            #     det_mults = torch.clamp(
-            #         det_mults, max=2 * self.cfg.data.max_constituents
-            #     )
-            # elif self.cfg.data.det_mult == -1:
-            #     pass
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
 

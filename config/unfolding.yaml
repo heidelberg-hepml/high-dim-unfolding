@@ -45,6 +45,7 @@ cfm:
  transforms_float64: true
  zero_condition: false
  masked_dims: [3]
+ mask_jets: false
 
 odeint:
  method: rk4

@@ -85,8 +85,6 @@ def cross_attention_mask(Q_batch, KV_batch):
     )
 
 
-
-
 class ConditionalMLPCFM(EventCFM):
     """
     Conditional Transformer velocity network
@@ -125,8 +123,6 @@ class ConditionalMLPCFM(EventCFM):
         )
 
         return v
-
-
 
 
 class ConditionalAutoregressiveTransformerCFM(EventCFM):
@@ -211,7 +207,7 @@ class ConditionalAutoregressiveTransformerCFM(EventCFM):
                 # input = torch.cat([xt_straight, t_embedding], dim=-1)
 
                 v = self.mlp(input)
-                v = self.handle_velocity(v)
+                v = self.handle_velocity(v, new_batch.x_gen_ptr)
                 return v
 
             x1_fourmomenta = self.sample_base(shape, device, dtype)
@@ -332,8 +328,8 @@ class ConditionalTransformerCFM(EventCFM):
 
         vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
 
-        # vp = self.handle_velocity(vp)
-        # vt = self.handle_velocity(vt)
+        vp = self.handle_velocity(vp, batch.x_gen_ptr)
+        vt = self.handle_velocity(vt, batch.x_gen_ptr)
 
         # evaluate conditional flow matching objective
         distance = ((vp - vt) ** 2).mean()
@@ -373,7 +369,7 @@ class ConditionalTransformerCFM(EventCFM):
             )
             vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
             vt_straight = self.handle_velocity(
-                vt_straight
+                vt_straight, batch.x_gen_ptr
             )  # manually set mass velocity to zero
             return vt_straight
 
@@ -613,7 +609,7 @@ class ConditionalGATrCFM(EventCFM):
             )
             vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
             vt_straight = self.handle_velocity(
-                vt_straight
+                vt_straight, batch.x_gen_ptr
             )  # manually set mass velocity to zero
             return vt_straight
 
