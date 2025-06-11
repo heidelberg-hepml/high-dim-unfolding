@@ -442,17 +442,29 @@ class UnfoldingExperiment(BaseExperiment):
             )
 
             if self.cfg.data.transform:
-                sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                    sample_batch.x_det, sample_batch.x_det_ptr
+                sample_batch.x_det = (
+                    self.model.condition_coordinates.x_to_fourmomenta(
+                        sample_batch.x_det, sample_batch.x_det_ptr
+                    )
+                    * self.cfg.data.units
                 )
-                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen, sample_batch.x_gen_ptr
+                sample_batch.x_gen = (
+                    self.model.coordinates.x_to_fourmomenta(
+                        sample_batch.x_gen, sample_batch.x_gen_ptr
+                    )
+                    * self.cfg.data.units
                 )
-                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                    batch.x_det, batch.x_det_ptr
+                batch.x_det = (
+                    self.model.condition_coordinates.x_to_fourmomenta(
+                        batch.x_det, batch.x_det_ptr
+                    )
+                    * self.cfg.data.units
                 )
-                batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                    batch.x_gen, batch.x_gen_ptr
+                batch.x_gen = (
+                    self.model.coordinates.x_to_fourmomenta(
+                        batch.x_gen, batch.x_gen_ptr
+                    )
+                    * self.cfg.data.units
                 )
 
             samples.extend(sample_batch.detach().to_data_list())
@@ -639,7 +651,7 @@ class UnfoldingExperiment(BaseExperiment):
 
             def form_jet(constituents, batch_idx, other_batch_idx):
                 jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
-                return jet * self.cfg.data.units
+                return jet
 
             self.obs_coords[r"\text{ jet }"] = form_jet
 
@@ -661,7 +673,7 @@ class UnfoldingExperiment(BaseExperiment):
                                 if i < other_batch_ptr[n + 1] - other_batch_ptr[n]:
                                     idx.append(batch_ptr[n] + i)
                         selected_constituents = constituents[idx]
-                        return selected_constituents * self.cfg.data.units
+                        return selected_constituents
 
                     return ith_pt
 
@@ -685,7 +697,7 @@ class UnfoldingExperiment(BaseExperiment):
                             dimass.append(
                                 torch.sqrt(dijet[0] ** 2 - (dijet[1:] ** 2).sum(dim=-1))
                             )
-                    return torch.stack(dimass) * self.cfg.data.units
+                    return torch.stack(dimass)
 
                 return dimass_ij
 
@@ -817,6 +829,6 @@ class UnfoldingExperiment(BaseExperiment):
                     jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
                     mass2 = jet[0] ** 2 - (jet[1:] ** 2).sum(dim=-1)
                     jet_masses.append(torch.sqrt(mass2))
-                return torch.stack(jet_masses) * self.cfg.data.units
+                return torch.stack(jet_masses)
 
             self.obs[r"M_{jet}"] = jet_mass
