@@ -42,7 +42,7 @@ def test_cuts(
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,
@@ -88,7 +88,7 @@ def test_onshell(
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,
@@ -107,8 +107,6 @@ def test_onshell(
     tr = EPPP_to_PPPM2()
     pppm2 = tr.forward(fourmomenta)
     mass = torch.sqrt(pppm2[..., 3])[..., exp.onshell_list] * exp.units
-    expected_mass = (
-        torch.tensor(exp.onshell_mass).unsqueeze(0).expand(mass.shape).to(dtype)
-    )
+    expected_mass = torch.tensor(exp.mass).unsqueeze(0).expand(mass.shape).to(dtype)
     print(mass[0, ...], expected_mass[0, ...])
     torch.testing.assert_close(mass, expected_mass, **TOLERANCES)

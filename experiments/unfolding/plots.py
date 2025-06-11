@@ -395,79 +395,39 @@ def simple_histogram(
     plt.close()
 
 
-def plot_kinematics(path, samples, targets, base, filename="kinematics.pdf"):
+def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
     with PdfPages(path + "/" + filename) as pdf:
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
-        labels = ["Energy", "p_x", "p_y", "p_z"]
         for i, ax in enumerate(axs.flatten()):
-            xlims = np.array(get_range([samples[..., i], targets[..., i]]))
+            xlims = np.array(get_range([reco[..., i], gen[..., i]]))
             bins = np.linspace(xlims[0], xlims[1], 100)
             ax.hist(
-                samples[:, i].cpu(),
+                reco[:, i].cpu(),
                 bins=bins,
                 range=None,
-                label="samples",
+                label="reco",
                 density=True,
                 histtype="step",
             )
             ax.hist(
-                targets[:, i].cpu(),
+                gen[:, i].cpu(),
                 bins=bins,
                 range=None,
                 alpha=0.5,
-                label="targets",
+                label="gen",
                 density=True,
                 histtype="step",
             )
-            ax.hist(
-                base[:, i].cpu(),
-                bins=bins,
-                range=None,
-                alpha=0.5,
-                label="base",
-                density=True,
-                histtype="step",
-            )
-            ax.set_xlabel(labels[i], fontsize=FONTSIZE)
-            ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-        plt.tight_layout()
-        plt.savefig(pdf, bbox_inches="tight", format="pdf")
-        plt.close()
-        jet_samples = fourmomenta_to_jetmomenta(samples)
-        jet_targets = fourmomenta_to_jetmomenta(targets)
-        jet_base = fourmomenta_to_jetmomenta(base)
-        fig, axs = plt.subplots(2, 2, figsize=(8, 8))
-        labels = ["pt", "phi", "eta", "m"]
-        for i, ax in enumerate(axs.flatten()):
-            xlims = np.array(get_range([jet_samples[..., i], jet_targets[..., i]]))
-            bins = np.linspace(xlims[0], xlims[1], 100)
-            ax.hist(
-                jet_samples[:, i].cpu(),
-                bins=bins,
-                range=None,
-                label="samples",
-                density=True,
-                histtype="step",
-            )
-            ax.hist(
-                jet_targets[:, i].cpu(),
-                bins=bins,
-                range=None,
-                alpha=0.5,
-                label="targets",
-                density=True,
-                histtype="step",
-            )
-            ax.hist(
-                jet_base[:, i].cpu(),
-                bins=bins,
-                range=None,
-                alpha=0.5,
-                label="base",
-                density=True,
-                histtype="step",
-            )
-            ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+            if model is not None:
+                ax.hist(
+                    model[:, i].cpu(),
+                    bins=bins,
+                    range=None,
+                    alpha=0.5,
+                    label="base",
+                    density=True,
+                    histtype="step",
+                )
             ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
         plt.tight_layout()
         plt.savefig(pdf, bbox_inches="tight", format="pdf")

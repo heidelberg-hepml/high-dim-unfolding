@@ -239,8 +239,7 @@ class UnfoldingExperiment(BaseExperiment):
         self.model.init_physics(
             units=self.cfg.data.units,
             pt_min=self.cfg.data.pt_min,
-            base_type=self.cfg.data.base_type,
-            onshell_mass=self.cfg.data.mass,
+            mass=self.cfg.data.mass,
         )
         self.model.init_distribution()
         self.model.init_coordinates()
@@ -253,7 +252,7 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.model.coordinates.init_fit(
             gen_particles[:train_idx][train_gen_mask],
-            torch.cumsum(
+            batch_ptr=torch.cumsum(
                 torch.cat([torch.zeros(1), gen_mults[:train_idx]]), dim=0, dtype=int
             ),
         )
@@ -263,9 +262,16 @@ class UnfoldingExperiment(BaseExperiment):
         )
         self.model.condition_coordinates.init_fit(
             det_particles[:train_idx][train_det_mask],
-            torch.cumsum(
+            batch_ptr=torch.cumsum(
                 torch.cat([torch.zeros(1), det_mults[:train_idx]]), dim=0, dtype=int
             ),
+        )
+
+        LOGGER.info(
+            f"num infinite values in det_particles: {torch.sum(torch.isinf(det_particles))}"
+        )
+        LOGGER.info(
+            f"num infinite values in gen_particles: {torch.sum(torch.isinf(gen_particles))}"
         )
 
         if self.cfg.data.transform:
@@ -274,7 +280,9 @@ class UnfoldingExperiment(BaseExperiment):
             )
             det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
                 det_particles[det_mask],
-                torch.cumsum(torch.cat([torch.zeros(1), det_mults]), dim=0, dtype=int),
+                batch_ptr=torch.cumsum(
+                    torch.cat([torch.zeros(1), det_mults]), dim=0, dtype=int
+                ),
             )
 
             gen_mask = (
@@ -282,7 +290,23 @@ class UnfoldingExperiment(BaseExperiment):
             )
             gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
                 gen_particles[gen_mask],
-                torch.cumsum(torch.cat([torch.zeros(1), gen_mults]), dim=0, dtype=int),
+                batch_ptr=torch.cumsum(
+                    torch.cat([torch.zeros(1), gen_mults]), dim=0, dtype=int
+                ),
+            )
+            if self.cfg.data.add_jet:
+                det_mask[:, 0] = False
+                gen_mask[:, 0] = False
+
+            LOGGER.info(
+                f"num infinite values in det_particles: {torch.sum(torch.isinf(det_particles))}"
+            )
+            LOGGER.info(
+                f"num infinite values in gen_particles: {torch.sum(torch.isinf(gen_particles))}"
+            )
+
+            plot_kinematics(
+                self.cfg.run_dir, det_particles[det_mask], gen_particles[gen_mask]
             )
 
         if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
@@ -444,25 +468,25 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.data.transform:
                 sample_batch.x_det = (
                     self.model.condition_coordinates.x_to_fourmomenta(
-                        sample_batch.x_det, sample_batch.x_det_ptr
+                        sample_batch.x_det, batch_ptr=sample_batch.x_det_ptr
                     )
                     * self.cfg.data.units
                 )
                 sample_batch.x_gen = (
                     self.model.coordinates.x_to_fourmomenta(
-                        sample_batch.x_gen, sample_batch.x_gen_ptr
+                        sample_batch.x_gen, batch_ptr=sample_batch.x_gen_ptr
                     )
                     * self.cfg.data.units
                 )
                 batch.x_det = (
                     self.model.condition_coordinates.x_to_fourmomenta(
-                        batch.x_det, batch.x_det_ptr
+                        batch.x_det, batch_ptr=batch.x_det_ptr
                     )
                     * self.cfg.data.units
                 )
                 batch.x_gen = (
                     self.model.coordinates.x_to_fourmomenta(
-                        batch.x_gen, batch.x_gen_ptr
+                        batch.x_gen, batch_ptr=batch.x_gen_ptr
                     )
                     * self.cfg.data.units
                 )

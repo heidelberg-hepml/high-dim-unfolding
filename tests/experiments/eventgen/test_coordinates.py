@@ -48,7 +48,7 @@ def test_invertibility(coordinates, distribution, experiment_np, nevents):
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,
@@ -125,7 +125,7 @@ def test_velocity(coordinates, distribution, experiment_np, nevents):
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,
@@ -225,7 +225,7 @@ def test_logdetjac(coordinates, distribution, experiment_np, nevents):
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,

@@ -296,7 +296,7 @@ class EventCFM(CFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def init_physics(self, units, pt_min, base_type, onshell_mass):
+    def init_physics(self, units, pt_min, mass):
         """
         Pass physics information to the CFM class
 
@@ -309,45 +309,41 @@ class EventCFM(CFM):
         pt_min: List[float]
             Minimum pt value for each particle
             Hard-coded in EventGenerationExperiment
-        mean: Torch.Tensor
-        std: Torch.Tensor
-        base_type: int
-            Which base distribution to use
+        mass: float
         """
         self.units = units
         self.pt_min = pt_min
-        self.base_type = base_type
-        self.onshell_mass = onshell_mass
+        self.mass = mass
 
     def init_distribution(self):
         args = [
-            self.onshell_mass,
+            self.mass,
             self.pt_min,
             self.units,
         ]
-        if self.base_type == "NaivePPP":
+        if self.cfm.base_dist == "NaivePPP":
             self.distribution = d.NaivePPP(*args)
-        elif self.base_type == "StandardPPP":
+        elif self.cfm.base_dist == "StandardPPP":
             self.distribution = d.StandardPPP(*args)
-        elif self.base_type == "LogPtPhiEta":
+        elif self.cfm.base_dist == "LogPtPhiEta":
             self.distribution = d.LogPtPhiEta(*args)
-        elif self.base_type == "StandardLogPtPhiEta":
+        elif self.cfm.base_dist == "StandardLogPtPhiEta":
             self.distribution = d.StandardLogPtPhiEta(*args)
-        elif self.base_type == "StandardPtPhiEta":
+        elif self.cfm.base_dist == "StandardPtPhiEta":
             self.distribution = d.StandardPtPhiEta(*args)
-        elif self.base_type == "PtPhiEta":
+        elif self.cfm.base_dist == "PtPhiEta":
             self.distribution = d.PtPhiEta(*args)
         else:
-            raise ValueError(f"base_type={self.base_type} not implemented")
+            raise ValueError(f"base_dist={self.cfm.base_dist} not implemented")
 
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
         self.condition_coordinates = self._init_coordinates(
             self.cfm.condition_coordinates
         )
-        if self.cfm.transforms_float64:
-            self.coordinates.to(torch.float64)
-            self.condition_coordinates.to(torch.float64)
+        # if self.cfm.transforms_float64:
+        #     self.coordinates.to(torch.float64)
+        #     self.condition_coordinates.to(torch.float64)
 
     def _init_coordinates(self, coordinates_label):
         if coordinates_label == "Fourmomenta":
@@ -381,6 +377,10 @@ class EventCFM(CFM):
             )
         elif coordinates_label == "JetScaledPtPhiEtaM2":
             coordinates = c.JetScaledPtPhiEtaM2()
+        elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
+            coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
+                self.pt_min, self.units, self.cfm.masked_dims
+            )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")
         return coordinates

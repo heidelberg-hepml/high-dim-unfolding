@@ -71,7 +71,7 @@ def test_invertibility(transforms, distribution, experiment_np, nevents):
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,
@@ -164,7 +164,7 @@ def test_jacobians(transforms, distribution, experiment_np, nevents):
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,
@@ -292,7 +292,7 @@ def test_logdetjac(transforms, distribution, experiment_np, nevents):
     exp.define_process_specifics()
     d = distribution(
         exp.onshell_list,
-        exp.onshell_mass,
+        exp.mass,
         exp.units,
         exp.delta_r_min,
         exp.pt_min,

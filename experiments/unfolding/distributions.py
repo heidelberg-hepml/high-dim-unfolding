@@ -25,12 +25,12 @@ class OnShellDistribution(BaseDistribution):
 
     def __init__(
         self,
-        onshell_mass,
+        mass,
         pt_min,
         units,
     ):
         super().__init__()
-        self.onshell_mass = torch.tensor(onshell_mass)
+        self.mass = torch.tensor(mass)
         self.pt_min = pt_min
         self.units = units
 
@@ -38,12 +38,12 @@ class OnShellDistribution(BaseDistribution):
         fourmomenta = self.propose(
             shape, device=device, dtype=c.DTYPE, generator=generator
         )
-        onshell_mass = (
-            self.onshell_mass.to(device, dtype=c.DTYPE).expand(fourmomenta.shape[:-1])
+        mass = (
+            self.mass.to(device, dtype=c.DTYPE).expand(fourmomenta.shape[:-1])
             / self.units
         )
         fourmomenta[..., 0] = torch.sqrt(
-            onshell_mass**2 + torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
+            mass**2 + torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
         )
         return fourmomenta.to(dtype=dtype)
 
@@ -223,6 +223,64 @@ class PtPhiEta(OnShellDistribution):
         log_prob[..., 3] = 0.0
         log_prob = log_prob.sum(-1).unsqueeze(-1)
         logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(ptphietalogm2)[0]
+        log_prob = log_prob + logdetjac
+        return log_prob
+
+
+class JetScaledPtEtaPhi(BaseDistribution):
+
+    def __init__(self, *args, scaling=1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scaling = scaling
+        self.coordinates = c.JetScaledPtPhiEtaM2()
+
+    def propose(self, shape, device, dtype, generator=None):
+        # sample (logpt, phi, eta)
+        eps = (
+            torch.randn(shape, device=device, dtype=dtype, generator=generator)
+            * self.scaling
+        )
+
+        for t in self.coordinates.transforms[::-1]:
+            eps = t.inverse(eps)
+        return eps
+
+    def log_prob(self, fourmomenta):
+        ptphietam2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(ptphietam2)
+        log_prob[..., 3] = 0.0
+        log_prob = log_prob.sum(-1).unsqueeze(-1)
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(ptphietam2)[0]
+        log_prob = log_prob + logdetjac
+        return log_prob
+
+
+class StandardJetScaledLogPtEtaPhi(BaseDistribution):
+
+    def __init__(self, *args, scaling=1.0, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.scaling = scaling
+        self.coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
+            pt_min=self.pt_min, units=self.units, fixed_dims=[3], scaling=scaling
+        )
+
+    def propose(self, shape, device, dtype, generator=None):
+        # sample (logpt, phi, eta)
+        eps = (
+            torch.randn(shape, device=device, dtype=dtype, generator=generator)
+            * self.scaling
+        )
+
+        for t in self.coordinates.transforms[::-1]:
+            eps = t.inverse(eps)
+        return eps
+
+    def log_prob(self, fourmomenta):
+        logptphietalogm2 = self.coordinates.fourmomenta_to_x(fourmomenta)
+        log_prob = log_prob_normal(logptphietalogm2, std=self.scaling)
+        log_prob[..., 3] = 0.0
+        log_prob = log_prob.sum(-1).unsqueeze(-1)
+        logdetjac = self.coordinates.logdetjac_x_to_fourmomenta(logptphietalogm2)[0]
         log_prob = log_prob + logdetjac
         return log_prob
 
