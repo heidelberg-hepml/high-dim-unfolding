@@ -267,13 +267,6 @@ class UnfoldingExperiment(BaseExperiment):
             ),
         )
 
-        LOGGER.info(
-            f"num infinite values in det_particles: {torch.sum(torch.isinf(det_particles))}"
-        )
-        LOGGER.info(
-            f"num infinite values in gen_particles: {torch.sum(torch.isinf(gen_particles))}"
-        )
-
         if self.cfg.data.transform:
             det_mask = (
                 torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
@@ -297,13 +290,6 @@ class UnfoldingExperiment(BaseExperiment):
             if self.cfg.data.add_jet:
                 det_mask[:, 0] = False
                 gen_mask[:, 0] = False
-
-            LOGGER.info(
-                f"num infinite values in det_particles: {torch.sum(torch.isinf(det_particles))}"
-            )
-            LOGGER.info(
-                f"num infinite values in gen_particles: {torch.sum(torch.isinf(gen_particles))}"
-            )
 
             plot_kinematics(
                 self.cfg.run_dir, det_particles[det_mask], gen_particles[gen_mask]
@@ -465,6 +451,32 @@ class UnfoldingExperiment(BaseExperiment):
                 self.dtype,
             )
 
+            if i == 0:
+                if self.cfg.data.add_jet:
+                    det_mask = ~torch.isin(
+                        torch.arange(batch.x_det.size(0), device=self.device),
+                        batch.x_det_ptr[:-1],
+                    )
+                    gen_mask = ~torch.isin(
+                        torch.arange(batch.x_gen.size(0), device=self.device),
+                        batch.x_gen_ptr[:-1],
+                    )
+                    plot_kinematics(
+                        self.cfg.run_dir,
+                        batch.x_det[det_mask].cpu(),
+                        batch.x_gen[gen_mask].cpu(),
+                        sample_batch.x_gen[gen_mask].cpu(),
+                        filename="post_kinematics.pdf",
+                    )
+                else:
+                    plot_kinematics(
+                        self.cfg.run_dir,
+                        batch.x_det.cpu(),
+                        batch.x_gen.cpu(),
+                        sample_batch.x_gen.cpu(),
+                        filename="post_kinematics.pdf",
+                    )
+
             if self.cfg.data.transform:
                 sample_batch.x_det = (
                     self.model.condition_coordinates.x_to_fourmomenta(
@@ -490,6 +502,32 @@ class UnfoldingExperiment(BaseExperiment):
                     )
                     * self.cfg.data.units
                 )
+
+            if i == 0:
+                if self.cfg.data.add_jet:
+                    det_mask = ~torch.isin(
+                        torch.arange(batch.x_det.size(0), device=self.device),
+                        batch.x_det_ptr[:-1],
+                    )
+                    gen_mask = ~torch.isin(
+                        torch.arange(batch.x_gen.size(0), device=self.device),
+                        batch.x_gen_ptr[:-1],
+                    )
+                    plot_kinematics(
+                        self.cfg.run_dir,
+                        fourmomenta_to_jetmomenta(batch.x_det[det_mask]).cpu(),
+                        fourmomenta_to_jetmomenta(batch.x_gen[gen_mask]).cpu(),
+                        fourmomenta_to_jetmomenta(sample_batch.x_gen[gen_mask]).cpu(),
+                        filename="post_jetmomenta.pdf",
+                    )
+                else:
+                    plot_kinematics(
+                        self.cfg.run_dir,
+                        fourmomenta_to_jetmomenta(batch.x_det).cpu(),
+                        fourmomenta_to_jetmomenta(batch.x_gen).cpu(),
+                        fourmomenta_to_jetmomenta(sample_batch.x_gen).cpu(),
+                        filename="post_jetmomenta.pdf",
+                    )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

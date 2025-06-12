@@ -205,6 +205,8 @@ def get_range(input):
         tensor = input
     else:
         raise ValueError("Input must be a list, tuple, numpy array, or torch tensor")
+    if tensor.size(0) > 1000000:
+        tensor = tensor[torch.randperm(tensor.size(0))][:1000000]
     quantiles = torch.quantile(
         tensor, torch.tensor([0.005, 0.995], device=tensor.device, dtype=tensor.dtype)
     )

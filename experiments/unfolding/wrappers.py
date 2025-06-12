@@ -86,10 +86,6 @@ class ConditionalTransformerCFM(EventCFM):
                 * torch.pi
                 - torch.pi
             )
-        if mass is not None:
-            sample = self.coordinates.x_to_fourmomenta(sample)
-            sample[..., 0] = torch.sqrt(mass**2 + (sample[..., 1:] ** 2).sum(dim=-1))
-            sample = self.coordinates.fourmomenta_to_x(sample)
         return sample
 
     def get_condition(self, batch):
@@ -131,14 +127,14 @@ class ConditionalTransformerCFM(EventCFM):
         )
         t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
 
-        if 3 in self.cfm.masked_dims:
-            mass = self.mass
-        else:
-            mass = None
-        x1 = self.sample_base(x0.shape, x0.device, x0.dtype, mass)
+        x1 = self.sample_base(x0.shape, x0.device, x0.dtype)
 
         if self.cfm.mask_jets:
             x1[batch.x_gen_ptr[:-1]] = x0[batch.x_gen_ptr[:-1]]
+        if 3 in self.cfm.masked_dims:
+            x1 = self.coordinates.x_to_fourmomenta(x1, batch_ptr=batch.x_gen_ptr)
+            x1[..., 0] = torch.sqrt(self.mass**2 + (x1[..., 1:] ** 2).sum(dim=-1))
+            x1 = self.coordinates.fourmomenta_to_x(x1, batch_ptr=batch.x_gen_ptr)
 
         vt = x1 - x0
         xt = self.geometry._handle_periodic(x0 + vt * t)
@@ -201,6 +197,9 @@ class ConditionalTransformerCFM(EventCFM):
         else:
             mass = None
         x1 = self.sample_base(shape, device, dtype, mass)
+
+        if self.cfm.mask_jets:
+            x1[batch.x_gen_ptr[:-1]] = batch.x_gen[batch.x_gen_ptr[:-1]]
 
         # solve ODE in straight space
         x0 = odeint(
