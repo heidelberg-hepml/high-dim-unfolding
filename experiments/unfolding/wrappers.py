@@ -3,9 +3,8 @@ import numpy as np
 from torchdiffeq import odeint
 
 from experiments.unfolding.cfm import EventCFM
-from experiments.unfolding.utils import ensure_angle, mask_dims
+from experiments.utils import mask_dims
 from gatr.interface import embed_vector, extract_vector
-from experiments.logger import LOGGER
 
 from xformers.ops.fmha.attn_bias import BlockDiagonalMask
 

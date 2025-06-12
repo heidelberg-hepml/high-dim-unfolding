@@ -3,10 +3,10 @@ from torch import nn
 from torch.autograd import grad
 
 from torchdiffeq import odeint
-import experiments.unfolding.distributions as d
-from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
-import experiments.unfolding.coordinates as c
-from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
+import experiments.distributions as d
+from experiments.utils import GaussianFourierProjection, get_pt, mask_dims
+import experiments.coordinates as c
+from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 
 
 def hutchinson_trace(x_out, x_in):

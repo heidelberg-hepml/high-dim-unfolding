@@ -10,23 +10,19 @@ from omegaconf import open_dict
 from fastjet_contribs import (
     compute_nsubjettiness,
     apply_soft_drop,
-    compute_soft_drop_symmetry,
 )
 
 from gatr.interface import embed_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
-from experiments.unfolding.dataset import (
+from experiments.dataset import (
     Dataset,
     load_cms,
     load_zplusjet,
     load_ttbar,
-    positional_encoding,
 )
-from experiments.unfolding.utils import (
+from experiments.utils import (
     get_ptr_from_batch,
     fourmomenta_to_jetmomenta,
-    jetmomenta_to_fourmomenta,
-    remove_jet,
     ensure_angle,
 )
 import experiments.unfolding.plotter as plotter
@@ -748,7 +744,6 @@ class UnfoldingExperiment(BaseExperiment):
             def dimass(i, j):
                 def dimass_ij(constituents, batch_idx, other_batch_idx):
                     batch_ptr = get_ptr_from_batch(batch_idx)
-                    other_batch_ptr = get_ptr_from_batch(other_batch_idx)
                     dimass = []
                     for n in range(len(batch_ptr) - 1):
                         if batch_ptr[n + 1] - batch_ptr[n] == 3:
@@ -772,7 +767,6 @@ class UnfoldingExperiment(BaseExperiment):
             def deltaR(i, j):
                 def deltaR_ij(constituents, batch_idx, other_batch_idx):
                     batch_ptr = get_ptr_from_batch(batch_idx)
-                    other_batch_ptr = get_ptr_from_batch(other_batch_idx)
                     deltaR = []
                     for n in range(len(batch_ptr) - 1):
                         if batch_ptr[n + 1] - batch_ptr[n] == 3:
@@ -885,7 +879,6 @@ class UnfoldingExperiment(BaseExperiment):
 
             def jet_mass(constituents, batch_idx, other_batch_idx):
                 batch_ptr = get_ptr_from_batch(batch_idx)
-                other_batch_ptr = get_ptr_from_batch(other_batch_idx)
                 jet_masses = []
                 for n in range(len(batch_ptr) - 1):
                     jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)

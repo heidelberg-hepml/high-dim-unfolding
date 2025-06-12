@@ -127,7 +127,7 @@ class BaseExperiment:
             gatr.layers.linear.NUM_PIN_LINEAR_BASIS_ELEMENTS = 5
             if self.cfg.ga_settings.mix_mvpseudoscalar_into_scalar:
                 LOGGER.warning(
-                    f"Mixing mvpseudoscalar into scalar is only possible if ga_settings.use_fully_connected_subgroup=True"
+                    "Mixing mvpseudoscalar into scalar is only possible if ga_settings.use_fully_connected_subgroup=True"
                 )
                 gatr.layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = False
         gatr.layers.mlp.mlp.USE_GEOMETRIC_PRODUCT = (
@@ -151,12 +151,12 @@ class BaseExperiment:
         )
 
         if self.cfg.ema:
-            LOGGER.info(f"Using EMA for validation and eval")
+            LOGGER.info("Using EMA for validation and eval")
             self.ema = ExponentialMovingAverage(
                 self.model.parameters(), decay=self.cfg.training.ema_decay
             )
         else:
-            LOGGER.info(f"Not using EMA")
+            LOGGER.info("Not using EMA")
             self.ema = None
 
         # load existing model if specified
@@ -284,7 +284,7 @@ class BaseExperiment:
 
     def _init_directory(self):
         if not self.cfg.save:
-            LOGGER.info(f"Running with save=False, i.e. no outputs will be saved")
+            LOGGER.info("Running with save=False, i.e. no outputs will be saved")
             return
 
         # create experiment directory

@@ -1,5 +1,5 @@
 import torch
-import experiments.unfolding.transforms as tr
+import experiments.transforms as tr
 
 DTYPE = torch.float64
 
@@ -164,18 +164,6 @@ class LogPtPhiEtaE(BaseCoordinates):
         super().__init__()
         self.contains_phi = True
         self.transforms = [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min, units)]
-
-
-class PtPhiEtaM2(BaseCoordinates):
-    # (pt, phi, eta, log(m^2))
-    def __init__(self):
-        super().__init__()
-        self.contains_phi = True
-        self.contains_mass = True
-        self.transforms = [
-            tr.EPPP_to_PtPhiEtaE(),
-            tr.PtPhiEtaE_to_PtPhiEtaM2(),
-        ]
 
 
 class PtPhiEtaLogM2(BaseCoordinates):

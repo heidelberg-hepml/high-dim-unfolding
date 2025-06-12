@@ -1,6 +1,5 @@
 import numpy as np
 import torch
-import math
 from matplotlib.backends.backend_pdf import PdfPages
 
 
@@ -12,7 +11,7 @@ from experiments.unfolding.plots import (
     plot_roc,
     plot_correlations,
 )
-from experiments.unfolding.utils import get_range, fourmomenta_to_jetmomenta
+from experiments.utils import get_range, fourmomenta_to_jetmomenta
 from experiments.logger import LOGGER
 
 
@@ -42,91 +41,6 @@ def plot_losses(exp, filename, model_label):
                 labels=[f"train mse_{k}", f"val mse_{k}"],
                 logy=True,
             )
-
-
-def plot_log_prob(exp, filename, model_label):
-    # ugly out of the box plot
-    import matplotlib.pyplot as plt
-
-    with PdfPages(filename) as file:
-        plt.hist(exp.NLLs, bins=100, alpha=0.5)
-        plt.xlabel(r"$-\log p(x)$")
-        plt.savefig(file, bbox_inches="tight", format="pdf")
-        plt.close()
-
-
-def plot_classifier(exp, filename, model_label):
-    with PdfPages(filename) as file:
-        # classifier train and validation loss
-        plot_loss(
-            file,
-            [exp.classifier.tracker[key] for key in ["loss", "val_loss"]],
-            lr=exp.classifier.tracker["lr"],
-            labels=[f"train mse", f"val mse"],
-            logy=True,
-        )
-
-        # probabilities
-        data = [
-            exp.classifier.results["logits"]["true"],
-            exp.classifier.results["logits"]["fake"],
-        ]
-        simple_histogram(
-            file,
-            data,
-            labels=["Test", "Generator"],
-            xrange=[0, 1],
-            xlabel="Classifier score",
-            logx=False,
-            logy=False,
-        )
-        simple_histogram(
-            file,
-            data,
-            labels=["Test", "Generator"],
-            xrange=[0, 1],
-            xlabel="Classifier score",
-            logx=False,
-            logy=True,
-        )
-
-        # weights
-        data = [
-            exp.classifier.results["weights"]["true"],
-            exp.classifier.results["weights"]["fake"],
-        ]
-        simple_histogram(
-            file,
-            data,
-            labels=["Test", "Generator"],
-            xrange=[0, 5],
-            xlabel="Classifier weights",
-            logx=False,
-            logy=False,
-        )
-        simple_histogram(
-            file,
-            data,
-            labels=["Test", "Generator"],
-            xrange=[1e-3, 1e2],
-            xlabel="Classifier weights",
-            logx=True,
-            logy=True,
-        )
-
-        # roc curve
-        plot_roc(
-            file,
-            exp.classifier.results["tpr"],
-            exp.classifier.results["fpr"],
-            exp.classifier.results["auc"],
-        )
-        # calibration curve
-        plot_calibration(
-            file,
-            exp.classifier.results["prob_true"],
-            exp.classifier.results["prob_pred"],
-        )
 
 
 def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):

@@ -1,4 +1,4 @@
-from experiments.unfolding.utils import ensure_angle
+from experiments.utils import ensure_angle
 
 
 class BaseGeometry:

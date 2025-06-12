@@ -6,16 +6,13 @@ import awkward as ak
 import os
 
 from gatr.interface import embed_vector
-from experiments.unfolding.utils import (
-    get_pt,
+from experiments.utils import (
     ensure_angle,
     pid_encoding,
     jetmomenta_to_fourmomenta,
     fourmomenta_to_jetmomenta,
 )
-from experiments.unfolding.embedding import event_to_GA_with_spurions
-from experiments.logger import LOGGER
-from experiments.unfolding.plots import plot_data
+from experiments.embedding import event_to_GA_with_spurions
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -84,7 +81,6 @@ def load_zplusjet(data_path, cfg, dtype):
         cache_dir=data_path,
         include_keys=["particles", "mults", "jets"],
     )
-    size = len(data["sim_particles"])
 
     det_particles = torch.tensor(data["sim_particles"], dtype=dtype)
     det_jets = torch.tensor(data["sim_jets"], dtype=dtype)

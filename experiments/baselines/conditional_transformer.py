@@ -1,5 +1,4 @@
-from functools import partial
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from einops import rearrange
@@ -13,7 +12,6 @@ from experiments.misc import to_nd
 from experiments.baselines.transformer import (
     BaselineSelfAttention,
     BaselineLayerNorm,
-    BaselineTransformerBlock,
 )
 
 
