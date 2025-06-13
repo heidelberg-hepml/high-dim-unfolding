@@ -2,47 +2,9 @@ import torch
 import numpy as np
 from torchdiffeq import odeint
 
+from experiments.utils import xformers_cond_mask
 from experiments.unfolding.cfm import EventCFM
-from experiments.utils import mask_dims
 from gatr.interface import embed_vector, extract_vector
-
-from xformers.ops.fmha.attn_bias import BlockDiagonalMask
-
-
-def xformers_mask(batch, batch_condition=None, materialize=False):
-    """
-    Construct attention mask that makes sure that objects only attend to each other
-    within the same batch element, and not across batch elements
-
-    Parameters
-    ----------
-    batch: torch.tensor
-        batch object in the torch_geometric.data naming convention
-        contains batch index for each event in a sparse tensor
-    materialize: bool
-        Decides whether a xformers or ('materialized') torch.tensor mask should be returned
-        The xformers mask allows to use the optimized xformers attention kernel, but only runs on gpu
-
-    Returns
-    -------
-    mask: xformers.ops.fmha.attn_bias.BlockDiagonalMask or torch.tensor
-        attention mask, to be used in xformers.ops.memory_efficient_attention
-        or torch.nn.functional.scaled_dot_product_attention
-    """
-    bincounts = torch.bincount(batch).tolist()
-    if batch_condition is not None:
-        bincounts_condition = torch.bincount(batch_condition).tolist()
-    else:
-        bincounts_condition = bincounts
-        batch_condition = batch
-    mask = BlockDiagonalMask.from_seqlens(bincounts, bincounts_condition)
-    if materialize:
-        # materialize mask to torch.tensor (only for testing purposes)
-        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(
-            batch.device
-        )
-
-    return mask
 
 
 class ConditionalTransformerCFM(EventCFM):
@@ -68,29 +30,16 @@ class ConditionalTransformerCFM(EventCFM):
         self.net_condition = net_condition
 
     def get_masks(self, batch):
-        return xformers_mask(
+        return xformers_cond_mask(
             batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        ), xformers_mask(
+        ), xformers_cond_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
             materialize=not torch.cuda.is_available(),
         )
 
-    def sample_base(self, shape, device, dtype, mass=None, generator=None):
-        sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
-        if self.coordinates.contains_phi:
-            sample[..., 1] = (
-                torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
-                * 2
-                * torch.pi
-                - torch.pi
-            )
-        if self.coordinates.contains_mass and mass is not None:
-            sample[..., 3] = np.log(mass**2)
-        return sample
-
     def get_condition(self, batch):
-        mask = xformers_mask(
+        mask = xformers_cond_mask(
             batch.x_det_batch, materialize=not torch.cuda.is_available()
         )
         return self.net_condition(batch.x_det.unsqueeze(0), mask)
@@ -103,140 +52,7 @@ class ConditionalTransformerCFM(EventCFM):
             attention_mask=attention_mask,
             crossattention_mask=crossattention_mask,
         ).squeeze(0)
-        # return ensure_angle(vp)
-        return vp
-
-    def batch_loss(self, batch):
-        """
-        Construct the conditional flow matching objective
-
-        Parameters
-        ----------
-        batch : tuple of Batch graphs
-            Target space particles in fourmomenta space
-
-        Returns
-        -------
-        loss : torch.tensor with shape (1)
-        """
-        x0 = batch.x_gen
-        t = torch.rand(
-            batch.num_graphs,
-            1,
-            dtype=x0.dtype,
-            device=x0.device,
-        )
-        t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
-
-        x1 = self.sample_base(x0.shape, x0.device, x0.dtype, self.mass)
-
-        if self.cfm.mask_jets:
-            x1[batch.x_gen_ptr[:-1]] = x0[batch.x_gen_ptr[:-1]]
-
-        xt, vt = self.geometry.get_trajectory(x0, x1, t)
-
-        condition = self.get_condition(batch)
-
-        attention_mask, crossattention_mask = self.get_masks(batch)
-
-        vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
-
-        # vp = self.handle_velocity(vp, batch.x_gen_ptr)
-        # vt = self.handle_velocity(vt, batch.x_gen_ptr)
-
-        # evaluate conditional flow matching objective
-        distance = ((vp - vt) ** 2).mean()
-        distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
-        return distance, distance_particlewise
-
-    def sample(self, batch, device, dtype):
-        """
-        Sample from CFM model
-        Solve an ODE using a NN-parametrized velocity field
-
-        Parameters
-        ----------
-        batch : tuple of Batch graphs
-        device : torch.device
-        dtype : torch.dtype
-
-        Returns
-        -------
-        x0_fourmomenta : torch.tensor with shape shape = (batchsize, 4)
-            Generated events
-        """
-
-        sample_batch = batch.clone()
-
-        condition = self.get_condition(batch)
-
-        attention_mask, crossattention_mask = self.get_masks(batch)
-
-        def velocity(t, xt_straight):
-            xt_straight = self.geometry._handle_periodic(xt_straight)
-            t = t * torch.ones(
-                shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
-            )
-            vt_straight = self.get_velocity(
-                xt_straight, t, condition, attention_mask, crossattention_mask
-            )
-            vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
-            vt_straight = self.handle_velocity(
-                vt_straight, batch.x_gen_ptr
-            )  # manually set mass velocity to zero
-            return vt_straight
-
-        # sample fourmomenta from base distribution
-        shape = batch.x_gen.shape
-        if 3 in self.cfm.masked_dims:
-            mass = self.mass
-        else:
-            mass = None
-        x1 = self.sample_base(shape, device, dtype, mass)
-
-        if self.cfm.mask_jets:
-            x1[batch.x_gen_ptr[:-1]] = batch.x_gen[batch.x_gen_ptr[:-1]]
-
-        # solve ODE in straight space
-        x0 = odeint(
-            velocity,
-            x1,
-            torch.tensor([1.0, 0.0], device=x1.device),
-            **self.odeint,
-        )[-1]
-
-        sample_batch.x_gen = self.geometry._handle_periodic(x0)
-
-        # sort generated events by pT
-        # pt = x0[..., 0].unsqueeze(-1)
-        # x_perm = torch.argsort(pt, dim=0, descending=True)
-        # x0 = x0.take_along_dim(x_perm, dim=0)
-        # index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
-        # index_perm = torch.argsort(index, dim=0, stable=True)
-        # x0 = x0.take_along_dim(index_perm, dim=0)
-
-        return sample_batch, x1
-
-    def log_prob(self, batch):
-        """
-        Evaluate log_prob for existing target samples in a CFM model
-        Solve ODE involving the trace of the velocity field, this is more expensive than normal sampling
-        The 'self.hutchinson' parameter controls if the trace should be evaluated
-        with the hutchinson trace estimator that needs O(1) calls to the network,
-        as opposed to the exact autograd trace that needs O(n_particles) calls to the network
-        Note: Could also have a sample_and_log_prob method, but we have no use case for this
-
-        Parameters
-        ----------
-
-        batch : tuple of Batch graphs
-
-        Returns
-        -------
-        log_prob_fourmomenta : torch.tensor with shape (batchsize)
-            log_prob of each event in x0, evaluated in fourmomenta space
-        """
-        raise NotImplementedError
+        return self.geometry._handle_periodic(vp)
 
 
 class ConditionalGATrCFM(EventCFM):
@@ -280,29 +96,17 @@ class ConditionalGATrCFM(EventCFM):
         self.net = net
         self.net_condition = net_condition
 
-    def sample_base(self, shape, device, dtype, mass=None, generator=None):
-        sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
-        sample[..., 1] = (
-            torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
-            * 2
-            * torch.pi
-            - torch.pi
-        )
-        if mass is not None:
-            sample[..., 3] = mass
-        return sample
-
     def get_masks(self, batch):
-        return xformers_mask(
+        return xformers_cond_mask(
             batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        ), xformers_mask(
+        ), xformers_cond_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
             materialize=not torch.cuda.is_available(),
         )
 
     def get_condition(self, batch):
-        attention_mask = xformers_mask(batch.x_det_batch)
+        attention_mask = xformers_cond_mask(batch.x_det_batch)
         mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
         fixed_t = torch.zeros(s.shape[1], 1, dtype=s.dtype, device=s.device)
         t = self.t_embedding(fixed_t).unsqueeze(0)
@@ -411,7 +215,6 @@ class ConditionalGATrCFM(EventCFM):
             vt_straight = self.get_velocity(
                 xt_straight, t, batch, condition, attention_mask, crossattention_mask
             )
-            vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
             vt_straight = self.handle_velocity(
                 vt_straight, batch.x_gen_ptr
             )  # manually set mass velocity to zero

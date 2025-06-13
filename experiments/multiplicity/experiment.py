@@ -53,10 +53,8 @@ class MultiplicityExperiment(BaseExperiment):
 
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
-                if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net.in_channels += 7
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -93,10 +91,8 @@ class MultiplicityExperiment(BaseExperiment):
 
                 # scalar channels
                 self.cfg.model.net.in_s_channels = 0
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6
-                if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net.in_s_channels += 7
 
                 # mv channels for beam_reference and time_reference
                 self.cfg.model.net.in_mv_channels = 1
@@ -356,16 +352,7 @@ class MultiplicityExperiment(BaseExperiment):
     def _get_predicted_dist_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
         batch = batch.to(self.device)
         if self.cfg.modelname == "Transformer":
-            if self.cfg.data.add_scalar_features:
-                scalar_features = compute_scalar_features_from_jetmomenta(
-                    batch.x_det, batch.x_det_ptr, self.cfg.data
-                )
-                scalars = torch.cat(
-                    (batch.scalars_det, *scalar_features),
-                    dim=-1,
-                )
-            else:
-                scalars = batch.scalars_det
+            scalars = batch.scalars_det
             input = torch.cat([batch.x_det, scalars], dim=-1)
             output = self.model(input, batch.x_det_batch)
         elif self.cfg.modelname == "GATr":

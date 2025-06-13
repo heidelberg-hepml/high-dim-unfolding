@@ -83,7 +83,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.net.in_shape = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net.out_shape = 4
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
             elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
                 self.cfg.data.embed_det_in_GA = False
@@ -111,7 +111,7 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.net_condition.out_channels = (
                     self.cfg.model.net.hidden_channels
                 )
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
                 if self.cfg.model.net.pos_encoding_type == "absolute":
@@ -134,11 +134,9 @@ class UnfoldingExperiment(BaseExperiment):
                 self.cfg.model.net_condition.out_s_channels = (
                     self.cfg.model.net.hidden_s_channels
                 )
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6
                     self.cfg.model.net_condition.in_s_channels += 6
-                if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net_condition.in_s_channels += 7
                 if not self.cfg.data.beam_token:
                     self.cfg.model.net_condition.in_mv_channels += (
                         2

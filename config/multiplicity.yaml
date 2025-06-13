@@ -8,7 +8,6 @@ data:
  dataset: zplusjet
  length: -1
  train_val_test: [0.8, 0.1, 0.1]
- pid_encoding: false
  max_num_particles: 152
  max_constituents: -1
  add_spurions: false
@@ -20,7 +19,6 @@ data:
  add_xzplane: false
  add_yzplane: false
  add_pid: false
- add_scalar_features: false
  reinsert_channels: false
  pt_min: 0.0
  units: 10.

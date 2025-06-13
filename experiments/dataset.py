@@ -109,7 +109,7 @@ def load_zplusjet(data_path, cfg, dtype):
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
     # save pids before replacing with mass
-    if cfg.pid_encoding:
+    if cfg.add_pid:
         det_pids = det_particles[..., 3].clone().unsqueeze(-1)
         det_pids = pid_encoding(det_pids)
         gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)

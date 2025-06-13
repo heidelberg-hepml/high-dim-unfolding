@@ -39,20 +39,6 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
     batchsize = len(ptr) - 1
     arange = torch.arange(batchsize, device=fourmomenta.device)
 
-    # add extra scalar channels
-    if cfg_data.add_scalar_features:
-        scalar_features = compute_scalar_features_from_fourmomenta(
-            fourmomenta, ptr, cfg_data
-        )
-        scalars = torch.cat(
-            (scalars, *scalar_features),
-            dim=-1,
-        )
-
-    if torch.isnan(scalars).any():
-        nan_indices = torch.nonzero(torch.isnan(scalars))
-        raise ValueError(f"NaN values found in scalars: {scalars[0]}")
-
     # embed fourmomenta into multivectors
     if cfg_data.units is not None:
         fourmomenta /= cfg_data.units
