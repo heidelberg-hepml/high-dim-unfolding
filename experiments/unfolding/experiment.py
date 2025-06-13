@@ -191,11 +191,11 @@ class UnfoldingExperiment(BaseExperiment):
     def _init_data(self, data_path):
         t0 = time.time()
         if self.cfg.data.dataset == "zplusjet":
-            data = load_zplusjet(data_path, self.cfg, self.dtype)
+            data = load_zplusjet(data_path, self.cfg.data, self.dtype)
         elif self.cfg.data.dataset == "cms":
-            data = load_cms(data_path, self.cfg, self.dtype)
+            data = load_cms(data_path, self.cfg.data, self.dtype)
         elif self.cfg.data.dataset == "ttbar":
-            data = load_ttbar(data_path, self.cfg, self.dtype)
+            data = load_ttbar(data_path, self.cfg.data, self.dtype)
         else:
             raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
         det_particles = data["det_particles"]
@@ -228,7 +228,7 @@ class UnfoldingExperiment(BaseExperiment):
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
 
-        split = self.cfg.data.train_test_val
+        split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
         # initialize cfm (might require data)
@@ -441,7 +441,7 @@ class UnfoldingExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
-            sample_batch = self.model.sample(
+            sample_batch, base = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
@@ -459,7 +459,7 @@ class UnfoldingExperiment(BaseExperiment):
                     )
                     plot_kinematics(
                         self.cfg.run_dir,
-                        batch.x_det[det_mask].cpu(),
+                        base[gen_mask].cpu(),
                         batch.x_gen[gen_mask].cpu(),
                         sample_batch.x_gen[gen_mask].cpu(),
                         filename="post_kinematics.pdf",
@@ -467,7 +467,7 @@ class UnfoldingExperiment(BaseExperiment):
                 else:
                     plot_kinematics(
                         self.cfg.run_dir,
-                        batch.x_det.cpu(),
+                        base.cpu(),
                         batch.x_gen.cpu(),
                         sample_batch.x_gen.cpu(),
                         filename="post_kinematics.pdf",

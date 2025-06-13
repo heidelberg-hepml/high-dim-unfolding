@@ -407,8 +407,8 @@ class EventCFM(CFM):
         fourmomenta = super().sample(*args, **kwargs)
         return fourmomenta
 
-    def handle_velocity(self, v, batch=None):
+    def handle_velocity(self, v, batch_ptr=None):
         v[..., self.cfm.masked_dims] = 0.0
         if self.cfm.mask_jets:
-            v[batch[:-1]] = 0.0
+            v[batch_ptr[:-1]] = 0.0
         return v

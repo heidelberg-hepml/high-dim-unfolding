@@ -423,7 +423,7 @@ def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
                     bins=bins,
                     range=None,
                     alpha=0.5,
-                    label="base",
+                    label="model",
                     density=True,
                     histtype="step",
                 )

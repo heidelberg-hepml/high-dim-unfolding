@@ -76,7 +76,7 @@ class Dataset(torch.utils.data.Dataset):
 def load_zplusjet(data_path, cfg, dtype):
     data = energyflow.zjets_delphes.load(
         "Herwig",
-        num_data=cfg.data.num_data,
+        num_data=cfg.length,
         pad=True,
         cache_dir=data_path,
         include_keys=["particles", "mults", "jets"],
@@ -109,7 +109,7 @@ def load_zplusjet(data_path, cfg, dtype):
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
     # save pids before replacing with mass
-    if cfg.data.pid_encoding:
+    if cfg.pid_encoding:
         det_pids = det_particles[..., 3].clone().unsqueeze(-1)
         det_pids = pid_encoding(det_pids)
         gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
@@ -118,8 +118,8 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.data.mass
-    gen_particles[..., 3] = cfg.data.mass
+    det_particles[..., 3] = cfg.mass
+    gen_particles[..., 3] = cfg.mass
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
@@ -150,17 +150,17 @@ def load_cms(data_path, cfg, dtype):
         torch.from_numpy(np.load(os.path.join(data_path, "gen_1725_delphes.npy")))
         .to(dtype)
         .reshape(-1, 3, 4)
-    )[: cfg.data.num_data]
+    )[: cfg.length]
     det_particles = (
         torch.from_numpy(np.load(os.path.join(data_path, "rec_1725_delphes.npy")))
         .to(dtype)
         .reshape(-1, 3, 4)
-    )[: cfg.data.num_data]
+    )[: cfg.length]
     gen_mults = (
-        torch.zeros(gen_particles.shape[0], dtype=torch.int) + cfg.data.max_constituents
+        torch.zeros(gen_particles.shape[0], dtype=torch.int) + cfg.max_constituents
     )
     det_mults = (
-        torch.zeros(det_particles.shape[0], dtype=torch.int) + cfg.data.max_constituents
+        torch.zeros(det_particles.shape[0], dtype=torch.int) + cfg.max_constituents
     )
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
@@ -178,10 +178,10 @@ def load_cms(data_path, cfg, dtype):
 def load_ttbar(data_path, cfg, dtype):
     part1 = ak.from_parquet(os.path.join(data_path, "ttbar-t.parquet"))
     part2 = ak.from_parquet(os.path.join(data_path, "ttbar-tbar.parquet"))
-    data = ak.concatenate([part1, part2], axis=0)[: cfg.data.num_data]
+    data = ak.concatenate([part1, part2], axis=0)[: cfg.length]
 
-    size = cfg.data.num_data if cfg.data.num_data > 0 else len(data)
-    shape = (size, cfg.data.max_num_particles, 4)
+    size = cfg.length if cfg.length > 0 else len(data)
+    shape = (size, cfg.max_num_particles, 4)
 
     det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
     det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)
@@ -206,8 +206,8 @@ def load_ttbar(data_path, cfg, dtype):
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.data.mass
-    gen_particles[..., 3] = cfg.data.mass
+    det_particles[..., 3] = cfg.mass
+    gen_particles[..., 3] = cfg.mass
 
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)

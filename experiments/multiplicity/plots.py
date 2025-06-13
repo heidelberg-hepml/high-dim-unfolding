@@ -5,7 +5,7 @@ import torch
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.base_plots import plot_loss
-from experiments.multiplicity.distributions import (
+from experiments.distributions import (
     CategoricalDistribution,
     GammaMixture,
     GaussianMixture,

@@ -3,7 +3,7 @@ from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
 
 from gatr.interface import extract_scalar
-from experiments.multiplicity.utils import xformers_sa_mask
+from experiments.utils import xformers_mask
 from experiments.logger import LOGGER
 
 
@@ -14,10 +14,10 @@ class MultiplicityTransformerWrapper(nn.Module):
         self.force_xformers = force_xformers
         self.aggregation = MeanAggregation()
 
-    def forward(self, batch, ptr):
-        mask = xformers_sa_mask(ptr, materialize=not self.force_xformers)
+    def forward(self, batch, batch_idx):
+        mask = xformers_mask(batch_idx, materialize=not self.force_xformers)
         outputs = self.net(batch.unsqueeze(0), attention_mask=mask)
-        outputs = self.aggregation(outputs, ptr).squeeze(0)
+        outputs = self.aggregation(outputs, batch_idx).squeeze(0)
         return outputs
 
 
@@ -41,7 +41,7 @@ class MultiplicityGATrWrapper(nn.Module):
         multivector = embedding["mv"].unsqueeze(0)
         scalars = embedding["s"].unsqueeze(0)
 
-        mask = xformers_sa_mask(embedding["batch"], materialize=not self.force_xformers)
+        mask = xformers_mask(embedding["batch"], materialize=not self.force_xformers)
         multivector_outputs, scalar_outputs = self.net(
             multivector, scalars=scalars, attention_mask=mask
         )
@@ -72,7 +72,7 @@ class MultiplicityConditionalTransformerWrapper(nn.Module):
         self.aggregation = MeanAggregation()
 
     def forward(self, batch, ptr):
-        mask = xformers_sa_mask(ptr, materialize=not self.force_xformers)
+        mask = xformers_mask(ptr, materialize=not self.force_xformers)
         outputs = self.net(
             x=batch.unsqueeze(0),
             condition=batch.unsqueeze(0),
@@ -111,7 +111,7 @@ class MultiplicityConditionalGATrWrapper(nn.Module):
         LOGGER.info(f"condition_multivector : {multivectors_condition.shape}")
         LOGGER.info(f"condition_scalars : {scalars_condition.shape}")
 
-        mask = xformers_sa_mask(embedding["batch"], materialize=not self.force_xformers)
+        mask = xformers_mask(embedding["batch"], materialize=not self.force_xformers)
         multivector_outputs, scalar_outputs = self.net(
             multivectors=input_multivector,
             multivectors_condition=multivectors_condition,

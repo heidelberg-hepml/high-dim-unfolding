@@ -1,13 +1,13 @@
 import torch
 from torch_geometric.utils import scatter
 
-from experiments.multiplicity.utils import (
+from experiments.utils import (
     get_batch_from_ptr,
     get_pt,
     get_phi,
     get_eta,
     ensure_angle,
-    jetmomenta_to_fourmomenta
+    jetmomenta_to_fourmomenta,
 )
 from gatr.interface import embed_vector, embed_spurions
 from experiments.logger import LOGGER
@@ -41,7 +41,9 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
 
     # add extra scalar channels
     if cfg_data.add_scalar_features:
-        scalar_features = compute_scalar_features_from_fourmomenta(fourmomenta, ptr, cfg_data)
+        scalar_features = compute_scalar_features_from_fourmomenta(
+            fourmomenta, ptr, cfg_data
+        )
         scalars = torch.cat(
             (scalars, *scalar_features),
             dim=-1,

@@ -9,7 +9,7 @@ from gatr.interface import embed_vector, extract_vector
 from xformers.ops.fmha.attn_bias import BlockDiagonalMask
 
 
-def xformers_sa_mask(batch, batch_condition=None, materialize=False):
+def xformers_mask(batch, batch_condition=None, materialize=False):
     """
     Construct attention mask that makes sure that objects only attend to each other
     within the same batch element, and not across batch elements
@@ -68,9 +68,9 @@ class ConditionalTransformerCFM(EventCFM):
         self.net_condition = net_condition
 
     def get_masks(self, batch):
-        return xformers_sa_mask(
+        return xformers_mask(
             batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        ), xformers_sa_mask(
+        ), xformers_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
             materialize=not torch.cuda.is_available(),
@@ -85,10 +85,12 @@ class ConditionalTransformerCFM(EventCFM):
                 * torch.pi
                 - torch.pi
             )
+        if self.coordinates.contains_mass and mass is not None:
+            sample[..., 3] = np.log(mass**2)
         return sample
 
     def get_condition(self, batch):
-        mask = xformers_sa_mask(
+        mask = xformers_mask(
             batch.x_det_batch, materialize=not torch.cuda.is_available()
         )
         return self.net_condition(batch.x_det.unsqueeze(0), mask)
@@ -126,17 +128,12 @@ class ConditionalTransformerCFM(EventCFM):
         )
         t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
 
-        x1 = self.sample_base(x0.shape, x0.device, x0.dtype)
+        x1 = self.sample_base(x0.shape, x0.device, x0.dtype, self.mass)
 
         if self.cfm.mask_jets:
             x1[batch.x_gen_ptr[:-1]] = x0[batch.x_gen_ptr[:-1]]
-        if 3 in self.cfm.masked_dims:
-            x1 = self.coordinates.x_to_fourmomenta(x1, batch_ptr=batch.x_gen_ptr)
-            x1[..., 0] = torch.sqrt(self.mass**2 + (x1[..., 1:] ** 2).sum(dim=-1))
-            x1 = self.coordinates.fourmomenta_to_x(x1, batch_ptr=batch.x_gen_ptr)
 
-        vt = x1 - x0
-        xt = self.geometry._handle_periodic(x0 + vt * t)
+        xt, vt = self.geometry.get_trajectory(x0, x1, t)
 
         condition = self.get_condition(batch)
 
@@ -218,7 +215,7 @@ class ConditionalTransformerCFM(EventCFM):
         # index_perm = torch.argsort(index, dim=0, stable=True)
         # x0 = x0.take_along_dim(index_perm, dim=0)
 
-        return sample_batch
+        return sample_batch, x1
 
     def log_prob(self, batch):
         """
@@ -296,16 +293,16 @@ class ConditionalGATrCFM(EventCFM):
         return sample
 
     def get_masks(self, batch):
-        return xformers_sa_mask(
+        return xformers_mask(
             batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        ), xformers_sa_mask(
+        ), xformers_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
             materialize=not torch.cuda.is_available(),
         )
 
     def get_condition(self, batch):
-        attention_mask = xformers_sa_mask(batch.x_det_batch)
+        attention_mask = xformers_mask(batch.x_det_batch)
         mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
         fixed_t = torch.zeros(s.shape[1], 1, dtype=s.dtype, device=s.device)
         t = self.t_embedding(fixed_t).unsqueeze(0)

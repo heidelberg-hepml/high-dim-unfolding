@@ -69,7 +69,7 @@ def ensure_angle(phi):
     return torch.remainder(phi + torch.pi, 2 * torch.pi) - torch.pi
 
 
-def xformers_sa_mask(batch, materialize=False):
+def xformers_mask(batch, materialize=False):
     """
     Construct attention mask that makes sure that objects only attend to each other
     within the same batch element, and not across batch elements
