@@ -1,0 +1,284 @@
+import torch
+from torch import nn
+from torch.autograd import grad
+
+from torchdiffeq import odeint
+import experiments.distributions as d
+from experiments.utils import GaussianFourierProjection
+import experiments.coordinates as c
+from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
+
+
+class CFM(nn.Module):
+    """
+    Base class for all CFM models
+    - event-generation-specific features are implemented in EventCFM
+    - get_velocity is implemented by architecture-specific subclasses
+    """
+
+    def __init__(
+        self,
+        cfm,
+        odeint={"method": "dopri5", "atol": 1e-5, "rtol": 1e-5, "options": None},
+    ):
+        super().__init__()
+        self.t_embedding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
+            ),
+            nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
+        )
+        self.odeint = odeint
+        self.cfm = cfm
+
+        # initialize to base objects, this will be overwritten later
+        self.distribution = d.BaseDistribution()
+        self.coordinates = c.BaseCoordinates()
+        self.condition_coordinates = c.BaseCoordinates()
+        self.geometry = BaseGeometry()
+
+        if cfm.transforms_float64:
+            c.DTYPE = torch.float64
+        else:
+            c.DTYPE = torch.float32
+
+    def init_distribution(self):
+        raise NotImplementedError
+
+    def init_coordinates(self):
+        raise NotImplementedError
+
+    def init_geometry(self):
+        raise NotImplementedError
+
+    def sample_base(self, shape, device, dtype, m=None, generator=None):
+        sample = torch.randn(shape, device=device, dtype=dtype, generator=generator)
+        if self.coordinates.contains_phi:
+            sample[..., 1] = (
+                torch.rand(shape[:-1], device=device, dtype=dtype, generator=generator)
+                * 2
+                * torch.pi
+                - torch.pi
+            )
+        if m is not None:
+            sample[..., 3] = m
+        return sample
+
+    def get_velocity(self, x, t):
+        """
+        Parameters
+        ----------
+        x : torch.tensor with shape (batchsize, 4)
+        t : torch.tensor with shape (batchsize, 1)
+        """
+        # implemented by architecture-specific subclasses
+        raise NotImplementedError
+
+    def handle_velocity(self, v):
+        # default: do nothing
+        return v
+
+    def batch_loss(self, batch):
+        """
+        Construct the conditional flow matching objective
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+            Target space particles in fourmomenta space
+
+        Returns
+        -------
+        loss : torch.tensor with shape (1)
+        """
+        x0 = batch.x_gen
+        t = torch.rand(
+            batch.num_graphs,
+            1,
+            dtype=x0.dtype,
+            device=x0.device,
+        )
+        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
+
+        if 3 in self.cfm.masked_dims:
+            m = torch.mean(x0[..., 3])
+        else:
+            m = None
+        x1 = self.sample_base(x0.shape, x0.device, x0.dtype, m)
+
+        vt = x1 - x0
+        xt = self.geometry._handle_periodic(x0 + vt * t)
+
+        condition = self.get_condition(batch)
+
+        attention_mask, crossattention_mask = self.get_masks(batch)
+
+        vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
+
+        vp = self.handle_velocity(vp, batch.x_gen_ptr)
+        vt = self.handle_velocity(vt, batch.x_gen_ptr)
+
+        # evaluate conditional flow matching objective
+        distance = ((vp - vt) ** 2).mean()
+        distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
+        return distance, distance_particlewise
+
+    def sample(self, batch, device, dtype):
+        """
+        Sample from CFM model
+        Solve an ODE using a NN-parametrized velocity field
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+        device : torch.device
+        dtype : torch.dtype
+
+        Returns
+        -------
+        x0 : torch.tensor with shape shape = (batchsize, 4)
+            Generated events
+        """
+
+        sample_batch = batch.clone()
+
+        condition = self.get_condition(batch)
+
+        attention_mask, crossattention_mask = self.get_masks(batch)
+
+        def velocity(t, xt):
+            xt = self.geometry._handle_periodic(xt)
+            t = t * torch.ones(shape[0], 1, dtype=xt.dtype, device=xt.device)
+            vt = self.get_velocity(
+                xt, t, condition, attention_mask, crossattention_mask
+            )
+            vt = self.handle_velocity(
+                vt, batch.x_gen_ptr
+            )  # manually set mass velocity to zero
+            return vt
+
+        # sample fourmomenta from base distribution
+        shape = batch.x_gen.shape
+        if 3 in self.cfm.masked_dims:
+            mass = torch.mean(batch.x_det[..., 3])
+        else:
+            mass = None
+        x1 = self.sample_base(shape, device, dtype, mass)
+
+        if self.cfm.mask_jets:
+            x1[batch.x_gen_ptr[:-1]] = batch.x_gen[batch.x_gen_ptr[:-1]]
+
+        # solve ODE in straight space
+        x0 = odeint(
+            velocity,
+            x1,
+            torch.tensor([1.0, 0.0], device=x1.device),
+            **self.odeint,
+        )[-1]
+
+        sample_batch.x_gen = self.geometry._handle_periodic(x0)
+
+        # sort generated events by pT
+        # pt = x0[..., 0].unsqueeze(-1)
+        # x_perm = torch.argsort(pt, dim=0, descending=True)
+        # x0 = x0.take_along_dim(x_perm, dim=0)
+        # index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+        # index_perm = torch.argsort(index, dim=0, stable=True)
+        # x0 = x0.take_along_dim(index_perm, dim=0)
+
+        return sample_batch, x1
+
+
+class EventCFM(CFM):
+    """
+    Add event-generation-specific methods to CFM classes:
+    - Save information at the wrapper level
+    - Handle base distribution and coordinates for RFM
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def init_physics(self, units, pt_min, mass):
+        """
+        Pass physics information to the CFM class
+
+        Parameters
+        ----------
+        units: float
+            Scale of dimensionful quantities
+            I call it 'units' because we can really choose it arbitrarily without losing anything
+            Hard-coded in EventGenerationExperiment
+        pt_min: List[float]
+            Minimum pt value for each particle
+            Hard-coded in EventGenerationExperiment
+        mass: float
+        """
+        self.units = units
+        self.pt_min = pt_min
+        self.mass = mass
+
+    def init_coordinates(self):
+        self.coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.condition_coordinates = self._init_coordinates(
+            self.cfm.condition_coordinates
+        )
+        if self.cfm.transforms_float64:
+            self.coordinates.to(torch.float64)
+            self.condition_coordinates.to(torch.float64)
+
+    def _init_coordinates(self, coordinates_label):
+        if coordinates_label == "Fourmomenta":
+            coordinates = c.Fourmomenta()
+        elif coordinates_label == "PPPM2":
+            coordinates = c.PPPM2()
+        elif coordinates_label == "PPPLogM2":
+            coordinates = c.PPPLogM2()
+        elif coordinates_label == "StandardPPPLogM2":
+            coordinates = c.StandardPPPLogM2()
+        elif coordinates_label == "EPhiPtPz":
+            coordinates = c.EPhiPtPz()
+        elif coordinates_label == "PtPhiEtaE":
+            coordinates = c.PtPhiEtaE()
+        elif coordinates_label == "PtPhiEtaM2":
+            coordinates = c.PtPhiEtaM2()
+        elif coordinates_label == "LogPtPhiEtaE":
+            coordinates = c.LogPtPhiEtaE(self.pt_min, self.units)
+        elif coordinates_label == "LogPtPhiEtaM2":
+            coordinates = c.LogPtPhiEtaM2(self.pt_min, self.units)
+        elif coordinates_label == "PtPhiEtaLogM2":
+            coordinates = c.PtPhiEtaLogM2()
+        elif coordinates_label == "LogPtPhiEtaLogM2":
+            coordinates = c.LogPtPhiEtaLogM2(self.pt_min, self.units)
+        elif coordinates_label == "StandardLogPtPhiEtaLogM2":
+            coordinates = c.StandardLogPtPhiEtaLogM2(
+                self.pt_min,
+                self.units,
+                fixed_dims=self.cfm.masked_dims,
+                fixed_jets=self.cfm.mask_jets,
+            )
+        elif coordinates_label == "JetScaledPtPhiEtaM2":
+            coordinates = c.JetScaledPtPhiEtaM2()
+        elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
+            coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
+                self.pt_min, self.units, self.cfm.masked_dims
+            )
+        else:
+            raise ValueError(f"coordinates={coordinates_label} not implemented")
+        return coordinates
+
+    def init_geometry(self):
+        # placeholder for any initialization that needs to be done
+        if self.cfm.geometry.type == "simple":
+            self.geometry = SimplePossiblyPeriodicGeometry(
+                contains_phi=self.coordinates.contains_phi,
+                periodic=self.cfm.geometry.periodic,
+            )
+        else:
+            raise ValueError(f"geometry={self.cfm.geometry} not implemented")
+
+    def handle_velocity(self, v, batch_ptr=None):
+        v[..., self.cfm.masked_dims] = 0.0
+        if self.cfm.mask_jets:
+            v[batch_ptr[:-1]] = 0.0
+        return v

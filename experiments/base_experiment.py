@@ -14,17 +14,17 @@ import mlflow
 from torch_ema import ExponentialMovingAverage
 import pytorch_optimizer
 
-import gatr.primitives.attention
-import gatr.layers.linear
-import gatr.layers.mlp.geometric_bilinears
-import gatr.layers.mlp.mlp
-import gatr.primitives.linear
-from experiments.misc import get_device, flatten_dict
+import lgatr.primitives.attention
+import lgatr.layers.linear
+import lgatr.layers.mlp.geometric_bilinears
+import lgatr.layers.mlp.mlp
+import lgatr.primitives.linear
+from experiments.utils import get_device, flatten_dict
 import experiments.logger
 from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER, RankFilter
 from experiments.mlflow import log_mlflow
 
-from gatr.layers import MLPConfig, SelfAttentionConfig, CrossAttentionConfig
+from lgatr.layers import MLPConfig, SelfAttentionConfig, CrossAttentionConfig
 
 cs = ConfigStore.instance()
 cs.store(name="base_attention", node=SelfAttentionConfig)
@@ -116,24 +116,24 @@ class BaseExperiment:
         )
 
     def init_geometric_algebra(self):
-        gatr.primitives.linear.USE_FULLY_CONNECTED_SUBGROUP = (
+        lgatr.primitives.linear.USE_FULLY_CONNECTED_SUBGROUP = (
             self.cfg.ga_settings.use_fully_connected_subgroup
         )
         if self.cfg.ga_settings.use_fully_connected_subgroup:
-            gatr.layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = (
+            lgatr.layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = (
                 self.cfg.ga_settings.mix_mvpseudoscalar_into_scalar
             )
         else:
-            gatr.layers.linear.NUM_PIN_LINEAR_BASIS_ELEMENTS = 5
+            lgatr.layers.linear.NUM_PIN_LINEAR_BASIS_ELEMENTS = 5
             if self.cfg.ga_settings.mix_mvpseudoscalar_into_scalar:
                 LOGGER.warning(
                     "Mixing mvpseudoscalar into scalar is only possible if ga_settings.use_fully_connected_subgroup=True"
                 )
-                gatr.layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = False
-        gatr.layers.mlp.mlp.USE_GEOMETRIC_PRODUCT = (
+                lgatr..layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = False
+        lgatr.layers.mlp.mlp.USE_GEOMETRIC_PRODUCT = (
             self.cfg.ga_settings.use_geometric_product
         )
-        gatr.layers.mlp.geometric_bilinears.ZERO_BIVECTOR = (
+        lgatr.layers.mlp.geometric_bilinears.ZERO_BIVECTOR = (
             self.cfg.ga_settings.zero_bivector
         )
 
@@ -386,7 +386,7 @@ class BaseExperiment:
         )
         if self.cfg.training.force_xformers:
             LOGGER.debug("Forcing use of xformers' attention implementation")
-            gatr.primitives.attention.FORCE_XFORMERS = True
+            lgatr.primitives.attention.FORCE_XFORMERS = True
 
     def _init_optimizer(self, param_groups=None):
         if param_groups is None:

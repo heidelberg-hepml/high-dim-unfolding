@@ -5,10 +5,12 @@ import numpy as np
 import awkward as ak
 import os
 
-from gatr.interface import embed_vector
+from lgatr.interface import embed_vector
 from experiments.utils import (
     ensure_angle,
     pid_encoding,
+)
+from experiments.coordinates import (
     jetmomenta_to_fourmomenta,
     fourmomenta_to_jetmomenta,
 )
@@ -118,8 +120,8 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.mass
-    gen_particles[..., 3] = cfg.mass
+    det_particles[..., 3] = cfg.mass**2
+    gen_particles[..., 3] = cfg.mass**2
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
@@ -206,8 +208,8 @@ def load_ttbar(data_path, cfg, dtype):
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.mass
-    gen_particles[..., 3] = cfg.mass
+    det_particles[..., 3] = cfg.mass**2
+    gen_particles[..., 3] = cfg.mass**2
 
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)

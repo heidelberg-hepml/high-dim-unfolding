@@ -25,7 +25,7 @@ from experiments.multiplicity.embedding import (
 )
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-from gatr.interface import get_num_spurions
+from lgatr..interface import get_num_spurions
 
 MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
 

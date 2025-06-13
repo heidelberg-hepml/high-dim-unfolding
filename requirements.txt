@@ -33,3 +33,4 @@ torchdiffeq # for CFM sampling
 
 energyflow
 awkward
+lgatr

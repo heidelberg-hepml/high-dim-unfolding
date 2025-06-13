@@ -1,7 +1,7 @@
 from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
 
-from gatr.interface import extract_scalar
+from lgatr.interface import extract_scalar
 from experiments.utils import xformers_mask
 
 

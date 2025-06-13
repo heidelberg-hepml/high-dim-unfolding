@@ -5,9 +5,12 @@ from einops import rearrange
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from gatr.layers import ApplyRotaryPositionalEncoding, ApplyAbsolutePositionalEncoding
-from gatr.primitives.attention import scaled_dot_product_attention
-from experiments.misc import to_nd
+from experiments.baselines.positional_encoding import (
+    ApplyRotaryPositionalEncoding,
+    ApplyAbsolutePositionalEncoding,
+)
+from lgatr.primitives.attention import scaled_dot_product_attention
+from experiments.utils import to_nd
 
 
 class BaselineLayerNorm(nn.Module):

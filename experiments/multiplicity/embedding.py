@@ -9,7 +9,7 @@ from experiments.utils import (
     ensure_angle,
     jetmomenta_to_fourmomenta,
 )
-from gatr.interface import embed_vector, embed_spurions
+from lgatr.interface import embed_vector, embed_spurions
 from experiments.logger import LOGGER
 
 

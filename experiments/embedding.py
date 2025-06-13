@@ -1,6 +1,6 @@
 import torch
 
-from gatr.interface import embed_vector
+from lgatr.interface import embed_vector
 
 
 def event_to_GA_with_spurions(fourmomenta, scalars, spurions):

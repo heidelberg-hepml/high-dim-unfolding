@@ -262,3 +262,20 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_LogPt(pt_min, units),
             tr.StandardNormal(fixed_dims, fixed_jets=True),
         ]
+
+
+ptphietam2 = PtPhiEtaM2()
+
+
+def fourmomenta_to_jetmomenta(fourmomenta):
+    """
+    Convert four-momenta (E, px, py, pz) to jet momenta (pt, phi, eta, m^2).
+    """
+    return ptphietam2.fourmomenta_to_x(fourmomenta)
+
+
+def jetmomenta_to_fourmomenta(jetmomenta):
+    """
+    Convert jet momenta (pt, phi, eta, m^2) to four-momenta (E, px, py, pz).
+    """
+    return ptphietam2.x_to_fourmomenta(jetmomenta)

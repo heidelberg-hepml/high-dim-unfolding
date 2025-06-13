@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 import torch
 from xformers.ops.fmha import BlockDiagonalMask
 import math
@@ -35,34 +36,6 @@ def unpack_last(x):
     # unpack along the last dimension
     n = len(x.shape)
     return torch.permute(x, (n - 1, *list(range(n - 1))))
-
-
-def fourmomenta_to_jetmomenta(fourmomenta):
-    in_dtype = fourmomenta.dtype
-    fourmomenta = fourmomenta.to(dtype=torch.float64)
-    pt = get_pt(fourmomenta)
-    phi = get_phi(fourmomenta)
-    eta = get_eta(fourmomenta)
-    mass = get_mass(fourmomenta)
-
-    jetmomenta = torch.stack((pt, phi, eta, mass), dim=-1)
-    assert torch.isfinite(jetmomenta).all()
-    return jetmomenta.to(in_dtype)
-
-
-def jetmomenta_to_fourmomenta(jetmomenta):
-    in_dtype = jetmomenta.dtype
-    jetmomenta = jetmomenta.to(dtype=torch.float64)
-    pt, phi, eta, mass = unpack_last(jetmomenta)
-
-    px = pt * torch.cos(phi)
-    py = pt * torch.sin(phi)
-    pz = pt * torch.sinh(eta.clamp(min=-CUTOFF, max=CUTOFF))
-    E = torch.sqrt(mass**2 + px**2 + py**2 + pz**2)
-
-    fourmomenta = torch.stack((E, px, py, pz), dim=-1)
-    assert torch.isfinite(fourmomenta).all()
-    return fourmomenta.to(in_dtype)
 
 
 def ensure_angle(phi):
@@ -292,3 +265,54 @@ def xformers_cond_mask(batch, batch_condition=None, materialize=False):
         )
 
     return mask
+
+
+def get_device() -> torch.device:
+    """Gets CUDA if available, CPU else."""
+    return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+
+def to_nd(tensor, d):
+    """Make tensor n-dimensional, group extra dimensions in first."""
+    return tensor.view(
+        -1, *(1,) * (max(0, d - 1 - tensor.dim())), *tensor.shape[-(d - 1) :]
+    )
+
+
+def flatten_dict(d, parent_key="", sep="."):
+    """Flattens a nested dictionary with str keys."""
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, Mapping):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+
+def frequency_check(step, every_n_steps, skip_initial=False):
+    """Checks whether an action should be performed at a given step and frequency.
+
+    Parameters
+    ----------
+    step : int
+        Step number (one-indexed)
+    every_n_steps : None or int
+        Desired action frequency. None or 0 correspond to never executing the action.
+    skip_initial : bool
+        If True, frequency_check returns False at step 0.
+
+    Returns
+    -------
+    decision : bool
+        Whether the action should be executed.
+    """
+
+    if every_n_steps is None or every_n_steps == 0:
+        return False
+
+    if skip_initial and step == 0:
+        return False
+
+    return step % every_n_steps == 0
