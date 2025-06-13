@@ -1,4 +1,4 @@
-_target_: experiments.kinematics.wrappers.ConditionalGATrCFM
+_target_: experiments.kinematics.wrappers.ConditionalLGATrCFM
 scalar_dims: [0, 3]
 
 net:
@@ -16,25 +16,18 @@ net:
  reinsert_mv_channels: null
  reinsert_s_channels: null
  dropout_prob: null
- double_layernorm: false
 
  attention:
   num_heads: 4
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
-  pos_encoding: true
-  pos_encoding_type: "absolute"
-  pos_encoding_base: 256
 
  crossattention:
   num_heads: 4
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
-  pos_encoding: true
-  pos_encoding_type: "absolute"
-  pos_encoding_base: 256
 
 net_condition:
  _target_: lgatr.nets.GATr
@@ -58,9 +51,6 @@ net_condition:
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
-  pos_encoding: true
-  pos_encoding_type: "absolute"
-  pos_encoding_base: 256
 
 defaults:
  - /base_attention@net.attention

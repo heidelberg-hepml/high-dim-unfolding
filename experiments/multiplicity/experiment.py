@@ -19,15 +19,14 @@ from experiments.distributions import (
     smooth_cross_entropy,
 )
 from experiments.multiplicity.plots import plot_mixer
-from experiments.multiplicity.embedding import (
+from experiments.embedding import (
     embed_data_into_ga,
-    compute_scalar_features_from_jetmomenta,
 )
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-from lgatr..interface import get_num_spurions
+from lgatr.interface import get_num_spurions
 
-MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
+MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
 
 class MultiplicityExperiment(BaseExperiment):
@@ -71,7 +70,7 @@ class MultiplicityExperiment(BaseExperiment):
                         self.cfg.model.net.out_channels = (
                             self.cfg.data.max_num_particles + 1
                         )
-            elif self.cfg.modelname == "GATr":
+            elif self.cfg.modelname == "LGATr":
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
@@ -355,7 +354,7 @@ class MultiplicityExperiment(BaseExperiment):
             scalars = batch.scalars_det
             input = torch.cat([batch.x_det, scalars], dim=-1)
             output = self.model(input, batch.x_det_batch)
-        elif self.cfg.modelname == "GATr":
+        elif self.cfg.modelname == "LGATr":
             embedding = embed_data_into_ga(
                 batch.x_det,
                 batch.scalars_det,

@@ -6,9 +6,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 from experiments.base_plots import plot_loss, plot_metric
 from experiments.kinematics.plots import (
     plot_histogram,
-    plot_calibration,
-    simple_histogram,
-    plot_roc,
     plot_correlations,
 )
 from experiments.utils import get_range

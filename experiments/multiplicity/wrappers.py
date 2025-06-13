@@ -14,12 +14,12 @@ class MultiplicityTransformerWrapper(nn.Module):
 
     def forward(self, batch, batch_idx):
         mask = xformers_mask(batch_idx, materialize=not self.force_xformers)
-        outputs = self.net(batch.unsqueeze(0), attention_mask=mask)
+        outputs = self.net(batch.unsqueeze(0), attn_bias=mask)
         outputs = self.aggregation(outputs, batch_idx).squeeze(0)
         return outputs
 
 
-class MultiplicityGATrWrapper(nn.Module):
+class MultiplicityLGATrWrapper(nn.Module):
     """
     L-GATr for multiplicity
     """
@@ -41,7 +41,7 @@ class MultiplicityGATrWrapper(nn.Module):
 
         mask = xformers_mask(embedding["batch"], materialize=not self.force_xformers)
         multivector_outputs, scalar_outputs = self.net(
-            multivector, scalars=scalars, attention_mask=mask
+            multivector, scalars=scalars, attn_bias=mask
         )
         params = self.extract_from_ga(
             multivector_outputs,

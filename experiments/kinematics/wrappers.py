@@ -55,7 +55,7 @@ class ConditionalTransformerCFM(EventCFM):
         return self.geometry._handle_periodic(vp)
 
 
-class ConditionalGATrCFM(EventCFM):
+class ConditionalLGATrCFM(EventCFM):
     """
     GATr velocity network
     """

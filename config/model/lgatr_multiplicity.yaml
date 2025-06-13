@@ -1,9 +1,9 @@
-_target_: experiments.multiplicity.wrappers.MultiplicityGATrWrapper
+_target_: experiments.multiplicity.wrappers.MultiplicityLGATrWrapper
 force_xformers: '${training.force_xformers}'
 mean_aggregation: true
 
 net:
- _target_: lgatr.nets.GATr
+ _target_: lgatr.nets.LGATr
 
  in_mv_channels: 1
  out_mv_channels: null
@@ -17,7 +17,6 @@ net:
  reinsert_mv_channels: null
  reinsert_s_channels: null
  dropout_prob: null
- double_layernorm: false
 
  attention:
   num_heads: 4

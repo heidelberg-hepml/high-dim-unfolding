@@ -12,7 +12,7 @@ from fastjet_contribs import (
     apply_soft_drop,
 )
 
-from lgatr.interface import embed_spurions, extract_vector
+from lgatr.interface import get_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
     Dataset,
@@ -67,7 +67,7 @@ class KinematicsExperiment(BaseExperiment):
                 self.cfg.data.add_spurions = True
 
             if self.cfg.data.add_spurions:
-                self.spurions = embed_spurions(
+                self.spurions = get_spurions(
                     self.cfg.data.beam_reference,
                     self.cfg.data.add_time_reference,
                     self.cfg.data.two_beams,
@@ -290,7 +290,7 @@ class KinematicsExperiment(BaseExperiment):
             )
 
         if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
-            self.spurions = embed_spurions(
+            self.spurions = get_spurions(
                 self.cfg.data.beam_reference,
                 self.cfg.data.add_time_reference,
                 self.cfg.data.two_beams,

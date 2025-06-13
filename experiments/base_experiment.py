@@ -129,7 +129,7 @@ class BaseExperiment:
                 LOGGER.warning(
                     "Mixing mvpseudoscalar into scalar is only possible if ga_settings.use_fully_connected_subgroup=True"
                 )
-                lgatr..layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = False
+                lgatr.layers.linear.MIX_MVPSEUDOSCALAR_INTO_SCALAR = False
         lgatr.layers.mlp.mlp.USE_GEOMETRIC_PRODUCT = (
             self.cfg.ga_settings.use_geometric_product
         )
