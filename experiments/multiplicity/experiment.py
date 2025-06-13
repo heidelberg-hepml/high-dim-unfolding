@@ -46,9 +46,13 @@ class MultiplicityExperiment(BaseExperiment):
             if self.cfg.data.dataset == "zplusjet":
                 self.cfg.data.max_num_particles = 152
                 self.cfg.data.diff = [-53, 78]
+                self.cfg.data.pt_min = 0.0
+                self.cfg.data.units = 1.0
             elif self.cfg.data.dataset == "ttbar":
                 self.cfg.data.max_num_particles = 238
                 self.cfg.data.diff = [-35, 101]
+                self.cfg.data.pt_min = 0.0
+                self.cfg.data.units = 1.0
 
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
@@ -102,15 +106,6 @@ class MultiplicityExperiment(BaseExperiment):
                         self.cfg.data.two_beams,
                         self.cfg.data.add_xzplane,
                         self.cfg.data.add_yzplane,
-                    )
-
-                # reinsert channels
-                if self.cfg.data.reinsert_channels:
-                    self.cfg.model.net.reinsert_mv_channels = list(
-                        range(self.cfg.model.net.in_mv_channels)
-                    )
-                    self.cfg.model.net.reinsert_s_channels = list(
-                        range(self.cfg.model.net.in_s_channels)
                     )
 
             else:

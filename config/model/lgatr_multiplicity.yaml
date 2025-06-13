@@ -14,8 +14,6 @@ net:
  hidden_s_channels: 12
 
  num_blocks: 2
- reinsert_mv_channels: null
- reinsert_s_channels: null
  dropout_prob: null
 
  attention:

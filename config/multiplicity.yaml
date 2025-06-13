@@ -8,7 +8,8 @@ data:
  dataset: zplusjet
  length: -1
  train_val_test: [0.8, 0.1, 0.1]
- max_num_particles: 152
+ max_num_particles: null
+ diff: null
  max_constituents: -1
  add_spurions: false
  embed_det_in_GA: false
@@ -17,12 +18,10 @@ data:
  beam_token: true
  add_time_spurion: true
  add_pid: false
- reinsert_channels: false
- pt_min: 0.0
- units: 10.
+ pt_min: null
+ units: null
  mass: 0.001
  add_jet: false
- transform: true
 
 dist: 
  type: GaussianMixture
@@ -36,7 +35,7 @@ loss:
 train: true
 training:
  iterations: 10000
- batchsize: 128
+ batchsize: 1024
  lr: 1e-3
  validate_every_n_steps: 100000
  force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
@@ -44,18 +43,18 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 128
- save: 10
+ batchsize: 4096
+ save: 0
 
 plot: true
 plotting:
  loss: true
  histogram: true
- distributions: true
- n_distributions: 30
+ distributions: false
+ n_distributions: 0
  diff: true
- corr: true
- components: true
+ corr: false
+ components: false
 
 defaults:
  - model: tr_multiplicity

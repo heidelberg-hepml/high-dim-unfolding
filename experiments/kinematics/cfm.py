@@ -208,10 +208,8 @@ class EventCFM(CFM):
         units: float
             Scale of dimensionful quantities
             I call it 'units' because we can really choose it arbitrarily without losing anything
-            Hard-coded in EventGenerationExperiment
         pt_min: List[float]
             Minimum pt value for each particle
-            Hard-coded in EventGenerationExperiment
         mass: float
         """
         self.units = units

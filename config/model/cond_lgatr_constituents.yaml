@@ -13,8 +13,6 @@ net:
  hidden_s_channels: 16
 
  num_blocks: 4
- reinsert_mv_channels: null
- reinsert_s_channels: null
  dropout_prob: null
 
  attention:
@@ -41,10 +39,7 @@ net_condition:
  hidden_s_channels: 16
 
  num_blocks: 4
- reinsert_mv_channels: null
- reinsert_s_channels: null
  dropout_prob: null
- double_layernorm: false
 
  attention:
   num_heads: 4
