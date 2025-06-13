@@ -1,4 +1,5 @@
 _target_: experiments.kinematics.wrappers.ConditionalTransformerCFM
+force_xformers: '${training.force_xformers}'
 
 net:
   _target_: experiments.baselines.ConditionalTransformer

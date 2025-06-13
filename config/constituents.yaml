@@ -10,23 +10,19 @@ data:
  dataset: zplusjet
  length: -1
  train_val_test: [0.8, 0.1, 0.1]
- max_num_particles: 152
+ max_num_particles: null
+ diff: null
  max_constituents: -1
  add_spurions: false
- embed_det_in_GA: false
- beam_reference: xyplane
- two_beams: true
+ beam_spurion: xyplane
+ beam_mirror: true
  beam_token: true
- add_time_reference: true
- add_xzplane: false
- add_yzplane: false
+ add_time_spurion: true
  add_pid: false
- reinsert_channels: false
- pt_min: 0.0
- units: 10.
+ pt_min: null
+ units: null
  mass: 0.001
  add_jet: false
- transform: true
 
 cfm:
  embed_t_dim: 8
@@ -39,7 +35,7 @@ cfm:
   type: simple
   periodic: true
  transforms_float64: true
- masked_dims: [3]
+ masked_dims: []
  mask_jets: false
 
 odeint:
@@ -79,6 +75,6 @@ plotting:
  correlations: false
 
 defaults:
- - model: cond_tr_unfolding
+ - model: cond_tr_constituents
  - default
  - _self_

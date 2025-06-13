@@ -1,9 +1,10 @@
 _target_: experiments.multiplicity.wrappers.MultiplicityTransformerWrapper
+force_xformers: '${training.force_xformers}'
 
 net:
   _target_: experiments.baselines.Transformer
 
-  in_channels: 4
+  in_channels: null
   out_channels: null
   hidden_channels: 64
 

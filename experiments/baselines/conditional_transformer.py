@@ -113,7 +113,7 @@ class CrossAttention(nn.Module):
         return outputs
 
     @staticmethod
-    def _attend(q, k, v, attention_mask=None, is_causal=False):
+    def _attend(q, k, v, attention_mask=None):
         """Scaled dot-product attention."""
 
         # Add batch dimension if needed
@@ -127,8 +127,7 @@ class CrossAttention(nn.Module):
             q.contiguous(),
             k.contiguous(),
             v.contiguous(),
-            attn_mask=attention_mask,
-            is_causal=is_causal,
+            attn_bias=attention_mask,
         )
 
         # Return batch dimensions to inputs

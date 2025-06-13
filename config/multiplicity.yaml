@@ -11,12 +11,6 @@ data:
  max_num_particles: null
  diff: null
  max_constituents: -1
- add_spurions: false
- embed_det_in_GA: false
- beam_spurion: xyplane
- beam_mirror: true
- beam_token: true
- add_time_spurion: true
  add_pid: false
  pt_min: null
  units: null

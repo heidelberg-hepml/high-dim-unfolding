@@ -39,19 +39,18 @@ class KinematicsExperiment(BaseExperiment):
             if self.cfg.data.dataset == "cms":
                 self.cfg.data.max_num_particles = 3
                 self.cfg.data.pt_min = 30.0
-                self.cfg.data.units = 10.0
-                self.cfg.cfm.masked_dims = []
+                self.cfg.data.units = 1.0
 
             if self.cfg.data.dataset == "zplusjet":
                 self.cfg.data.max_num_particles = 152
                 self.cfg.data.pt_min = 0.0
-                self.cfg.data.units = 10.0
+                self.cfg.data.units = 1.0
                 self.cfg.cfm.masked_dims = [3]
 
             if self.cfg.data.dataset == "ttbar":
                 self.cfg.data.max_num_particles = 238
                 self.cfg.data.pt_min = 0.0
-                self.cfg.data.units = 10.0
+                self.cfg.data.units = 1.0
                 self.cfg.cfm.masked_dims = [3]
 
             if self.cfg.data.max_constituents == -1:
@@ -66,46 +65,7 @@ class KinematicsExperiment(BaseExperiment):
                 self.cfg.data.embed_det_in_GA = True
                 self.cfg.data.add_spurions = True
 
-            if self.cfg.data.add_spurions:
-                self.spurions = get_spurions(
-                    self.cfg.data.beam_reference,
-                    self.cfg.data.add_time_reference,
-                    self.cfg.data.two_beams,
-                    self.cfg.data.add_xzplane,
-                    self.cfg.data.add_yzplane,
-                )
-                self.cfg.data.num_spurions = self.spurions.size(-2)
-            else:
-                self.spurions = None
-                self.cfg.data.num_spurions = 0
-
-            if self.cfg.modelname == "ConditionalMLP":
-                self.cfg.data.embed_det_in_GA = False
-                self.cfg.model.net.in_shape = 4 + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.out_shape = 4
-                if self.cfg.data.add_pid:
-                    self.cfg.model.net.in_channels += 6
-            elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
-                self.cfg.data.embed_det_in_GA = False
-                self.cfg.model.autoregressive_tr.in_channels = 4
-                self.cfg.model.net_condition.in_channels = 4
-                self.cfg.model.net_condition.out_channels = (
-                    self.cfg.model.autoregressive_tr.hidden_channels
-                )
-                self.cfg.model.autoregressive_tr.out_channels = (
-                    self.cfg.model.autoregressive_tr.hidden_channels
-                )
-                self.cfg.model.mlp.in_shape = (
-                    4
-                    + self.cfg.cfm.embed_t_dim
-                    + self.cfg.model.autoregressive_tr.out_channels
-                )
-                self.cfg.model.mlp.out_shape = 4
-                self.cfg.model.mlp.hidden_channels = (
-                    self.cfg.model.autoregressive_tr.hidden_channels
-                )
-            elif self.cfg.modelname == "ConditionalTransformer":
-                self.cfg.data.embed_det_in_GA = False
+            if self.cfg.modelname == "ConditionalTransformer":
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
                 self.cfg.model.net_condition.in_channels = 4
                 self.cfg.model.net_condition.out_channels = (
@@ -198,7 +158,7 @@ class KinematicsExperiment(BaseExperiment):
             raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
         det_particles = data["det_particles"]
         det_mults = data["det_mults"]
-        det_pids = data["det_pids"]
+        det_scalars = data["det_pids"]
         gen_particles = data["gen_particles"]
         gen_mults = data["gen_mults"]
         gen_pids = data["gen_pids"]
@@ -210,7 +170,9 @@ class KinematicsExperiment(BaseExperiment):
             # add det jet as first particle to condition
             det_jets = det_particles.sum(dim=1, keepdim=True)
             det_particles = torch.cat([det_jets, det_particles], dim=1)
-            det_pids = torch.cat([torch.zeros_like(det_pids[:, :1]), det_pids], dim=1)
+            det_scalars = torch.cat(
+                [torch.zeros_like(det_scalars[:, :1]), det_scalars], dim=1
+            )
             det_mults += 1
 
             # add gen jet as first particle to condition
@@ -235,7 +197,6 @@ class KinematicsExperiment(BaseExperiment):
             pt_min=self.cfg.data.pt_min,
             mass=self.cfg.data.mass,
         )
-        self.model.init_distribution()
         self.model.init_coordinates()
 
         # initialize geometry
@@ -300,27 +261,13 @@ class KinematicsExperiment(BaseExperiment):
         else:
             self.spurions = None
 
-        self.train_data = Dataset(
-            self.dtype,
-            self.cfg.data.add_jet,
-            self.cfg.data.embed_det_in_GA,
-            self.spurions,
-        )
-        self.val_data = Dataset(
-            self.dtype,
-            self.cfg.data.add_jet,
-            self.cfg.data.embed_det_in_GA,
-            self.spurions,
-        )
-        self.test_data = Dataset(
-            self.dtype,
-            self.cfg.data.add_jet,
-            self.cfg.data.embed_det_in_GA,
-            self.spurions,
-        )
+        self.train_data = Dataset(self.dtype)
+        self.val_data = Dataset(self.dtype)
+        self.test_data = Dataset(self.dtype)
+
         self.train_data.create_data_list(
             det_particles[:train_idx],
-            det_pids[:train_idx],
+            det_scalars[:train_idx],
             det_mults[:train_idx],
             gen_particles[:train_idx],
             gen_pids[:train_idx],
@@ -328,7 +275,7 @@ class KinematicsExperiment(BaseExperiment):
         )
         self.val_data.create_data_list(
             det_particles[train_idx:val_idx],
-            det_pids[train_idx:val_idx],
+            det_scalars[train_idx:val_idx],
             det_mults[train_idx:val_idx],
             gen_particles[train_idx:val_idx],
             gen_pids[train_idx:val_idx],
@@ -336,7 +283,7 @@ class KinematicsExperiment(BaseExperiment):
         )
         self.test_data.create_data_list(
             det_particles[val_idx:test_idx],
-            det_pids[val_idx:test_idx],
+            det_scalars[val_idx:test_idx],
             det_mults[val_idx:test_idx],
             gen_particles[val_idx:test_idx],
             gen_pids[val_idx:test_idx],

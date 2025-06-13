@@ -19,9 +19,6 @@ from experiments.distributions import (
     smooth_cross_entropy,
 )
 from experiments.multiplicity.plots import plot_mixer
-from experiments.embedding import (
-    embed_data_into_ga,
-)
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 from lgatr.interface import get_num_spurions
@@ -138,29 +135,9 @@ class MultiplicityExperiment(BaseExperiment):
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
-        if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
-            self.spurions = None
-        else:
-            self.spurions = None
-
-        self.train_data = Dataset(
-            self.dtype,
-            self.cfg.data.add_jet,
-            self.cfg.data.embed_det_in_GA,
-            self.spurions,
-        )
-        self.val_data = Dataset(
-            self.dtype,
-            self.cfg.data.add_jet,
-            self.cfg.data.embed_det_in_GA,
-            self.spurions,
-        )
-        self.test_data = Dataset(
-            self.dtype,
-            self.cfg.data.add_jet,
-            self.cfg.data.embed_det_in_GA,
-            self.spurions,
-        )
+        self.train_data = Dataset(self.dtype)
+        self.val_data = Dataset(self.dtype)
+        self.test_data = Dataset(self.dtype)
         self.train_data.create_data_list(
             det_particles[:train_idx],
             det_pids[:train_idx],
@@ -308,8 +285,17 @@ class MultiplicityExperiment(BaseExperiment):
         plot_mixer(self.cfg, plot_path, plot_dict)
 
     def _batch_loss(self, batch):
-        predicted_dist, label = self._get_predicted_dist_and_label(batch)
-        params = predicted_dist.params.cpu().detach()
+        batch = batch.to(self.device)
+
+        output = self.model(batch)
+        params = torch.clamp(output, min=-10, max=5)  # avoid inf and 0
+        params = torch.exp(params)  # ensure positive params
+        if self.distribution == "Categorical":
+            params = torch.nn.functional.softmax(params, dim=-1)
+        predicted_dist = self.distribution(params)  # batch of mixtures
+
+        label = batch.x_gen_ptr.diff()
+
         if self.cfg.dist.diff:
             if self.cfg.dist.type == "Categorical":
                 # Rescale to have only positive indices
@@ -338,34 +324,10 @@ class MultiplicityExperiment(BaseExperiment):
         assert torch.isfinite(loss).all()
         det_mult = batch.x_det_ptr.diff().cpu()
         metrics = {
-            "params": params,
+            "params": params.cpu().detach(),
             "samples": torch.stack([sample, label.cpu(), det_mult], dim=-1),
         }
         return loss, metrics
-
-    def _get_predicted_dist_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
-        batch = batch.to(self.device)
-        if self.cfg.modelname == "Transformer":
-            scalars = batch.scalars_det
-            input = torch.cat([batch.x_det, scalars], dim=-1)
-            output = self.model(input, batch.x_det_batch)
-        elif self.cfg.modelname == "LGATr":
-            embedding = embed_data_into_ga(
-                batch.x_det,
-                batch.scalars_det,
-                batch.x_det_ptr,
-                self.cfg.data,
-            )
-            output = self.model(embedding)
-
-        params = torch.clamp(output, min=min_arg, max=max_arg)  # avoid inf and 0
-        params = torch.exp(params)  # ensure positive params
-        if self.distribution == "Categorical":
-            params = torch.nn.functional.softmax(params, dim=-1)
-
-        predicted_dist = self.distribution(params)  # batch of mixtures
-
-        return predicted_dist, batch.x_gen_ptr.diff()
 
     def _init_metrics(self):
         return {"params": [], "samples": []}

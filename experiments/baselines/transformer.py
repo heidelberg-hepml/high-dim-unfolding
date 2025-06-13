@@ -191,7 +191,6 @@ class BaselineSelfAttention(nn.Module):
         self,
         inputs: torch.Tensor,
         attention_mask: Optional[torch.Tensor] = None,
-        is_causal: bool = False,
     ) -> torch.Tensor:
         """Forward pass.
 
@@ -217,7 +216,7 @@ class BaselineSelfAttention(nn.Module):
             k = self.pos_encoding(k, attention_mask)
 
         # Attention layer
-        h = self._attend(q, k, v, attention_mask, is_causal=is_causal)
+        h = self._attend(q, k, v, attention_mask)
 
         # Concatenate heads and transform linearly
         h = rearrange(
@@ -232,7 +231,7 @@ class BaselineSelfAttention(nn.Module):
         return outputs
 
     @staticmethod
-    def _attend(q, k, v, attention_mask=None, is_causal=False):
+    def _attend(q, k, v, attention_mask=None):
         """Scaled dot-product attention."""
 
         # Add batch dimension if needed
@@ -246,8 +245,7 @@ class BaselineSelfAttention(nn.Module):
             q.contiguous(),
             k.expand_as(q).contiguous(),
             v.expand_as(q).contiguous(),
-            attn_mask=attention_mask,
-            is_causal=is_causal,
+            attn_bias=attention_mask,
         )
 
         # Return batch dimensions to inputs
@@ -322,9 +320,7 @@ class BaselineTransformerBlock(nn.Module):
             nn.Dropout(dropout_prob) if dropout_prob is not None else nn.Identity(),
         )
 
-    def forward(
-        self, inputs: torch.Tensor, attention_mask=None, is_causal=False
-    ) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, attention_mask=None) -> torch.Tensor:
         """Forward pass.
 
         Parameters
@@ -342,7 +338,7 @@ class BaselineTransformerBlock(nn.Module):
 
         # Residual attention
         h = self.norm(inputs)
-        h = self.attention(h, attention_mask=attention_mask, is_causal=is_causal)
+        h = self.attention(h, attention_mask=attention_mask)
         outputs = inputs + h
 
         # Residual MLP
@@ -417,9 +413,7 @@ class Transformer(nn.Module):
         )
         self.linear_out = nn.Linear(hidden_channels, out_channels)
 
-    def forward(
-        self, inputs: torch.Tensor, attention_mask=None, is_causal=False
-    ) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, attention_mask=None) -> torch.Tensor:
         """Forward pass.
 
         Parameters
@@ -428,7 +422,6 @@ class Transformer(nn.Module):
             Input data
         attention_mask : None or Tensor or xformers.ops.AttentionBias
             Optional attention mask
-        is_causal: bool
 
         Returns
         -------
@@ -442,10 +435,9 @@ class Transformer(nn.Module):
                     block,
                     inputs=h,
                     attention_mask=attention_mask,
-                    is_causal=is_causal,
                 )
             else:
-                h = block(h, attention_mask=attention_mask, is_causal=is_causal)
+                h = block(h, attention_mask=attention_mask)
         outputs = self.linear_out(h)
 
         return outputs
