@@ -119,9 +119,14 @@ class CFM(nn.Module):
         vt = self.handle_velocity(vt, batch.x_gen_ptr)
 
         # evaluate conditional flow matching objective
+        alpha = self.cfm.cosine_similarity_factor
         distance = ((vp - vt) ** 2).mean()
+        cosine_similarity = (
+            1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
+        ).mean()
+        loss = (1 - alpha) * distance + alpha * cosine_similarity
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
-        return distance, distance_particlewise
+        return loss, distance_particlewise
 
     def sample(self, batch, device, dtype):
         """
