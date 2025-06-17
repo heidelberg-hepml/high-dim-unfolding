@@ -35,6 +35,36 @@ class BaselineLayerNorm(nn.Module):
         )
 
 
+class ContextualLayerNorm(nn.Module):
+    """Adaptive layer norm learned from context, applied over all dimensions except the first."""
+
+    def __init__(self, in_channels: int, context_channels: int):
+        super().__init__()
+        self.condition_proj = nn.Linear(context_channels, in_channels * 2)
+
+    def forward(self, inputs: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
+        """Forward pass.
+
+        Parameters
+        ----------
+        inputs : Tensor
+            Input data
+
+        Returns
+        -------
+        outputs : Tensor
+            Normalized inputs.
+        """
+        weight, bias = self.condition_proj(condition).unsqueeze(1).chunk(2, dim=-1)
+        return (
+            torch.nn.functional.layer_norm(
+                inputs, normalized_shape=inputs.shape[-1:], elementwise_affine=False
+            )
+            * (1 + weight)
+            + bias
+        )
+
+
 class MultiHeadQKVLinear(nn.Module):
     """Compute queries, keys, and values via multi-head attention.
 

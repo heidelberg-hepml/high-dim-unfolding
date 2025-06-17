@@ -532,56 +532,76 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
-    def _inverse(self, y, batch_ptr, **kwargs):
+    def _inverse(self, y, batch_ptr=None, jet=None, **kwargs):
         pt, phi, eta, m2 = unpack_last(y)
-        jet_pt = pt[batch_ptr[:-1]]
-        jet_phi = phi[batch_ptr[:-1]]
-        jet_eta = eta[batch_ptr[:-1]]
+        if jet is not None:
+            ext_jet_pt = jet[:, 0]
+            ext_jet_phi = jet[:, 1]
+            ext_jet_eta = jet[:, 2]
+        elif batch_ptr is not None:
+            jet_pt = pt[batch_ptr[:-1]]
+            jet_phi = phi[batch_ptr[:-1]]
+            jet_eta = eta[batch_ptr[:-1]]
+            ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
+            ext_jet_phi = torch.repeat_interleave(jet_phi, batch_ptr.diff(), dim=0)
+            ext_jet_eta = torch.repeat_interleave(jet_eta, batch_ptr.diff(), dim=0)
+        else:
+            raise ValueError(
+                "Either provide a jet tensor or a batch_ptr for the PtPhiEtaM2_to_JetScale transform."
+            )
 
-        ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
-        ext_jet_phi = torch.repeat_interleave(jet_phi, batch_ptr.diff(), dim=0)
-        ext_jet_eta = torch.repeat_interleave(jet_eta, batch_ptr.diff(), dim=0)
         pt = pt * ext_jet_pt
-        pt[batch_ptr[:-1]] = jet_pt
         phi = phi + ext_jet_phi
         phi = ensure_angle(phi)
-        phi[batch_ptr[:-1]] = jet_phi
         eta = eta + ext_jet_eta
-        eta[batch_ptr[:-1]] = jet_eta
+        if batch_ptr is not None:
+            jet_pt = pt[batch_ptr[:-1]]
+            jet_phi = phi[batch_ptr[:-1]]
+            jet_eta = eta[batch_ptr[:-1]]
 
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
-    def _jac_forward(self, ptphietam2, y, batch_ptr, **kwargs):
-        pt, phi, eta, m2 = unpack_last(ptphietam2)
-        jet_pt = pt[batch_ptr[:-1]]
-
-        ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
+    def _jac_forward(self, ptphietam2, y, batch_ptr=None, jet=None, **kwargs):
+        pt = ptphietam2[..., 0]
+        if jet is not None:
+            ext_jet_pt = jet[:, 0]
+        elif batch_ptr is not None:
+            jet_pt = pt[batch_ptr[:-1]]
+            ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
 
         zero, one = torch.zeros_like(pt), torch.ones_like(pt)
 
         jac_pt = torch.stack((one / ext_jet_pt, zero, zero, zero), dim=-1)
-        jac_pt[batch_ptr[:-1], 0] = 1
+        if batch_ptr is not None:
+            jac_pt[batch_ptr[:-1], 0] = 1
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
         jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
-    def _jac_reverse(self, ptphietam2, y, batch_ptr, **kwargs):
-        pt, phi, eta, m2 = unpack_last(ptphietam2)
-        jet_pt = pt[batch_ptr[:-1]]
-        ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
+    def _jac_reverse(self, ptphietam2, y, batch_ptr=None, jet=None, **kwargs):
+        pt = ptphietam2[..., 0]
+        if jet is not None:
+            ext_jet_pt = jet[:, 0]
+        elif batch_ptr is not None:
+            jet_pt = pt[batch_ptr[:-1]]
+            ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
         zero, one = torch.zeros_like(pt), torch.ones_like(pt)
         jac_pt = torch.stack((ext_jet_pt, zero, zero, zero), dim=-1)
-        jac_pt[batch_ptr[:-1], 0] = 1
+        if batch_ptr is not None:
+            jac_pt[batch_ptr[:-1], 0] = 1
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
         jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
-    def _detjac_forward(self, ptphietam2, y, batch_ptr, **kwargs):
-        pt, phi, eta, m2 = unpack_last(ptphietam2)
-        jet_pt = pt[batch_ptr[:-1]]
-        ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
-        ext_jet_pt[batch_ptr[:-1]] = 1
+    def _detjac_forward(self, ptphietam2, y, batch_ptr=None, jet=None, **kwargs):
+        pt = ptphietam2[..., 0]
+        if jet is not None:
+            ext_jet_pt = jet[:, 0]
+        elif batch_ptr is not None:
+            jet_pt = pt[batch_ptr[:-1]]
+            ext_jet_pt = torch.repeat_interleave(jet_pt, batch_ptr.diff(), dim=0)
+            ext_jet_pt[batch_ptr[:-1]] = 1
         return 1 / ext_jet_pt

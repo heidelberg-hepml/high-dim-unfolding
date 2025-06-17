@@ -7,6 +7,7 @@ import experiments.distributions as d
 from experiments.utils import GaussianFourierProjection
 import experiments.coordinates as c
 from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
+from experiments.baselines.odeint import custom_rk4
 
 
 class CFM(nn.Module):
@@ -113,7 +114,25 @@ class CFM(nn.Module):
 
         attention_mask, crossattention_mask = self.get_masks(batch)
 
-        vp = self.get_velocity(xt, t, condition, attention_mask, crossattention_mask)
+        if self.cfm.self_condition_prob > 0.0:
+            self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
+            if torch.rand(1) < self.cfm.self_condition_prob:
+                self_condition = self.get_velocity(
+                    xt,
+                    t,
+                    condition,
+                    attention_mask,
+                    crossattention_mask,
+                    self_condition,
+                )
+
+            vp = self.get_velocity(
+                xt, t, condition, attention_mask, crossattention_mask, self_condition
+            )
+        else:
+            vp = self.get_velocity(
+                xt, t, condition, attention_mask, crossattention_mask
+            )
 
         vp = self.handle_velocity(vp, batch.x_gen_ptr)
         vt = self.handle_velocity(vt, batch.x_gen_ptr)
@@ -151,11 +170,11 @@ class CFM(nn.Module):
 
         attention_mask, crossattention_mask = self.get_masks(batch)
 
-        def velocity(t, xt):
+        def velocity(t, xt, self_condition=None):
             xt = self.geometry._handle_periodic(xt)
             t = t * torch.ones(shape[0], 1, dtype=xt.dtype, device=xt.device)
             vt = self.get_velocity(
-                xt, t, condition, attention_mask, crossattention_mask
+                xt, t, condition, attention_mask, crossattention_mask, self_condition
             )
             vt = self.handle_velocity(
                 vt, batch.x_gen_ptr
@@ -173,13 +192,22 @@ class CFM(nn.Module):
         if self.cfm.mask_jets:
             x1[batch.x_gen_ptr[:-1]] = batch.x_gen[batch.x_gen_ptr[:-1]]
 
-        # solve ODE in straight space
-        x0 = odeint(
-            velocity,
-            x1,
-            torch.tensor([1.0, 0.0], device=x1.device),
-            **self.odeint,
-        )[-1]
+        if self.cfm.self_condition_prob > 0.0:
+            v1 = torch.zeros_like(x1, device=x1.device, dtype=x1.dtype)
+            x0 = custom_rk4(
+                velocity,
+                (x1, v1),
+                torch.tensor([1.0, 0.0], device=x1.device),
+                step_size=self.odeint.options["step_size"],
+            )[-1]
+
+        else:
+            x0 = odeint(
+                velocity,
+                x1,
+                torch.tensor([1.0, 0.0], device=x1.device),
+                **self.odeint,
+            )[-1]
 
         sample_batch.x_gen = self.geometry._handle_periodic(x0)
 

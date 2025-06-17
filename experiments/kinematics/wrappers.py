@@ -44,8 +44,13 @@ class ConditionalTransformerCFM(EventCFM):
         )
         return self.net_condition(batch.x_det.unsqueeze(0), mask)
 
-    def get_velocity(self, x, t, condition, attention_mask, crossattention_mask):
-        input = torch.cat([x, self.t_embedding(t)], dim=-1)
+    def get_velocity(
+        self, x, t, condition, attention_mask, crossattention_mask, self_condition=None
+    ):
+        if self_condition is not None:
+            input = torch.cat([x, self.t_embedding(t), self_condition], dim=-1)
+        else:
+            input = torch.cat([x, self.t_embedding(t)], dim=-1)
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
