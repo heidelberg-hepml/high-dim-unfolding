@@ -376,16 +376,18 @@ class KinematicsExperiment(BaseExperiment):
             batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
                     batch.x_det,
-                    jet=torch.repeat_interleave(batch.jet_det, batch.x_det_ptr.diff()),
-                    dim=0,
+                    jet=torch.repeat_interleave(
+                        batch.jet_det, batch.x_det_ptr.diff(), dim=0
+                    ),
                 )
                 * self.cfg.data.units
             )
             batch.x_gen = (
                 self.model.coordinates.x_to_fourmomenta(
                     batch.x_gen,
-                    jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff()),
-                    dim=0,
+                    jet=torch.repeat_interleave(
+                        batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
+                    ),
                 )
                 * self.cfg.data.units
             )
