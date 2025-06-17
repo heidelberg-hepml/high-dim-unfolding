@@ -18,8 +18,10 @@ from experiments.embedding import event_to_GA_with_spurions
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype):
+    def __init__(self, dtype, pos_encoding_dim=0):
         self.dtype = dtype
+        if pos_encoding_dim > 0:
+            self.pos_encoding = positional_encoding(pe_dim=pos_encoding_dim)
 
     def __len__(self):
         return len(self.data_list)
@@ -35,6 +37,8 @@ class Dataset(torch.utils.data.Dataset):
         gen_particles,
         gen_scalars,
         gen_mults,
+        det_jets=None,
+        gen_jets=None,
     ):
 
         self.data_list = []
@@ -45,11 +49,21 @@ class Dataset(torch.utils.data.Dataset):
             gen_event = gen_particles[i, : gen_mults[i]]
             gen_event_scalars = gen_scalars[i, : gen_mults[i]]
 
+            if hasattr(self, "pos_encoding"):
+                det_event_scalars = torch.cat(
+                    [det_event_scalars, self.pos_encoding[: det_mults[i]]], dim=-1
+                )
+                gen_event_scalars = torch.cat(
+                    [gen_event_scalars, self.pos_encoding[: gen_mults[i]]], dim=-1
+                )
+
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_event_scalars,
+                jets_det=det_jets[i],
                 x_gen=gen_event,
                 scalars_gen=gen_event_scalars,
+                jets_gen=gen_jets[i],
             )
 
             self.data_list.append(graph)
@@ -203,7 +217,7 @@ def load_ttbar(data_path, cfg, dtype):
     }
 
 
-def positional_encoding(seq_length, pe_dim):
+def positional_encoding(seq_length=256, pe_dim=16):
     """
     Create sinusoidal positional encoding.
     :param seq_length: Length of the sequence.

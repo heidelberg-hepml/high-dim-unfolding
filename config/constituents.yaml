@@ -37,8 +37,8 @@ cfm:
  transforms_float64: true
  masked_dims: []
  mask_jets: false
- cosine_similarity_factor: 0.5
- self_condition_prob: 0.5
+ cosine_similarity_factor: 0.0
+ self_condition_prob: 0.0
 
 odeint:
  method: dopri5

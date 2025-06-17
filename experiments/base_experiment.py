@@ -712,8 +712,8 @@ class BaseExperiment:
                     metrics[key].append(value)
         val_loss = np.mean(losses)
         self.val_loss.append(val_loss)
-        for key, values in metrics.items():
-            self.val_metrics[key].append(np.mean(values))
+        # for key, values in metrics.items():
+        #     self.val_metrics[key].append(np.mean(values))
         if self.cfg.use_mlflow:
             log_mlflow("val.loss", val_loss, step=step)
             for key, values in self.val_metrics.items():

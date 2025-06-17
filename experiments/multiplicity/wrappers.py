@@ -20,7 +20,7 @@ class MultiplicityTransformerWrapper(nn.Module):
 
         mask = xformers_mask(batch.x_det_batch, materialize=not self.force_xformers)
 
-        outputs = self.net(input.unsqueeze(0), attn_bias=mask)
+        outputs = self.net(input.unsqueeze(0), attention_mask=mask)
         outputs = self.aggregation(outputs, batch.x_det_batch).squeeze(0)
 
         return outputs

@@ -96,14 +96,6 @@ class MultiplicityExperiment(BaseExperiment):
 
                 # mv channels for beam_reference and time_reference
                 self.cfg.model.net.in_mv_channels = 1
-                if not self.cfg.data.beam_token:
-                    self.cfg.model.net.in_mv_channels += get_num_spurions(
-                        self.cfg.data.beam_reference,
-                        self.cfg.data.add_time_reference,
-                        self.cfg.data.two_beams,
-                        self.cfg.data.add_xzplane,
-                        self.cfg.data.add_yzplane,
-                    )
 
             else:
                 raise ValueError(f"Model not implemented: {self.cfg.modelname}")
