@@ -15,8 +15,7 @@ class MultiplicityTransformerWrapper(nn.Module):
         self.aggregation = MeanAggregation()
 
     def forward(self, batch):
-        scalars = batch.scalars_det
-        input = torch.cat([batch.x_det, scalars], dim=-1)
+        input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
 
         mask = xformers_mask(batch.x_det_batch, materialize=not self.force_xformers)
 

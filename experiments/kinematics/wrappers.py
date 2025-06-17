@@ -20,6 +20,7 @@ class ConditionalTransformerCFM(EventCFM):
         net_condition,
         cfm,
         odeint,
+        force_xformers=False,
     ):
         # See GATrCFM.__init__ for documentation
         super().__init__(
@@ -28,29 +29,40 @@ class ConditionalTransformerCFM(EventCFM):
         )
         self.net = net
         self.net_condition = net_condition
+        self.force_xformers = force_xformers
 
     def get_masks(self, batch):
         return xformers_cond_mask(
-            batch.x_gen_batch, materialize=not torch.cuda.is_available()
+            batch.x_gen_batch, materialize=not self.force_xformers
         ), xformers_cond_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
-            materialize=not torch.cuda.is_available(),
+            materialize=not self.force_xformers,
         )
 
     def get_condition(self, batch):
         mask = xformers_cond_mask(
-            batch.x_det_batch, materialize=not torch.cuda.is_available()
+            batch.x_det_batch, materialize=not self.force_xformers
         )
-        return self.net_condition(batch.x_det.unsqueeze(0), mask)
+        input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
+        return self.net_condition(input.unsqueeze(0), mask)
 
     def get_velocity(
-        self, x, t, condition, attention_mask, crossattention_mask, self_condition=None
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
     ):
         if self_condition is not None:
-            input = torch.cat([x, self.t_embedding(t), self_condition], dim=-1)
+            input = torch.cat(
+                [xt, batch.scalars_gen, self.t_embedding(t), self_condition], dim=-1
+            )
         else:
-            input = torch.cat([x, self.t_embedding(t)], dim=-1)
+            input = torch.cat([xt, batch.scalars_gen, self.t_embedding(t)], dim=-1)
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,

@@ -444,8 +444,8 @@ class StandardNormal(BaseTransform):
         self.std = torch.ones(1, 4)
         self.scaling = scaling
 
-    def init_fit(self, x, batch_ptr, **kwargs):
-        if self.fixed_jets:
+    def init_fit(self, x, batch_ptr=None, **kwargs):
+        if self.fixed_jets and batch_ptr is not None:
             mask = ~torch.isin(torch.arange(x.size(0)), batch_ptr[:-1])
             x = x[mask]
         self.mean = torch.mean(x, dim=0, keepdim=True)

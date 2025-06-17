@@ -22,7 +22,7 @@ data:
  pt_min: null
  units: null
  mass: 0.001
- add_jet: false
+ pos_encoding_dim: 8
 
 cfm:
  embed_t_dim: 8
@@ -39,9 +39,10 @@ cfm:
  mask_jets: false
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
+ add_jet: false
 
 odeint:
- method: dopri5
+ method: rk4
  rtol: 1e-5
  atol: 1e-5
  options:

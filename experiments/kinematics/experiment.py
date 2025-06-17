@@ -56,38 +56,33 @@ class KinematicsExperiment(BaseExperiment):
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
 
-            if self.cfg.data.add_jet:
-                self.cfg.data.max_constituents += 1
-                self.cfg.cfm.mask_jets = True
-
-            if self.cfg.modelname == "ConditionalGATr":
-                self.cfg.data.transform = False
-                self.cfg.data.embed_det_in_GA = True
-                self.cfg.data.add_spurions = True
-
             if self.cfg.modelname == "ConditionalTransformer":
-                self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net.in_channels = (
+                    4 + self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.in_channels = (
+                    4 + self.cfg.data.pos_encoding_dim
+                )
                 self.cfg.model.net_condition.out_channels = (
                     self.cfg.model.net.hidden_channels
                 )
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
-                if self.cfg.model.net.pos_encoding_type == "absolute":
-                    self.cfg.model.net.pos_encoding_base = (
-                        self.cfg.data.max_constituents
-                    )
+                if self.cfg.cfm.add_jet:
+                    self.cfg.model.net.in_channels += 1
+                    self.cfg.model.net_condition.in_channels += 1
+                if self.cfg.cfm.self_condition_prob > 0.0:
+                    self.cfg.model.net.in_channels += 4
 
-                if self.cfg.model.net_condition.pos_encoding_type == "absolute":
-                    self.cfg.model.net_condition.pos_encoding_base = (
-                        self.cfg.data.max_constituents
-                    )
-
-            elif self.cfg.modelname == "ConditionalGATr":
+            elif self.cfg.modelname == "ConditionalLGATr":
                 self.cfg.cfm.condition_coordinates = "Fourmomenta"
-                self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net_condition.in_s_channels = self.cfg.cfm.embed_t_dim
+                self.cfg.model.net.in_s_channels = (
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.in_s_channels = (
+                    self.cfg.data.pos_encoding_dim
+                )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
                 )
@@ -97,36 +92,11 @@ class KinematicsExperiment(BaseExperiment):
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6
                     self.cfg.model.net_condition.in_s_channels += 6
-                if not self.cfg.data.beam_token:
-                    self.cfg.model.net_condition.in_mv_channels += (
-                        2
-                        if (
-                            self.cfg.data.two_beams
-                            and self.cfg.data.beam_reference != "xyplane"
-                        )
-                        else 1
-                    )
-                    if self.cfg.data.add_time_reference:
-                        self.cfg.model.net_condition.in_mv_channels += 1
-                self.cfg.model.cfg_data = self.cfg.data
-
-                if self.cfg.model.net.attention.pos_encoding_type == "absolute":
-                    self.cfg.model.net.attention.pos_encoding_base = (
-                        self.cfg.data.max_constituents + self.cfg.data.num_spurions
-                    )
-
-                if self.cfg.model.net.crossattention.pos_encoding_type == "absolute":
-                    self.cfg.model.net.crossattention.pos_encoding_base = (
-                        self.cfg.data.max_constituents + self.cfg.data.num_spurions
-                    )
-
-                if (
-                    self.cfg.model.net_condition.attention.pos_encoding_type
-                    == "absolute"
-                ):
-                    self.cfg.model.net_condition.attention.pos_encoding_base = (
-                        self.cfg.data.max_constituents + self.cfg.data.num_spurions
-                    )
+                if self.cfg.cfm.add_jet:
+                    self.cfg.model.net.in_s_channels += 1
+                    self.cfg.model.net_condition.in_s_channels += 1
+                if self.cfg.cfm.self_condition_prob > 0.0:
+                    self.cfg.model.net.in_s_channels += 4
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -158,7 +128,7 @@ class KinematicsExperiment(BaseExperiment):
             raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
         det_particles = data["det_particles"]
         det_mults = data["det_mults"]
-        det_scalars = data["det_pids"]
+        det_pids = data["det_pids"]
         gen_particles = data["gen_particles"]
         gen_mults = data["gen_mults"]
         gen_pids = data["gen_pids"]
@@ -166,23 +136,11 @@ class KinematicsExperiment(BaseExperiment):
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
-        if self.cfg.data.add_jet:
-            # add det jet as first particle to condition
-            det_jets = det_particles.sum(dim=1, keepdim=True)
-            det_particles = torch.cat([det_jets, det_particles], dim=1)
-            det_scalars = torch.cat(
-                [torch.zeros_like(det_scalars[:, :1]), det_scalars], dim=1
-            )
-            det_mults += 1
-
-            # add gen jet as first particle to condition
-            gen_jets = gen_particles.sum(dim=1, keepdim=True)
-            gen_particles = torch.cat([gen_jets, gen_particles], dim=1)
-            gen_pids = torch.cat([torch.zeros_like(gen_pids[:, :1]), gen_pids], dim=1)
-            gen_mults += 1
-
         gen_particles /= self.cfg.data.units
         det_particles /= self.cfg.data.units
+
+        det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1, keepdim=True))
+        gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1, keepdim=True))
 
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
@@ -207,8 +165,8 @@ class KinematicsExperiment(BaseExperiment):
         )
         self.model.coordinates.init_fit(
             gen_particles[:train_idx][train_gen_mask],
-            batch_ptr=torch.cumsum(
-                torch.cat([torch.zeros(1), gen_mults[:train_idx]]), dim=0, dtype=int
+            jet=torch.repeat_interleave(
+                gen_jets[:train_idx], gen_mults[:train_idx], dim=0
             ),
         )
 
@@ -217,77 +175,69 @@ class KinematicsExperiment(BaseExperiment):
         )
         self.model.condition_coordinates.init_fit(
             det_particles[:train_idx][train_det_mask],
-            batch_ptr=torch.cumsum(
-                torch.cat([torch.zeros(1), det_mults[:train_idx]]), dim=0, dtype=int
+            jet=torch.repeat_interleave(
+                det_jets[:train_idx], det_mults[:train_idx], dim=0
             ),
         )
 
-        if self.cfg.data.transform:
-            det_mask = (
-                torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-            )
-            det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
-                det_particles[det_mask],
-                batch_ptr=torch.cumsum(
-                    torch.cat([torch.zeros(1), det_mults]), dim=0, dtype=int
-                ),
-            )
+        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+        det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
+            det_particles[det_mask],
+            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+        )
 
-            gen_mask = (
-                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-            )
-            gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
-                gen_particles[gen_mask],
-                batch_ptr=torch.cumsum(
-                    torch.cat([torch.zeros(1), gen_mults]), dim=0, dtype=int
-                ),
-            )
-            if self.cfg.data.add_jet:
-                det_mask[:, 0] = False
-                gen_mask[:, 0] = False
+        gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+        gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
+            gen_particles[gen_mask],
+            jet=torch.repeat_interleave(gen_jets, gen_mults, dim=0),
+        )
 
-            plot_kinematics(
-                self.cfg.run_dir, det_particles[det_mask], gen_particles[gen_mask]
-            )
+        plot_kinematics(
+            self.cfg.run_dir,
+            gen_particles[gen_mask],
+            det_particles[det_mask],
+            filename="pre_kinematics.pdf",
+        )
 
-        if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
-            self.spurions = get_spurions(
-                self.cfg.data.beam_reference,
-                self.cfg.data.add_time_reference,
-                self.cfg.data.two_beams,
-                self.cfg.data.add_xzplane,
-                self.cfg.data.add_yzplane,
-            )
-        else:
-            self.spurions = None
-
-        self.train_data = Dataset(self.dtype)
-        self.val_data = Dataset(self.dtype)
-        self.test_data = Dataset(self.dtype)
+        self.train_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
+        self.val_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
+        self.test_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
 
         self.train_data.create_data_list(
-            det_particles[:train_idx],
-            det_scalars[:train_idx],
-            det_mults[:train_idx],
-            gen_particles[:train_idx],
-            gen_pids[:train_idx],
-            gen_mults[:train_idx],
+            det_particles=det_particles[:train_idx],
+            det_pids=det_pids[:train_idx],
+            det_mults=det_mults[:train_idx],
+            det_jets=det_jets[:train_idx],
+            gen_particles=gen_particles[:train_idx],
+            gen_pids=gen_pids[:train_idx],
+            gen_mults=gen_mults[:train_idx],
+            gen_jets=gen_jets[:train_idx],
         )
         self.val_data.create_data_list(
-            det_particles[train_idx:val_idx],
-            det_scalars[train_idx:val_idx],
-            det_mults[train_idx:val_idx],
-            gen_particles[train_idx:val_idx],
-            gen_pids[train_idx:val_idx],
-            gen_mults[train_idx:val_idx],
+            det_particles=det_particles[train_idx:val_idx],
+            det_pids=det_pids[train_idx:val_idx],
+            det_mults=det_mults[train_idx:val_idx],
+            det_jets=det_jets[train_idx:val_idx],
+            gen_particles=gen_particles[train_idx:val_idx],
+            gen_pids=gen_pids[train_idx:val_idx],
+            gen_mults=gen_mults[train_idx:val_idx],
+            gen_jets=gen_jets[train_idx:val_idx],
         )
         self.test_data.create_data_list(
-            det_particles[val_idx:test_idx],
-            det_scalars[val_idx:test_idx],
-            det_mults[val_idx:test_idx],
-            gen_particles[val_idx:test_idx],
-            gen_pids[val_idx:test_idx],
-            gen_mults[val_idx:test_idx],
+            det_particles=det_particles[val_idx:test_idx],
+            det_pids=det_pids[val_idx:test_idx],
+            det_mults=det_mults[val_idx:test_idx],
+            det_jets=det_jets[val_idx:test_idx],
+            gen_particles=gen_particles[val_idx:test_idx],
+            gen_pids=gen_pids[val_idx:test_idx],
+            gen_mults=gen_mults[val_idx:test_idx],
+            gen_jets=gen_jets[val_idx:test_idx],
         )
 
     def _init_dataloader(self):
@@ -382,110 +332,75 @@ class KinematicsExperiment(BaseExperiment):
                 self.device,
                 self.dtype,
             )
+            LOGGER.info(
+                f"xgen: {sample_batch.x_gen.shape}, jetgen: {sample_batch.jet_gen.shape}"
+            )
+            LOGGER.info(
+                f"xdet: {sample_batch.x_det.shape}, jetdet: {sample_batch.jet_det.shape}"
+            )
+            LOGGER.info(
+                f"xgenptr: {sample_batch.x_gen_ptr.shape}, xdetptr: {sample_batch.x_det_ptr.shape}"
+            )
 
             if i == 0:
-                if self.cfg.data.add_jet:
-                    det_mask = ~torch.isin(
-                        torch.arange(batch.x_det.size(0), device=self.device),
-                        batch.x_det_ptr[:-1],
-                    )
-                    gen_mask = ~torch.isin(
-                        torch.arange(batch.x_gen.size(0), device=self.device),
-                        batch.x_gen_ptr[:-1],
-                    )
-                    plot_kinematics(
-                        self.cfg.run_dir,
-                        base[gen_mask].cpu(),
-                        batch.x_gen[gen_mask].cpu(),
-                        sample_batch.x_gen[gen_mask].cpu(),
-                        filename="post_kinematics.pdf",
-                    )
-                else:
-                    plot_kinematics(
-                        self.cfg.run_dir,
-                        base.cpu(),
-                        batch.x_gen.cpu(),
-                        sample_batch.x_gen.cpu(),
-                        filename="post_kinematics.pdf",
-                    )
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    base.cpu(),
+                    batch.x_gen.cpu(),
+                    sample_batch.x_gen.cpu(),
+                    filename="post_kinematics.pdf",
+                )
 
-            if self.cfg.data.transform:
-                sample_batch.x_det = (
-                    self.model.condition_coordinates.x_to_fourmomenta(
-                        sample_batch.x_det, batch_ptr=sample_batch.x_det_ptr
-                    )
-                    * self.cfg.data.units
+            sample_batch.x_det = (
+                self.model.condition_coordinates.x_to_fourmomenta(
+                    sample_batch.x_det,
+                    jet=torch.repeat_interleave(
+                        sample_batch.jet_det,
+                        sample_batch.x_det_ptr.diff(),
+                        dim=0,
+                    ),
                 )
-                sample_batch.x_gen = (
-                    self.model.coordinates.x_to_fourmomenta(
-                        sample_batch.x_gen, batch_ptr=sample_batch.x_gen_ptr
-                    )
-                    * self.cfg.data.units
+                * self.cfg.data.units
+            )
+            sample_batch.x_gen = (
+                self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen,
+                    jet=torch.repeat_interleave(
+                        sample_batch.jet_gen,
+                        sample_batch.x_gen_ptr.diff(),
+                        dim=0,
+                    ),
                 )
-                batch.x_det = (
-                    self.model.condition_coordinates.x_to_fourmomenta(
-                        batch.x_det, batch_ptr=batch.x_det_ptr
-                    )
-                    * self.cfg.data.units
+                * self.cfg.data.units
+            )
+            batch.x_det = (
+                self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det,
+                    jet=torch.repeat_interleave(batch.jet_det, batch.x_det_ptr.diff()),
+                    dim=0,
                 )
-                batch.x_gen = (
-                    self.model.coordinates.x_to_fourmomenta(
-                        batch.x_gen, batch_ptr=batch.x_gen_ptr
-                    )
-                    * self.cfg.data.units
+                * self.cfg.data.units
+            )
+            batch.x_gen = (
+                self.model.coordinates.x_to_fourmomenta(
+                    batch.x_gen,
+                    jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff()),
+                    dim=0,
                 )
+                * self.cfg.data.units
+            )
 
             if i == 0:
-                if self.cfg.data.add_jet:
-                    det_mask = ~torch.isin(
-                        torch.arange(batch.x_det.size(0), device=self.device),
-                        batch.x_det_ptr[:-1],
-                    )
-                    gen_mask = ~torch.isin(
-                        torch.arange(batch.x_gen.size(0), device=self.device),
-                        batch.x_gen_ptr[:-1],
-                    )
-                    plot_kinematics(
-                        self.cfg.run_dir,
-                        fourmomenta_to_jetmomenta(batch.x_det[det_mask]).cpu(),
-                        fourmomenta_to_jetmomenta(batch.x_gen[gen_mask]).cpu(),
-                        fourmomenta_to_jetmomenta(sample_batch.x_gen[gen_mask]).cpu(),
-                        filename="post_jetmomenta.pdf",
-                    )
-                else:
-                    plot_kinematics(
-                        self.cfg.run_dir,
-                        fourmomenta_to_jetmomenta(batch.x_det).cpu(),
-                        fourmomenta_to_jetmomenta(batch.x_gen).cpu(),
-                        fourmomenta_to_jetmomenta(sample_batch.x_gen).cpu(),
-                        filename="post_jetmomenta.pdf",
-                    )
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    fourmomenta_to_jetmomenta(batch.x_det).cpu(),
+                    fourmomenta_to_jetmomenta(batch.x_gen).cpu(),
+                    fourmomenta_to_jetmomenta(sample_batch.x_gen).cpu(),
+                    filename="post_jetmomenta.pdf",
+                )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
-
-        if self.cfg.data.embed_det_in_GA:
-            if self.spurions is not None and len(self.spurions) > 0:
-                for data in samples:
-                    data.x_det = extract_vector(
-                        data.x_det[: -len(self.spurions)]
-                    ).squeeze(-2)
-                for data in targets:
-                    data.x_det = extract_vector(
-                        data.x_det[: -len(self.spurions)]
-                    ).squeeze(-2)
-            else:
-                for data in samples:
-                    data.x_det = extract_vector(data.x_det).squeeze(-2)
-                for data in targets:
-                    data.x_det = extract_vector(data.x_det).squeeze(-2)
-        if self.cfg.data.add_jet:
-            for data in samples:
-                data.x_gen = data.x_gen[1:]
-                data.x_det = data.x_det[1:]
-            for data in targets:
-                data.x_gen = data.x_gen[1:]
-                data.x_det = data.x_det[1:]
 
         self.data_raw["samples"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
@@ -556,12 +471,8 @@ class KinematicsExperiment(BaseExperiment):
 
         if self.cfg.modelname == "ConditionalTransformer":
             model_label = "CondTr"
-        elif self.cfg.modelname == "ConditionalGATr":
-            model_label = "CondGATr"
-        elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
-            model_label = "CondARTr"
-        elif self.cfg.modelname == "ConditionalMLP":
-            model_label = "MLP"
+        elif self.cfg.modelname == "ConditionalLGATr":
+            model_label = "CondLGATr"
         kwargs = {
             "exp": self,
             "model_label": model_label,

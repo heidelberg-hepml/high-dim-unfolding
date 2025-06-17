@@ -15,7 +15,7 @@ data:
  pt_min: null
  units: null
  mass: 0.001
- add_jet: false
+ pos_encoding_dim: 8
 
 dist: 
  type: GaussianMixture

@@ -32,22 +32,22 @@ class Dataset(torch.utils.data.Dataset):
     def create_data_list(
         self,
         det_particles,
-        det_scalars,
+        det_pids,
         det_mults,
+        det_jets,
         gen_particles,
-        gen_scalars,
+        gen_pids,
         gen_mults,
-        det_jets=None,
-        gen_jets=None,
+        gen_jets,
     ):
 
         self.data_list = []
         for i in range(det_particles.shape[0]):
 
             det_event = det_particles[i, : det_mults[i]]
-            det_event_scalars = det_scalars[i, : det_mults[i]]
+            det_event_scalars = det_pids[i, : det_mults[i]]
             gen_event = gen_particles[i, : gen_mults[i]]
-            gen_event_scalars = gen_scalars[i, : gen_mults[i]]
+            gen_event_scalars = gen_pids[i, : gen_mults[i]]
 
             if hasattr(self, "pos_encoding"):
                 det_event_scalars = torch.cat(
@@ -60,10 +60,10 @@ class Dataset(torch.utils.data.Dataset):
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_event_scalars,
-                jets_det=det_jets[i],
+                jet_det=det_jets[i],
                 x_gen=gen_event,
                 scalars_gen=gen_event_scalars,
-                jets_gen=gen_jets[i],
+                jet_gen=gen_jets[i],
             )
 
             self.data_list.append(graph)

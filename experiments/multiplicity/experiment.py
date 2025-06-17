@@ -21,7 +21,6 @@ from experiments.distributions import (
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-from lgatr.interface import get_num_spurions
 
 MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
@@ -55,6 +54,8 @@ class MultiplicityExperiment(BaseExperiment):
                 self.cfg.model.net.in_channels = 4
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
+                if self.cfg.data.pos_encoding_dim > 0:
+                    self.cfg.model.net.in_channels += self.cfg.data.pos_encoding_dim
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -93,6 +94,8 @@ class MultiplicityExperiment(BaseExperiment):
                 self.cfg.model.net.in_s_channels = 0
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6
+                if self.cfg.data.pos_encoding_dim > 0:
+                    self.cfg.model.net.in_s_channels += self.cfg.data.pos_encoding_dim
 
                 # mv channels for beam_reference and time_reference
                 self.cfg.model.net.in_mv_channels = 1
@@ -123,36 +126,54 @@ class MultiplicityExperiment(BaseExperiment):
         gen_pids = data["gen_pids"]
         gen_mults = data["gen_mults"]
 
+        gen_particles /= self.cfg.data.units
+        det_particles /= self.cfg.data.units
+
+        det_jets = det_particles.sum(dim=1, keepdim=True)
+        gen_jets = gen_particles.sum(dim=1, keepdim=True)
+
         size = len(det_particles)
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
-        self.train_data = Dataset(self.dtype)
-        self.val_data = Dataset(self.dtype)
-        self.test_data = Dataset(self.dtype)
+        self.train_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
+        self.val_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
+        self.test_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
         self.train_data.create_data_list(
-            det_particles[:train_idx],
-            det_pids[:train_idx],
-            det_mults[:train_idx],
-            gen_particles[:train_idx],
-            gen_pids[:train_idx],
-            gen_mults[:train_idx],
+            det_particles=det_particles[:train_idx],
+            det_pids=det_pids[:train_idx],
+            det_mults=det_mults[:train_idx],
+            det_jets=det_jets[:train_idx],
+            gen_particles=gen_particles[:train_idx],
+            gen_pids=gen_pids[:train_idx],
+            gen_mults=gen_mults[:train_idx],
+            gen_jets=gen_jets[:train_idx],
         )
         self.val_data.create_data_list(
-            det_particles[train_idx:val_idx],
-            det_pids[train_idx:val_idx],
-            det_mults[train_idx:val_idx],
-            gen_particles[train_idx:val_idx],
-            gen_pids[train_idx:val_idx],
-            gen_mults[train_idx:val_idx],
+            det_particles=det_particles[train_idx:val_idx],
+            det_pids=det_pids[train_idx:val_idx],
+            det_mults=det_mults[train_idx:val_idx],
+            det_jets=det_jets[train_idx:val_idx],
+            gen_particles=gen_particles[train_idx:val_idx],
+            gen_pids=gen_pids[train_idx:val_idx],
+            gen_mults=gen_mults[train_idx:val_idx],
+            gen_jets=gen_jets[train_idx:val_idx],
         )
         self.test_data.create_data_list(
-            det_particles[val_idx:test_idx],
-            det_pids[val_idx:test_idx],
-            det_mults[val_idx:test_idx],
-            gen_particles[val_idx:test_idx],
-            gen_pids[val_idx:test_idx],
-            gen_mults[val_idx:test_idx],
+            det_particles=det_particles[val_idx:test_idx],
+            det_pids=det_pids[val_idx:test_idx],
+            det_mults=det_mults[val_idx:test_idx],
+            det_jets=det_jets[val_idx:test_idx],
+            gen_particles=gen_particles[val_idx:test_idx],
+            gen_pids=gen_pids[val_idx:test_idx],
+            gen_mults=gen_mults[val_idx:test_idx],
+            gen_jets=gen_jets[val_idx:test_idx],
         )
 
     def _init_dataloader(self):
