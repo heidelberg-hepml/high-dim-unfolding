@@ -14,7 +14,6 @@ from experiments.coordinates import (
     jetmomenta_to_fourmomenta,
     fourmomenta_to_jetmomenta,
 )
-from experiments.embedding import event_to_GA_with_spurions
 
 
 class Dataset(torch.utils.data.Dataset):

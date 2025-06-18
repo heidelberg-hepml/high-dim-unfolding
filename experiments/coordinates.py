@@ -222,7 +222,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, fixed_dims=[3], scaling=1.0, fixed_jets=False):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=1.0):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -231,7 +231,7 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.Pt_to_LogPt(pt_min),
             tr.M2_to_LogM2(),
-            tr.StandardNormal([1] + fixed_dims, scaling=scaling, fixed_jets=fixed_jets),
+            tr.StandardNormal([1] + fixed_dims, scaling=scaling),
         ]
 
 
@@ -260,7 +260,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaM2_to_JetScale(),
             tr.M2_to_LogM2(),
             tr.Pt_to_LogPt(pt_min),
-            tr.StandardNormal(fixed_dims, fixed_jets=True),
+            tr.StandardNormal(fixed_dims),
         ]
 
 

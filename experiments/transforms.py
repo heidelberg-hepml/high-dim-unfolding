@@ -436,16 +436,15 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, dims_fixed=[], scaling=1.0, fixed_jets=False):
+    def __init__(self, dims_fixed=[], scaling=1.0):
         super().__init__()
         self.dims_fixed = dims_fixed
-        self.fixed_jets = fixed_jets
         self.mean = torch.zeros(1, 4)
         self.std = torch.ones(1, 4)
         self.scaling = scaling
 
     def init_fit(self, x, batch_ptr=None, **kwargs):
-        if self.fixed_jets and batch_ptr is not None:
+        if batch_ptr is not None:
             mask = ~torch.isin(torch.arange(x.size(0)), batch_ptr[:-1])
             x = x[mask]
         self.mean = torch.mean(x, dim=0, keepdim=True)
@@ -461,7 +460,7 @@ class StandardNormal(BaseTransform):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
             x.device, dtype=x.dtype
         )
-        if self.fixed_jets and batch_ptr is not None:
+        if batch_ptr is not None:
             xunit[batch_ptr[:-1]] = x[batch_ptr[:-1]]  # keep jets fixed
         return xunit
 
@@ -469,7 +468,7 @@ class StandardNormal(BaseTransform):
         x = xunit * self.std.to(xunit.device, dtype=xunit.dtype) + self.mean.to(
             xunit.device, dtype=xunit.dtype
         )
-        if self.fixed_jets and batch_ptr is not None:
+        if batch_ptr is not None:
             x[batch_ptr[:-1]] = xunit[batch_ptr[:-1]]  # keep jets fixed
         return x
 
@@ -477,7 +476,7 @@ class StandardNormal(BaseTransform):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
         std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
         jac[..., torch.arange(4), torch.arange(4)] = 1 / std
-        if self.fixed_jets and batch_ptr is not None:
+        if batch_ptr is not None:
             jac[batch_ptr[:-1]] = torch.eye(
                 4, device=x.device, dtype=x.dtype
             ).unsqueeze(0)
@@ -487,7 +486,7 @@ class StandardNormal(BaseTransform):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
         std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
         jac[..., torch.arange(4), torch.arange(4)] = std
-        if self.fixed_jets and batch_ptr is not None:
+        if batch_ptr is not None:
             jac[batch_ptr[:-1]] = torch.eye(
                 4, device=x.device, dtype=x.dtype
             ).unsqueeze(0)
@@ -496,7 +495,7 @@ class StandardNormal(BaseTransform):
     def _detjac_forward(self, x, xunit, batch_ptr=None, **kwargs):
         detjac = 1 / torch.prod(self.std, dim=-1)
         detjac = detjac.unsqueeze(0).expand(x.shape[0], x.shape[1])
-        if self.fixed_jets and batch_ptr is not None:
+        if batch_ptr is not None:
             detjac[batch_ptr[:-1]] = 1
         return detjac
 

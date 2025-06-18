@@ -181,7 +181,7 @@ class ConditionalLGATrCFM(EventCFM):
             fourmomenta,
             scalars,
             batch.x_gen_ptr,
-            self.ga_cfg,
+            # self.ga_cfg,
         )
         mv = embedding["mv"].unsqueeze(0)
         s = embedding["s"].unsqueeze(0)
