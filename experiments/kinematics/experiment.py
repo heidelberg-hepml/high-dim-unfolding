@@ -86,8 +86,14 @@ class KinematicsExperiment(BaseExperiment):
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
                 )
+                self.cfg.model.net.condition_mv_channels = (
+                    self.cfg.model.net_condition.out_mv_channels
+                )
                 self.cfg.model.net_condition.out_s_channels = (
                     self.cfg.model.net.hidden_s_channels
+                )
+                self.cfg.model.net.condition_s_channels = (
+                    self.cfg.model.net_condition.out_s_channels
                 )
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6

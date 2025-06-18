@@ -70,15 +70,17 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, cfg_data):
         device=scalars.device,
     )
     scalars[~insert_spurion] = scalars_buffer
-    ptr[1:] = ptr[1:] + (arange + 1) * n_spurions
+    new_ptr = ptr.clone()
+    new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
 
-    batch = get_batch_from_ptr(ptr)
+    batch = get_batch_from_ptr(new_ptr)
 
     # return dict
     embedding = {
         "mv": multivectors,
         "s": scalars,
         "batch": batch,
+        "mask": ~insert_spurion,
     }
     return embedding
 

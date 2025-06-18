@@ -13,11 +13,6 @@ data:
  max_num_particles: null
  diff: null
  max_constituents: -1
- add_spurions: false
- beam_spurion: xyplane
- beam_mirror: true
- beam_token: true
- add_time_spurion: true
  add_pid: false
  pt_min: null
  units: null
@@ -26,7 +21,7 @@ data:
 
 cfm:
  embed_t_dim: 8
- embed_t_scale: 30.
+ embed_t_scale: 30.0
  hutchinson: true
  coordinates: StandardLogPtPhiEtaLogM2
  condition_coordinates: StandardLogPtPhiEtaLogM2

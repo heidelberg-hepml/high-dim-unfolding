@@ -1,10 +1,12 @@
 import torch
 import numpy as np
 from torchdiffeq import odeint
+from lgatr.interface import extract_vector
 
-from experiments.utils import xformers_cond_mask
+from experiments.utils import xformers_mask
 from experiments.kinematics.cfm import EventCFM
-from lgatr.interface import embed_vector, extract_vector
+from experiments.embedding import embed_data_into_ga
+from experiments.logger import LOGGER
 
 
 class ConditionalTransformerCFM(EventCFM):
@@ -20,7 +22,7 @@ class ConditionalTransformerCFM(EventCFM):
         net_condition,
         cfm,
         odeint,
-        force_xformers=False,
+        force_xformers=True,
     ):
         # See GATrCFM.__init__ for documentation
         super().__init__(
@@ -32,18 +34,16 @@ class ConditionalTransformerCFM(EventCFM):
         self.force_xformers = force_xformers
 
     def get_masks(self, batch):
-        return xformers_cond_mask(
+        return xformers_mask(
             batch.x_gen_batch, materialize=not self.force_xformers
-        ), xformers_cond_mask(
+        ), xformers_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
             materialize=not self.force_xformers,
         )
 
     def get_condition(self, batch):
-        mask = xformers_cond_mask(
-            batch.x_det_batch, materialize=not self.force_xformers
-        )
+        mask = xformers_mask(batch.x_det_batch, materialize=not self.force_xformers)
         input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
         return self.net_condition(input.unsqueeze(0), mask)
 
@@ -84,7 +84,8 @@ class ConditionalLGATrCFM(EventCFM):
         cfm,
         scalar_dims,
         odeint,
-        cfg_data,
+        GA_config,
+        force_xformers=True,
     ):
         """
         Parameters
@@ -109,26 +110,49 @@ class ConditionalLGATrCFM(EventCFM):
         )
         self.scalar_dims = scalar_dims
         assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
-        self.cfg_data = cfg_data
+        self.ga_cfg = GA_config
         self.net = net
         self.net_condition = net_condition
+        self.force_xformers = force_xformers
 
     def get_masks(self, batch):
-        return xformers_cond_mask(
-            batch.x_gen_batch, materialize=not torch.cuda.is_available()
-        ), xformers_cond_mask(
-            batch.x_gen_batch,
-            batch.x_det_batch,
-            materialize=not torch.cuda.is_available(),
+        gen_embedding = embed_data_into_ga(
+            batch.x_gen,
+            batch.scalars_gen,
+            batch.x_gen_ptr,
+            self.ga_cfg,
+        )
+        det_embedding = embed_data_into_ga(
+            batch.x_det,
+            batch.scalars_det,
+            batch.x_det_ptr,
+            self.ga_cfg,
+        )
+        return xformers_mask(
+            gen_embedding["batch"], materialize=not self.force_xformers
+        ), xformers_mask(
+            gen_embedding["batch"],
+            det_embedding["batch"],
+            materialize=not self.force_xformers,
         )
 
     def get_condition(self, batch):
-        attention_mask = xformers_cond_mask(batch.x_det_batch)
-        mv, s = batch.x_det.unsqueeze(0), batch.scalars_det.unsqueeze(0)
-        fixed_t = torch.zeros(s.shape[1], 1, dtype=s.dtype, device=s.device)
-        t = self.t_embedding(fixed_t).unsqueeze(0)
-        s = torch.cat([s, t], dim=-1)
-        condition_mv, condition_s = self.net_condition(mv, s, attention_mask)
+        embedding = embed_data_into_ga(
+            batch.x_det,
+            batch.scalars_det,
+            batch.x_det_ptr,
+            self.ga_cfg,
+        )
+        mv = embedding["mv"].unsqueeze(0)
+        s = embedding["s"].unsqueeze(0)
+        attention_mask = xformers_mask(
+            embedding["batch"], materialize=not self.force_xformers
+        )
+
+        # fixed_t = torch.zeros(s.shape[1], 1, dtype=s.dtype, device=s.device)
+        # t = self.t_embedding(fixed_t).unsqueeze(0)
+        # s = torch.cat([s, t], dim=-1)
+        condition_mv, condition_s = self.net_condition(mv, s, attn_bias=attention_mask)
         return condition_mv, condition_s
 
     def get_velocity(
@@ -136,28 +160,39 @@ class ConditionalLGATrCFM(EventCFM):
     ):
         assert self.coordinates is not None
 
-        fourmomenta = self.coordinates.x_to_fourmomenta(xt, batch.x_gen_ptr)
+        fourmomenta = self.coordinates.x_to_fourmomenta(
+            xt,
+            jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0),
+        )
         condition_mv, condition_s = condition
 
-        mv, s = self.embed_into_ga(fourmomenta, batch.scalars_gen, t)
+        embedding = embed_data_into_ga(
+            fourmomenta,
+            torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1),
+            batch.x_gen_ptr,
+            self.ga_cfg,
+        )
+        mv = embedding["mv"].unsqueeze(0)
+        s = embedding["s"].unsqueeze(0)
+        spurions_mask = embedding["mask"]
 
         mv_outputs, s_outputs = self.net(
-            multivectors=mv.unsqueeze(0),
+            multivectors=mv,
             multivectors_condition=condition_mv,
-            scalars=s.unsqueeze(0),
+            scalars=s,
             scalars_condition=condition_s,
-            attention_mask=attention_mask,
-            crossattention_mask=crossattention_mask,
+            attn_kwargs={"attn_bias": attention_mask},
+            crossattn_kwargs={"attn_bias": crossattention_mask},
         )
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
-        v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs)
+        v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs, spurions_mask)
 
         v_straight = self.coordinates.velocity_fourmomenta_to_x(
             v_fourmomenta,
             fourmomenta,
-            batch.x_gen_ptr,
+            jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0),
         )[0]
 
         # Overwrite transformed velocities with scalar outputs
@@ -166,115 +201,6 @@ class ConditionalLGATrCFM(EventCFM):
 
         return v_straight
 
-    def batch_loss(self, batch):
-        x0 = batch.x_gen
-        t = torch.rand(
-            batch.num_graphs,
-            1,
-            dtype=x0.dtype,
-            device=x0.device,
-        )
-        t = torch.repeat_interleave(t, batch.x_gen_ptr.diff(), dim=0)
-
-        if 3 in self.cfm.masked_dims:
-            mass = self.mass
-        else:
-            mass = None
-        x1 = self.sample_base(x0.shape, x0.device, x0.dtype, mass)
-
-        vt = x1 - x0
-        xt = self.geometry._handle_periodic(x0 + vt * t)
-
-        condition = self.get_condition(batch)
-
-        attention_mask, crossattention_mask = self.get_masks(batch)
-
-        vp = self.get_velocity(
-            xt, t, batch, condition, attention_mask, crossattention_mask
-        )
-
-        # vp = self.handle_velocity(vp, batch.x_gen_ptr)
-        # vt = self.handle_velocity(vt, batch.x_gen_ptr)
-
-        # evaluate conditional flow matching objective
-        distance = ((vp - vt) ** 2).mean()
-        distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
-        return distance, distance_particlewise
-
-    def sample(self, batch, device, dtype):
-        """
-        Sample from CFM model
-        Solve an ODE using a NN-parametrized velocity field
-
-        Parameters
-        ----------
-        batch : tuple of Batch graphs
-        device : torch.device
-        dtype : torch.dtype
-
-        Returns
-        -------
-        x0_fourmomenta : torch.tensor with shape shape = (batchsize, 4)
-            Generated events
-        """
-
-        sample_batch = batch.clone()
-
-        condition = self.get_condition(batch)
-
-        attention_mask, crossattention_mask = self.get_masks(batch)
-
-        def velocity(t, xt_straight):
-            xt_straight = self.geometry._handle_periodic(xt_straight)
-            t = t * torch.ones(
-                shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
-            )
-            vt_straight = self.get_velocity(
-                xt_straight, t, batch, condition, attention_mask, crossattention_mask
-            )
-            vt_straight = self.handle_velocity(
-                vt_straight, batch.x_gen_ptr
-            )  # manually set mass velocity to zero
-            return vt_straight
-
-        # sample fourmomenta from base distribution
-        shape = batch.x_gen.shape
-        if 3 in self.cfm.masked_dims:
-            mass = self.mass
-        else:
-            mass = None
-        x1 = self.sample_base(shape, device, dtype, mass)
-
-        # solve ODE in straight space
-        x0 = odeint(
-            velocity,
-            x1,
-            torch.tensor([1.0, 0.0], device=x1.device),
-            **self.odeint,
-        )[-1]
-
-        sample_batch.x_gen = self.geometry._handle_periodic(x0)
-
-        # sort generated events by pT
-        # pt = x0[..., 0].unsqueeze(-1)
-        # x_perm = torch.argsort(pt, dim=0, descending=True)
-        # x0 = x0.take_along_dim(x_perm, dim=0)
-        # index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
-        # index_perm = torch.argsort(index, dim=0, stable=True)
-        # x0 = x0.take_along_dim(index_perm, dim=0)
-
-        return sample_batch
-
-    def embed_into_ga(self, fourmomenta, scalars, t):
-
-        # scalar embedding
-        t = self.t_embedding(t)
-        s = torch.cat([scalars, t], dim=-1)
-
-        mv = embed_vector(fourmomenta).unsqueeze(-2)
-
-        return mv, s
-
-    def extract_from_ga(self, mv, s):
-        v = extract_vector(mv).squeeze(dim=-2)
-        return v, s
+    def extract_from_ga(self, mv, s, mask):
+        v = extract_vector(mv[mask]).squeeze(dim=-2)
+        return v, s[mask]

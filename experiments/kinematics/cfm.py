@@ -184,9 +184,9 @@ class CFM(nn.Module):
                 t,
                 batch,
                 condition,
-                attention_mask,
-                crossattention_mask,
-                self_condition,
+                attn_kwargs={"attn_bias": attention_mask},
+                crossattn_kwargs={"attn_bias": crossattention_mask},
+                self_condition=self_condition,
             )
             vt = self.handle_velocity(
                 vt, batch.x_gen_ptr

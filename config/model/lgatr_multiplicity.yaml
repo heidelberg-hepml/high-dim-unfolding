@@ -1,4 +1,5 @@
 _target_: experiments.multiplicity.wrappers.MultiplicityLGATrWrapper
+
 force_xformers: '${training.force_xformers}'
 
 mean_aggregation: true
