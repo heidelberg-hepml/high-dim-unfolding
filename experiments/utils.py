@@ -161,48 +161,6 @@ def get_range(input):
     return quantiles
 
 
-def mask_dims(input, dims):
-    mask = torch.ones_like(input)
-    mask[..., dims] = 0
-    return input * mask
-
-
-def remove_jet(batch):
-    new_batch = batch.clone()
-
-    det_particles = new_batch.x_det
-    det_scalars = new_batch.scalars_det
-    det_ptr = new_batch.x_det_ptr
-    det_n_constituents = det_ptr[1:] - det_ptr[:-1] - 1
-    new_det_ptr = torch.zeros(len(det_ptr), dtype=det_ptr.dtype, device=det_ptr.device)
-    new_det_ptr[1:] = torch.cumsum(det_n_constituents, dim=0)
-    det_idx = torch.arange(det_particles.shape[0], device=det_particles.device)
-    new_det_idx = torch.cat(
-        [det_idx[det_ptr[i] + 1 : det_ptr[i + 1]] for i in range(len(det_ptr) - 1)]
-    )
-    new_batch.x_det = det_particles[new_det_idx]
-    new_batch.scalars_det = det_scalars[new_det_idx]
-    new_batch.x_det_ptr = new_det_ptr
-    new_batch.x_det_batch = get_batch_from_ptr(new_det_ptr)
-
-    gen_particles = new_batch.x_gen
-    gen_scalars = new_batch.scalars_gen
-    gen_ptr = new_batch.x_gen_ptr
-    gen_n_constituents = gen_ptr[1:] - gen_ptr[:-1] - 1
-    new_gen_ptr = torch.zeros(len(gen_ptr), dtype=gen_ptr.dtype, device=gen_ptr.device)
-    new_gen_ptr[1:] = torch.cumsum(gen_n_constituents, dim=0)
-    gen_idx = torch.arange(gen_particles.shape[0], device=gen_particles.device)
-    new_gen_idx = torch.cat(
-        [gen_idx[gen_ptr[i] + 1 : gen_ptr[i + 1]] for i in range(len(gen_ptr) - 1)]
-    )
-    new_batch.x_gen = gen_particles[new_gen_idx]
-    new_batch.scalars_gen = gen_scalars[new_gen_idx]
-    new_batch.x_gen_ptr = new_gen_ptr
-    new_batch.x_gen_batch = get_batch_from_ptr(new_gen_ptr)
-
-    return new_batch
-
-
 def xformers_mask(batch, batch_condition=None, materialize=False):
     """
     Construct attention mask that makes sure that objects only attend to each other
@@ -261,30 +219,3 @@ def flatten_dict(d, parent_key="", sep="."):
         else:
             items.append((new_key, v))
     return dict(items)
-
-
-def frequency_check(step, every_n_steps, skip_initial=False):
-    """Checks whether an action should be performed at a given step and frequency.
-
-    Parameters
-    ----------
-    step : int
-        Step number (one-indexed)
-    every_n_steps : None or int
-        Desired action frequency. None or 0 correspond to never executing the action.
-    skip_initial : bool
-        If True, frequency_check returns False at step 0.
-
-    Returns
-    -------
-    decision : bool
-        Whether the action should be executed.
-    """
-
-    if every_n_steps is None or every_n_steps == 0:
-        return False
-
-    if skip_initial and step == 0:
-        return False
-
-    return step % every_n_steps == 0

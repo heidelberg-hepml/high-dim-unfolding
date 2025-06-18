@@ -302,6 +302,7 @@ class KinematicsExperiment(BaseExperiment):
             "test": self.test_loader,
             "val": self.val_loader,
         }
+        self.model.eval()
         if self.cfg.evaluation.sample:
             t0 = time.time()
             self._sample_events(loaders["test"])

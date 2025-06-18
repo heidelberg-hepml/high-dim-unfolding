@@ -32,18 +32,22 @@ class ConditionalTransformerCFM(EventCFM):
         self.force_xformers = force_xformers
 
     def get_masks(self, batch):
-        return xformers_mask(
+        attention_mask = xformers_mask(
             batch.x_gen_batch, materialize=not self.force_xformers
-        ), xformers_mask(
+        )
+        condition_attention_mask = xformers_mask(
+            batch.x_det_batch, materialize=not self.force_xformers
+        )
+        cross_attention_mask = xformers_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
             materialize=not self.force_xformers,
         )
+        return attention_mask, condition_attention_mask, cross_attention_mask
 
-    def get_condition(self, batch):
-        mask = xformers_mask(batch.x_det_batch, materialize=not self.force_xformers)
+    def get_condition(self, batch, attention_mask):
         input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
-        return self.net_condition(input.unsqueeze(0), attention_mask=mask)
+        return self.net_condition(input.unsqueeze(0), attention_mask=attention_mask)
 
     def get_velocity(
         self,
@@ -126,15 +130,20 @@ class ConditionalLGATrCFM(EventCFM):
             batch.x_det_ptr,
             self.ga_cfg,
         )
-        return xformers_mask(
+        attention_mask = xformers_mask(
             gen_embedding["batch"], materialize=not self.force_xformers
-        ), xformers_mask(
+        )
+        condition_attention_mask = xformers_mask(
+            det_embedding["batch"], materialize=not self.force_xformers
+        )
+        cross_attention_mask = xformers_mask(
             gen_embedding["batch"],
             det_embedding["batch"],
             materialize=not self.force_xformers,
         )
+        return attention_mask, condition_attention_mask, cross_attention_mask
 
-    def get_condition(self, batch):
+    def get_condition(self, batch, attention_mask):
         embedding = embed_data_into_ga(
             batch.x_det,
             batch.scalars_det,
@@ -143,13 +152,6 @@ class ConditionalLGATrCFM(EventCFM):
         )
         mv = embedding["mv"].unsqueeze(0)
         s = embedding["s"].unsqueeze(0)
-        attention_mask = xformers_mask(
-            embedding["batch"], materialize=not self.force_xformers
-        )
-
-        # fixed_t = torch.zeros(s.shape[1], 1, dtype=s.dtype, device=s.device)
-        # t = self.t_embedding(fixed_t).unsqueeze(0)
-        # s = torch.cat([s, t], dim=-1)
         condition_mv, condition_s = self.net_condition(mv, s, attn_bias=attention_mask)
         return condition_mv, condition_s
 

@@ -117,9 +117,11 @@ class CFM(nn.Module):
         vt = x1 - x0
         xt = self.geometry._handle_periodic(x0 + vt * t)
 
-        condition = self.get_condition(new_batch)
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
+            new_batch
+        )
 
-        attention_mask, crossattention_mask = self.get_masks(new_batch)
+        condition = self.get_condition(new_batch, condition_attention_mask)
 
         if self.cfm.self_condition_prob > 0.0:
             self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
@@ -194,9 +196,11 @@ class CFM(nn.Module):
 
         sample_batch = batch.clone()
 
-        condition = self.get_condition(new_batch)
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
+            new_batch
+        )
 
-        attention_mask, crossattention_mask = self.get_masks(new_batch)
+        condition = self.get_condition(new_batch, condition_attention_mask)
 
         def velocity(t, xt, self_condition=None):
             xt = self.geometry._handle_periodic(xt)
