@@ -22,10 +22,6 @@ dist:
  n_components: 5
  diff: true
 
-loss:
- type: cross_entropy
- smoothness: 3
-
 train: true
 training:
  iterations: 10000

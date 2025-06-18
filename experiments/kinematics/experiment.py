@@ -145,8 +145,8 @@ class KinematicsExperiment(BaseExperiment):
         gen_particles /= self.cfg.data.units
         det_particles /= self.cfg.data.units
 
-        det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1, keepdim=True))
-        gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1, keepdim=True))
+        det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
+        gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
 
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
@@ -157,8 +157,7 @@ class KinematicsExperiment(BaseExperiment):
 
         # initialize cfm (might require data)
         self.model.init_physics(
-            units=self.cfg.data.units,
-            pt_min=self.cfg.data.pt_min,
+            pt_min=self.cfg.data.pt_min / self.cfg.data.units,
             mass=self.cfg.data.mass,
         )
         self.model.init_coordinates()
@@ -338,20 +337,11 @@ class KinematicsExperiment(BaseExperiment):
                 self.device,
                 self.dtype,
             )
-            LOGGER.info(
-                f"xgen: {sample_batch.x_gen.shape}, jetgen: {sample_batch.jet_gen.shape}"
-            )
-            LOGGER.info(
-                f"xdet: {sample_batch.x_det.shape}, jetdet: {sample_batch.jet_det.shape}"
-            )
-            LOGGER.info(
-                f"xgenptr: {sample_batch.x_gen_ptr.shape}, xdetptr: {sample_batch.x_det_ptr.shape}"
-            )
 
             if i == 0:
                 plot_kinematics(
                     self.cfg.run_dir,
-                    base.cpu(),
+                    batch.x_det.cpu(),
                     batch.x_gen.cpu(),
                     sample_batch.x_gen.cpu(),
                     filename="post_kinematics.pdf",

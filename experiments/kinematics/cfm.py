@@ -118,26 +118,32 @@ class CFM(nn.Module):
             self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
             if torch.rand(1) < self.cfm.self_condition_prob:
                 self_condition = self.get_velocity(
-                    xt,
-                    t,
-                    condition,
-                    attention_mask,
-                    crossattention_mask,
-                    self_condition,
+                    xt=xt,
+                    t=t,
+                    batch=batch,
+                    condition=condition,
+                    attention_mask=attention_mask,
+                    crossattention_mask=crossattention_mask,
+                    self_condition=self_condition,
                 )
 
             vp = self.get_velocity(
-                xt,
-                t,
-                batch,
-                condition,
-                attention_mask,
-                crossattention_mask,
-                self_condition,
+                xt=xt,
+                t=t,
+                batch=batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
+                self_condition=self_condition,
             )
         else:
             vp = self.get_velocity(
-                xt, t, batch, condition, attention_mask, crossattention_mask
+                xt=xt,
+                t=t,
+                batch=batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
             )
 
         vp = self.handle_velocity(vp, batch.x_gen_ptr)
@@ -146,10 +152,13 @@ class CFM(nn.Module):
         # evaluate conditional flow matching objective
         alpha = self.cfm.cosine_similarity_factor
         distance = ((vp - vt) ** 2).mean()
-        cosine_similarity = (
-            1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
-        ).mean()
-        loss = (1 - alpha) * distance + alpha * cosine_similarity
+        if alpha > 0.0:
+            cosine_similarity = (
+                1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
+            ).mean()
+            loss = (1 - alpha) * distance + alpha * cosine_similarity
+        else:
+            loss = distance
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
         return loss, distance_particlewise
 
@@ -180,12 +189,12 @@ class CFM(nn.Module):
             xt = self.geometry._handle_periodic(xt)
             t = t * torch.ones(shape[0], 1, dtype=xt.dtype, device=xt.device)
             vt = self.get_velocity(
-                xt,
-                t,
-                batch,
-                condition,
-                attn_kwargs={"attn_bias": attention_mask},
-                crossattn_kwargs={"attn_bias": crossattention_mask},
+                xt=xt,
+                t=t,
+                batch=batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
                 self_condition=self_condition,
             )
             vt = self.handle_velocity(
@@ -241,20 +250,16 @@ class EventCFM(CFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def init_physics(self, units, pt_min, mass):
+    def init_physics(self, pt_min, mass):
         """
         Pass physics information to the CFM class
 
         Parameters
         ----------
-        units: float
-            Scale of dimensionful quantities
-            I call it 'units' because we can really choose it arbitrarily without losing anything
-        pt_min: List[float]
+        pt_min: float
             Minimum pt value for each particle
         mass: float
         """
-        self.units = units
         self.pt_min = pt_min
         self.mass = mass
 
@@ -283,17 +288,16 @@ class EventCFM(CFM):
         elif coordinates_label == "PtPhiEtaM2":
             coordinates = c.PtPhiEtaM2()
         elif coordinates_label == "LogPtPhiEtaE":
-            coordinates = c.LogPtPhiEtaE(self.pt_min, self.units)
+            coordinates = c.LogPtPhiEtaE(self.pt_min)
         elif coordinates_label == "LogPtPhiEtaM2":
-            coordinates = c.LogPtPhiEtaM2(self.pt_min, self.units)
+            coordinates = c.LogPtPhiEtaM2(self.pt_min)
         elif coordinates_label == "PtPhiEtaLogM2":
             coordinates = c.PtPhiEtaLogM2()
         elif coordinates_label == "LogPtPhiEtaLogM2":
-            coordinates = c.LogPtPhiEtaLogM2(self.pt_min, self.units)
+            coordinates = c.LogPtPhiEtaLogM2(self.pt_min)
         elif coordinates_label == "StandardLogPtPhiEtaLogM2":
             coordinates = c.StandardLogPtPhiEtaLogM2(
                 self.pt_min,
-                self.units,
                 fixed_dims=self.cfm.masked_dims,
                 fixed_jets=self.cfm.mask_jets,
             )
@@ -301,7 +305,7 @@ class EventCFM(CFM):
             coordinates = c.JetScaledPtPhiEtaM2()
         elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
-                self.pt_min, self.units, self.cfm.masked_dims
+                self.pt_min, self.cfm.masked_dims
             )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")

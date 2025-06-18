@@ -160,10 +160,10 @@ class StandardPPPLogM2(BaseCoordinates):
 
 class LogPtPhiEtaE(BaseCoordinates):
     # (log(pt), phi, eta, E)
-    def __init__(self, pt_min, units):
+    def __init__(self, pt_min):
         super().__init__()
         self.contains_phi = True
-        self.transforms = [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min, units)]
+        self.transforms = [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min)]
 
 
 class PtPhiEtaLogM2(BaseCoordinates):
@@ -195,41 +195,41 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
 
 class LogPtPhiEtaM2(BaseCoordinates):
     # (log(pt), phi, eta, m^2)
-    def __init__(self, pt_min, units):
+    def __init__(self, pt_min):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min, units),
+            tr.Pt_to_LogPt(pt_min),
         ]
 
 
 class LogPtPhiEtaLogM2(BaseCoordinates):
     # (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, units):
+    def __init__(self, pt_min):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min, units),
+            tr.Pt_to_LogPt(pt_min),
             tr.M2_to_LogM2(),
         ]
 
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, units, fixed_dims=[3], scaling=1.0, fixed_jets=False):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=1.0, fixed_jets=False):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min, units),
+            tr.Pt_to_LogPt(pt_min),
             tr.M2_to_LogM2(),
             tr.StandardNormal([1] + fixed_dims, scaling=scaling, fixed_jets=fixed_jets),
         ]
@@ -250,7 +250,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
 
 class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
-    def __init__(self, pt_min, units, fixed_dims=[3], scaling=1.0):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=1.0):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = True
@@ -259,7 +259,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.PtPhiEtaM2_to_JetScale(),
             tr.M2_to_LogM2(),
-            tr.Pt_to_LogPt(pt_min, units),
+            tr.Pt_to_LogPt(pt_min),
             tr.StandardNormal(fixed_dims, fixed_jets=True),
         ]
 

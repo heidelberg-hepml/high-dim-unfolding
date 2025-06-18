@@ -16,7 +16,6 @@ from experiments.distributions import (
     CategoricalDistribution,
     GaussianMixture,
     cross_entropy,
-    smooth_cross_entropy,
 )
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
@@ -27,12 +26,7 @@ MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
-        if self.cfg.loss.type == "cross_entropy":
-            self.loss = lambda dist, target: cross_entropy(dist, target).mean()
-        elif self.cfg.loss.type == "smooth_cross_entropy":
-            self.loss = lambda dist, target: smooth_cross_entropy(
-                dist, target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness
-            ).mean()
+        self.loss = lambda dist, target: cross_entropy(dist, target).mean()
 
     def init_physics(self):
 

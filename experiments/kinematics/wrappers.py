@@ -1,12 +1,10 @@
 import torch
 import numpy as np
-from torchdiffeq import odeint
 from lgatr.interface import extract_vector
 
 from experiments.utils import xformers_mask
 from experiments.kinematics.cfm import EventCFM
 from experiments.embedding import embed_data_into_ga
-from experiments.logger import LOGGER
 
 
 class ConditionalTransformerCFM(EventCFM):
@@ -45,7 +43,7 @@ class ConditionalTransformerCFM(EventCFM):
     def get_condition(self, batch):
         mask = xformers_mask(batch.x_det_batch, materialize=not self.force_xformers)
         input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
-        return self.net_condition(input.unsqueeze(0), mask)
+        return self.net_condition(input.unsqueeze(0), attention_mask=mask)
 
     def get_velocity(
         self,
@@ -156,7 +154,14 @@ class ConditionalLGATrCFM(EventCFM):
         return condition_mv, condition_s
 
     def get_velocity(
-        self, xt, t, batch, condition, attention_mask, crossattention_mask
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
     ):
         assert self.coordinates is not None
 
@@ -165,10 +170,16 @@ class ConditionalLGATrCFM(EventCFM):
             jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0),
         )
         condition_mv, condition_s = condition
+        if self_condition is not None:
+            scalars = torch.cat(
+                [batch.scalars_gen, self.t_embedding(t), self_condition], dim=-1
+            )
+        else:
+            scalars = torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1)
 
         embedding = embed_data_into_ga(
             fourmomenta,
-            torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1),
+            scalars,
             batch.x_gen_ptr,
             self.ga_cfg,
         )

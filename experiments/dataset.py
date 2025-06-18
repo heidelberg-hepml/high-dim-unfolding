@@ -60,10 +60,10 @@ class Dataset(torch.utils.data.Dataset):
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_event_scalars,
-                jet_det=det_jets[i],
+                jet_det=det_jets[i : i + 1],
                 x_gen=gen_event,
                 scalars_gen=gen_event_scalars,
-                jet_gen=gen_jets[i],
+                jet_gen=gen_jets[i : i + 1],
             )
 
             self.data_list.append(graph)

@@ -376,9 +376,9 @@ class M2_to_LogM2(BaseTransform):
 
 
 class Pt_to_LogPt(BaseTransform):
-    def __init__(self, pt_min, units):
+    def __init__(self, pt_min):
         super().__init__()
-        self.pt_min = torch.tensor(pt_min) / units
+        self.pt_min = torch.tensor(pt_min)
 
     def get_dpt(self, pt):
         return torch.clamp(pt - self.pt_min.to(pt.device), min=EPS2)
