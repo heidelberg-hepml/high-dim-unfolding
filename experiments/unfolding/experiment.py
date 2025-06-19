@@ -1,49 +1,86 @@
 import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
+from torch_geometric.utils import scatter
+from torch_geometric.data import Batch
 
 import os, time
 from omegaconf import open_dict
-from hydra.utils import instantiate
-from tqdm import trange, tqdm
-import energyflow
 
+from fastjet_contribs import compute_nsubjettiness
+
+from gatr.interface import embed_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
-from experiments.unfolding.dataset import ZplusJetDataset, collate
+from experiments.unfolding.dataset import (
+    Dataset,
+    load_cms,
+    load_zplusjet,
+    positional_encoding,
+)
 from experiments.unfolding.utils import (
+    get_ptr_from_batch,
+    fourmomenta_to_jetmomenta,
+    remove_det_jet,
     ensure_angle,
-    jetmomenta_to_fourmomenta,
-    pid_encoding,
 )
 import experiments.unfolding.plotter as plotter
+from experiments.unfolding.plots import plot_data
 from experiments.logger import LOGGER
-from experiments.mlflow import log_mlflow
-
-from experiments.unfolding.plots import plot_kinematics
 
 
 class UnfoldingExperiment(BaseExperiment):
     def init_physics(self):
 
-        # dynamically set wrapper properties
-        self.modeltype = "CFM"
-
         with open_dict(self.cfg):
-            self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+            self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
+
+            if self.cfg.data.dataset == "cms":
+                self.cfg.data.max_num_particles = 3
+                self.cfg.data.pt_min = 30.0
+                self.cfg.data.units = 10.0
+                self.cfg.cfm.masked_dims = []
+
+            if self.cfg.data.max_constituents == -1:
+                self.cfg.data.max_constituents = self.cfg.data.max_num_particles
+
+            if self.cfg.data.add_jet:
+                self.cfg.data.max_constituents += 1
+
+            if self.cfg.modelname == "SimpleConditionalGATr":
+                self.cfg.data.embed_det_in_GA = True
+                self.cfg.data.add_spurions = True
+
+            if self.cfg.data.add_spurions:
+                self.spurions = embed_spurions(
+                    self.cfg.data.beam_reference,
+                    self.cfg.data.add_time_reference,
+                    self.cfg.data.two_beams,
+                    self.cfg.data.add_xzplane,
+                    self.cfg.data.add_yzplane,
+                )
+                self.cfg.data.num_spurions = self.spurions.size(-2)
+            else:
+                self.spurions = None
+                self.cfg.data.num_spurions = 0
+
             # dynamically set channel dimensions
             if self.cfg.modelname == "ConditionalGATr":
+                self.cfg.data.embed_det_in_GA = True
                 self.cfg.model.net.in_s_channels = self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.condition_s_channels = 0
-                if self.cfg.data.pid_raw:
-                    self.cfg.model.net.in_s_channels += 1
-                    self.cfg.model.net.condition_s_channels += 1
-                elif self.cfg.data.pid_encoding:
+                self.cfg.model.net_condition.in_s_channels = 0
+                self.cfg.model.net_condition.out_mv_channels = (
+                    self.cfg.model.net.hidden_mv_channels
+                )
+                self.cfg.model.net_condition.out_s_channels = (
+                    self.cfg.model.net.hidden_s_channels
+                )
+                if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_s_channels += 6
-                    self.cfg.model.net.condition_s_channels += 6
+                    self.cfg.model.net_condition.in_s_channels += 6
                 if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net.condition_s_channels += 7
+                    self.cfg.model.net_condition.in_s_channels += 7
                 if not self.cfg.data.beam_token:
-                    self.cfg.model.net.condition_mv_channels += (
+                    self.cfg.model.net_condition.in_mv_channels += (
                         2
                         if (
                             self.cfg.data.two_beams
@@ -52,102 +89,371 @@ class UnfoldingExperiment(BaseExperiment):
                         else 1
                     )
                     if self.cfg.data.add_time_reference:
-                        self.cfg.model.net.condition_mv_channels += 1
+                        self.cfg.model.net_condition.in_mv_channels += 1
                 self.cfg.model.cfg_data = self.cfg.data
 
             elif self.cfg.modelname == "ConditionalTransformer":
+                self.cfg.data.embed_det_in_GA = False
                 self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
-                self.cfg.model.net.condition_channels = 4
-                if self.cfg.data.pid_raw:
-                    self.cfg.model.net.in_channels += 1
-                    self.cfg.model.net.condition_channels += 1
+                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.net.hidden_channels
+                )
                 if self.cfg.data.pid_encoding:
                     self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net.condition_channels += 6
+                    self.cfg.model.net_condition.in_channels += 6
+            elif self.cfg.modelname == "ConditionalMLP":
+                self.cfg.data.embed_det_in_GA = False
+                self.cfg.model.net.in_shape = 4 + self.cfg.cfm.embed_t_dim
+                self.cfg.model.net.out_shape = 4
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
+            elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
+                self.cfg.data.embed_det_in_GA = False
+                self.cfg.model.autoregressive_tr.in_channels = 4
+                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.autoregressive_tr.hidden_channels
+                )
+                self.cfg.model.autoregressive_tr.out_channels = (
+                    self.cfg.model.autoregressive_tr.hidden_channels
+                )
+                self.cfg.model.mlp.in_shape = (
+                    4
+                    + self.cfg.cfm.embed_t_dim
+                    + self.cfg.model.autoregressive_tr.out_channels
+                )
+                self.cfg.model.mlp.out_shape = 4
+                self.cfg.model.mlp.hidden_channels = (
+                    self.cfg.model.autoregressive_tr.hidden_channels
+                )
+            elif self.cfg.modelname == "SimpleConditionalTransformer":
+                self.cfg.data.embed_det_in_GA = False
+                self.cfg.model.net.in_channels = 4 + self.cfg.cfm.embed_t_dim
+                self.cfg.model.net_condition.in_channels = 4
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.net.hidden_channels
+                )
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_channels += 6
+                    self.cfg.model.net_condition.in_channels += 6
+                if self.cfg.model.net.pos_encoding_type == "absolute":
+                    self.cfg.model.net.pos_encoding_base = (
+                        self.cfg.data.max_constituents
+                    )
+
+                if self.cfg.model.net_condition.pos_encoding_type == "absolute":
+                    self.cfg.model.net_condition.pos_encoding_base = (
+                        self.cfg.data.max_constituents
+                    )
+
+            elif self.cfg.modelname == "SimpleConditionalGATr":
+                self.cfg.data.embed_det_in_GA = True
+                self.cfg.data.add_spurions = True
+                self.cfg.model.net.in_s_channels = (
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.in_s_channels = (
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.out_mv_channels = (
+                    self.cfg.model.net.hidden_mv_channels
+                )
+                self.cfg.model.net_condition.out_s_channels = (
+                    self.cfg.model.net.hidden_s_channels
+                )
+                if self.cfg.data.pid_encoding:
+                    self.cfg.model.net.in_s_channels += 6
+                    self.cfg.model.net_condition.in_s_channels += 6
+                if self.cfg.data.add_scalar_features:
+                    self.cfg.model.net_condition.in_s_channels += 7
+                if not self.cfg.data.beam_token:
+                    self.cfg.model.net_condition.in_mv_channels += (
+                        2
+                        if (
+                            self.cfg.data.two_beams
+                            and self.cfg.data.beam_reference != "xyplane"
+                        )
+                        else 1
+                    )
+                    if self.cfg.data.add_time_reference:
+                        self.cfg.model.net_condition.in_mv_channels += 1
+                self.cfg.model.cfg_data = self.cfg.data
+
+                if self.cfg.model.net.attention.pos_encoding_type == "absolute":
+                    self.cfg.model.net.attention.pos_encoding_base = (
+                        self.cfg.data.max_constituents + self.cfg.data.num_spurions
+                    )
+
+                if self.cfg.model.net.crossattention.pos_encoding_type == "absolute":
+                    self.cfg.model.net.crossattention.pos_encoding_base = (
+                        self.cfg.data.max_constituents + self.cfg.data.num_spurions
+                    )
+
+                if (
+                    self.cfg.model.net_condition.attention.pos_encoding_type
+                    == "absolute"
+                ):
+                    self.cfg.model.net_condition.attention.pos_encoding_base = (
+                        self.cfg.data.max_constituents + self.cfg.data.num_spurions
+                    )
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
 
-    def init_data(self):
-        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
-        self._init_data(ZplusJetDataset, data_path)
+        self.define_process_specifics()
 
-    def _init_data(self, Dataset, data_path):
-        data = energyflow.zjets_delphes.load(
-            "Herwig",
-            num_data=self.cfg.data.length,
-            pad=True,
-            cache_dir=data_path,
-            include_keys=["particles", "mults", "jets"],
+    def init_data(self):
+        if self.cfg.evaluation.load_samples:
+            LOGGER.info("Not loading data, using saved samples")
+            return
+        t0 = time.time()
+        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
+        LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
+        self._init_data(data_path)
+        LOGGER.info(
+            f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
         )
 
-        split = self.cfg.data.split
-        size = len(data["sim_particles"])
-        train_idx = int(split[0] * size)
-        val_idx = int(split[1] * size)
-
-        det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
-        det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
-        det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
-
-        gen_particles = torch.tensor(data["gen_particles"], dtype=self.dtype)
-        gen_jets = torch.tensor(data["gen_jets"], dtype=self.dtype)
-        gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
-
-        # undo the dataset scaling
-        det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
-        det_particles[..., 2] = ensure_angle(det_particles[..., 2])
-        det_particles[..., 0] = det_particles[..., 0] * 100
-
-        gen_particles[..., 1:3] = gen_particles[..., 1:3] + gen_jets[:, None, 1:3]
-        gen_particles[..., 2] = ensure_angle(gen_particles[..., 2])
-        gen_particles[..., 0] = gen_particles[..., 0] * 100
-
-        # swap eta and phi for consistency
-        det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
-        gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
-
-        # save pids before replacing with mass
-        if self.cfg.data.pid_encoding:
-            det_pids = det_particles[..., 3].clone().unsqueeze(-1)
-            det_pids = pid_encoding(det_pids)
-            gen_pids = gen_particles[..., 3].clone().unsqueeze(-1)
-            gen_pids = pid_encoding(gen_pids)
+    def _init_data(self, data_path):
+        t0 = time.time()
+        if self.cfg.data.dataset == "zplusjet":
+            data = load_zplusjet(data_path, self.cfg, self.dtype)
+        elif self.cfg.data.dataset == "cms":
+            data = load_cms(data_path, self.cfg, self.dtype)
         else:
-            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
-            gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=self.dtype)
+            raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
+        det_particles = data["det_particles"]
+        det_mults = data["det_mults"]
+        det_pids = data["det_pids"]
+        gen_particles = data["gen_particles"]
+        gen_mults = data["gen_mults"]
+        gen_pids = data["gen_pids"]
+        size = len(gen_particles)
 
-        det_particles[..., 3] = self.cfg.data.mass
-        gen_particles[..., 3] = self.cfg.data.mass
+        LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
-        det_particles = jetmomenta_to_fourmomenta(det_particles)
-        gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+        if self.cfg.data.add_jet:
+            det_jets = det_particles.sum(dim=1, keepdim=True)
+            det_particles = torch.cat([det_jets, det_particles], dim=1)
+            det_pids = torch.cat([torch.zeros_like(det_pids[:, :1]), det_pids], dim=1)
+            det_mults += 1
 
-        if self.cfg.data.standardize:
-            mask = (
-                torch.arange(det_particles.shape[1])[None, :]
-                < det_mults[:train_idx, None]
+        gen_particles /= self.cfg.data.units
+        det_particles /= self.cfg.data.units
+
+        if self.cfg.data.max_constituents > 0:
+            # if self.cfg.data.det_mult == 1:
+            #     det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
+            # elif self.cfg.data.det_mult == 2:
+            #     det_mults = torch.clamp(
+            #         det_mults, max=2 * self.cfg.data.max_constituents
+            #     )
+            # elif self.cfg.data.det_mult == -1:
+            #     pass
+            det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
+            gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
+
+        split = self.cfg.data.train_test_val
+        train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
+
+        # initialize cfm (might require data)
+        self.model.init_physics(
+            units=self.cfg.data.units,
+            pt_min=self.cfg.data.pt_min,
+            base_type=self.cfg.data.base_type,
+            onshell_mass=self.cfg.data.mass,
+        )
+        self.model.init_distribution()
+        self.model.init_coordinates()
+
+        # initialize coordinates
+        train_gen_mask = (
+            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
+        )
+        train_gen_data = gen_particles[:train_idx][train_gen_mask]
+        self.model.coordinates.init_fit(train_gen_data)
+        self.model.distribution.coordinates.init_fit(train_gen_data)
+
+        # initialize condition_coordinates (might require data)
+        train_det_mask = (
+            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
+        )
+        train_det_data = det_particles[:train_idx][train_det_mask]
+        self.model.condition_coordinates.init_fit(train_det_data)
+
+        # transform before training
+        if self.cfg.modelname == "SimpleConditionalTransformer":
+            gen_mask = (
+                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
             )
-            flattened_particles = det_particles[:train_idx][mask]
+            det_mask = (
+                torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+            )
 
-            if self.cfg.modelname == "ConditionalGATr":
-                # For GATr, same standardization for all components
-                # mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
-                mean = torch.zeros(1, 4, dtype=self.dtype)
-                std = flattened_particles.std().unsqueeze(0).expand(1, 4)
-            elif self.cfg.modelname == "ConditionalTransformer":
-                # Otherwise, standardization done separately for each component
-                mean = flattened_particles.mean(dim=0, keepdim=True)
-                mean[..., -1] = 0
-                std = flattened_particles.std(dim=0, keepdim=True)
-                std[..., -1] = 1
-            det_particles = (det_particles - mean) / std
+            gen_data = gen_particles[gen_mask]
+            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
 
-        self.train_data = ZplusJetDataset(self.dtype)
-        self.val_data = ZplusJetDataset(self.dtype)
-        self.test_data = ZplusJetDataset(self.dtype)
+            det_data = det_particles[det_mask]
+            det_data = self.model.condition_coordinates.fourmomenta_to_x(det_data)
 
+            if self.cfg.data.dataset == "zplusjet":
+                gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
+                det_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
+
+            gen_particles[gen_mask] = gen_data
+            det_particles[det_mask] = det_data
+
+            if self.cfg.data.standardize:
+                train_gen_mask = train_gen_mask.unsqueeze(-1)
+                train_det_mask = train_det_mask.unsqueeze(-1)
+
+                self.gen_mean = (gen_particles[:train_idx] * train_gen_mask).sum(
+                    dim=0, keepdim=True
+                ) / train_gen_mask.sum(dim=0, keepdim=True)
+
+                self.gen_std = torch.sqrt(
+                    (
+                        (
+                            gen_particles[:train_idx] * train_gen_mask
+                            - self.gen_mean * train_gen_mask
+                        )
+                        ** 2
+                    ).sum(dim=0, keepdim=True)
+                    / train_gen_mask.sum(dim=0, keepdim=True)
+                )
+                self.gen_std[self.gen_std == 0] = 1.0
+
+                self.det_mean = (det_particles[:train_idx] * train_det_mask).sum(
+                    dim=0, keepdim=True
+                ) / train_det_mask.sum(dim=0, keepdim=True)
+
+                self.det_std = torch.sqrt(
+                    (
+                        (
+                            det_particles[:train_idx] * train_det_mask
+                            - self.det_mean * train_det_mask
+                        )
+                        ** 2
+                    ).sum(dim=0, keepdim=True)
+                    / train_det_mask.sum(dim=0, keepdim=True)
+                )
+                self.det_std[self.det_std == 0] = 1.0
+
+                if self.model.coordinates.contains_phi:
+                    self.gen_std[..., 1] = 1.0
+                if self.model.condition_coordinates.contains_phi:
+                    self.det_std[..., 1] = 1.0
+                self.gen_std[..., self.cfg.cfm.masked_dims] = 1.0
+                self.det_std[..., self.cfg.cfm.masked_dims] = 1.0
+
+                gen_particles = gen_particles - self.gen_mean
+                det_particles = det_particles - self.det_mean
+                gen_particles = gen_particles / self.gen_std
+                det_particles = det_particles / self.det_std
+
+            else:
+                self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
+                self.gen_std = torch.ones(1, *gen_particles.shape[1:])
+                self.det_mean = torch.zeros(1, *det_particles.shape[1:])
+                self.det_std = torch.ones(1, *det_particles.shape[1:])
+
+        if self.cfg.modelname == "SimpleConditionalGATr":
+
+            gen_mask = (
+                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+            )
+
+            gen_data = gen_particles[gen_mask]
+            gen_data = self.model.coordinates.fourmomenta_to_x(gen_data)
+
+            if self.cfg.data.dataset == "zplusjet":
+                gen_data[..., 3] = 2 * torch.log(torch.tensor(self.cfg.data.mass))
+
+            gen_particles[gen_mask] = gen_data
+
+            if self.cfg.data.standardize:
+                train_gen_mask = train_gen_mask.unsqueeze(-1)
+
+                self.gen_mean = (gen_particles[:train_idx] * train_gen_mask).sum(
+                    dim=0, keepdim=True
+                ) / train_gen_mask.sum(dim=0, keepdim=True)
+
+                self.gen_std = torch.sqrt(
+                    (
+                        (
+                            gen_particles[:train_idx] * train_gen_mask
+                            - self.gen_mean * train_gen_mask
+                        )
+                        ** 2
+                    ).sum(dim=0, keepdim=True)
+                    / train_gen_mask.sum(dim=0, keepdim=True)
+                )
+                self.gen_std[self.gen_std == 0] = 1.0
+
+                if self.model.coordinates.contains_phi:
+                    self.gen_std[..., 1] = 1.0
+
+                self.gen_std[..., self.cfg.cfm.masked_dims] = 1.0
+
+                gen_particles = gen_particles - self.gen_mean
+                gen_particles = gen_particles / self.gen_std
+
+            else:
+                self.gen_mean = torch.zeros(1, *gen_particles.shape[1:])
+                self.gen_std = torch.ones(1, *gen_particles.shape[1:])
+
+            self.model.set_ms(self.gen_mean, self.gen_std)
+
+        if self.cfg.data.pos_encoding_dim > 0:
+            seq_length = self.cfg.data.max_constituents
+            pos_encoding = positional_encoding(
+                seq_length, self.cfg.data.pos_encoding_dim
+            )
+        else:
+            pos_encoding = None
+
+        # initialize geometry
+        self.model.init_geometry()
+
+        if self.cfg.data.embed_det_in_GA and self.cfg.data.add_spurions:
+            self.spurions = embed_spurions(
+                self.cfg.data.beam_reference,
+                self.cfg.data.add_time_reference,
+                self.cfg.data.two_beams,
+                self.cfg.data.add_xzplane,
+                self.cfg.data.add_yzplane,
+            )
+        else:
+            self.spurions = None
+
+        if self.cfg.modelname == "SimpleConditionalTransformer":
+            fourm = False
+        else:
+            fourm = True
+
+        self.train_data = Dataset(
+            self.dtype,
+            self.cfg.data.embed_det_in_GA,
+            self.spurions,
+            fourm=fourm,
+            pos_encoding=pos_encoding,
+        )
+        self.val_data = Dataset(
+            self.dtype,
+            self.cfg.data.embed_det_in_GA,
+            self.spurions,
+            fourm=fourm,
+            pos_encoding=pos_encoding,
+        )
+        self.test_data = Dataset(
+            self.dtype,
+            self.cfg.data.embed_det_in_GA,
+            self.spurions,
+            fourm=fourm,
+            pos_encoding=pos_encoding,
+        )
         self.train_data.create_data_list(
             det_particles[:train_idx],
             det_pids[:train_idx],
@@ -157,59 +463,63 @@ class UnfoldingExperiment(BaseExperiment):
             gen_mults[:train_idx],
         )
         self.val_data.create_data_list(
-            det_particles[train_idx : train_idx + val_idx],
-            det_pids[train_idx : train_idx + val_idx],
-            det_mults[train_idx : train_idx + val_idx],
-            gen_particles[train_idx : train_idx + val_idx],
-            gen_pids[train_idx : train_idx + val_idx],
-            gen_mults[train_idx : train_idx + val_idx],
+            det_particles[train_idx:val_idx],
+            det_pids[train_idx:val_idx],
+            det_mults[train_idx:val_idx],
+            gen_particles[train_idx:val_idx],
+            gen_pids[train_idx:val_idx],
+            gen_mults[train_idx:val_idx],
         )
         self.test_data.create_data_list(
-            det_particles[train_idx + val_idx :],
-            det_pids[train_idx + val_idx :],
-            det_mults[train_idx + val_idx :],
-            gen_particles[train_idx + val_idx :],
-            gen_pids[train_idx + val_idx :],
-            gen_mults[train_idx + val_idx :],
+            det_particles[val_idx:test_idx],
+            det_pids[val_idx:test_idx],
+            det_mults[val_idx:test_idx],
+            gen_particles[val_idx:test_idx],
+            gen_pids[val_idx:test_idx],
+            gen_mults[val_idx:test_idx],
         )
-
-        # initialize cfm (might require data)
-        self.model.init_physics(
-            self.cfg.data.units,
-            self.cfg.data.pt_min,
-            self.cfg.data.base_type,
-            self.cfg.data.mass,
-            self.device,
-        )
-        self.model.init_distribution()
-        self.model.init_coordinates()
-        mask = (
-            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
-        )
-        fit_data = gen_particles[:train_idx][mask]
-        self.model.coordinates.init_fit(fit_data)
-        if hasattr(self.model, "distribution"):
-            self.model.distribution.coordinates.init_fit(fit_data)
-        self.model.init_geometry()
 
     def _init_dataloader(self):
+        if self.cfg.evaluation.load_samples:
+            self.train_loader = None
+            self.val_loader = None
+            self.test_loader = None
+            return
+        train_sampler = torch.utils.data.DistributedSampler(
+            self.train_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True,
+        )
         self.train_loader = DataLoader(
             dataset=self.train_data,
-            batch_size=self.cfg.training.batchsize,
-            shuffle=True,
-            collate_fn=collate,
+            batch_size=self.cfg.training.batchsize // self.world_size,
+            sampler=train_sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+        test_sampler = torch.utils.data.DistributedSampler(
+            self.test_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
         )
         self.test_loader = DataLoader(
             dataset=self.test_data,
-            batch_size=self.cfg.evaluation.batchsize,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=test_sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+        val_sampler = torch.utils.data.DistributedSampler(
+            self.val_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
             shuffle=False,
-            collate_fn=collate,
         )
         self.val_loader = DataLoader(
             dataset=self.val_data,
-            batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
-            collate_fn=collate,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=val_sampler,
+            follow_batch=["x_gen", "x_det"],
         )
 
         LOGGER.info(
@@ -227,99 +537,269 @@ class UnfoldingExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         if self.cfg.evaluation.sample:
-            samples, samples_ptr, targets, targets_ptr = self._sample_events(
-                loaders["train"], self.cfg.evaluation.n_batches
-            )
-            plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
-            os.makedirs(plot_path, exist_ok=True)
-            plot_kinematics(plot_path, samples, targets)
-
+            t0 = time.time()
+            self._sample_events(loaders["test"])
+            loaders["gen"] = self.sample_loader
+            dt = time.time() - t0
+            LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
+        elif self.cfg.evaluation.load_samples:
+            self._load_samples()
+            loaders["gen"] = self.sample_loader
         else:
             LOGGER.info("Skip sampling")
 
         if self.cfg.evaluation.classifier:
-            self.classifiers = []
-            for ijet, n_jets in enumerate(self.cfg.data.n_jets):
-                self.classifiers.append(self._evaluate_classifier_metric(ijet, n_jets))
-
-        for key in self.cfg.evaluation.eval_loss:
-            if key in loaders.keys():
-                self._evaluate_loss_single(loaders[key], key)
+            self.classifier = self._evaluate_classifier_metric()
 
     def _evaluate_classifier_metric(self):
-        pass
-
-    def _evaluate_loss_single(self, loader, title):
-        self.model.eval()
-        losses = []
-        LOGGER.info(f"Starting to evaluate loss for model on {title} dataset")
-        t0 = time.time()
-        for i, data in enumerate(loader):
-            loss = 0.0
-            data[0], data[1] = data[0].to(self.device), data[1].to(self.device)
-            loss = self.model.batch_loss(data)[0]
-            losses.append(loss.cpu().item())
-        dt = time.time() - t0
-        LOGGER.info(
-            f"Finished evaluating loss for {title} dataset after {dt/60:.2f}min"
-        )
-
-        if self.cfg.use_mlflow:
-            log_mlflow(f"eval.{title}.loss", np.mean(losses))
+        raise NotImplementedError
 
     def _evaluate_log_prob_single(self, loader, title):
-        pass
+        raise NotImplementedError
 
-    def _sample_events(self, loader, n_batches):
-        samples = torch.empty((0, 4), device=self.device)
-        targets = torch.empty((0, 4), device=self.device)
-        samples_ptr = torch.zeros((1,), device=self.device)
-        targets_ptr = torch.zeros((1,), device=self.device)
+    def _sample_events(self, loader):
+        samples = []
+        targets = []
+        self.data_raw = {}
         it = iter(loader)
-        for i in range(n_batches):
-            batch = next(it)
-            batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
-            batch = (batch[0], batch[1])
-
-            target = batch[0].x
-            target_ptr = batch[0].ptr
-            targets = torch.cat([targets, target], dim=0)
-            targets_ptr = torch.cat(
-                [
-                    targets_ptr,
-                    torch.tensor(target_ptr[1:]) + targets_ptr[-1],
-                ],
-                dim=0,
+        n_batches = self.cfg.evaluation.n_batches
+        if n_batches > len(loader):
+            LOGGER.warning(
+                f"Requested {n_batches} batches for sampling, but only {len(loader)} batches available in test dataset."
             )
+            n_batches = len(loader)
+        elif n_batches == -1:
+            n_batches = len(loader)
+        LOGGER.info(f"Sampling {n_batches} batches for evaluation")
 
-            sample, ptr = self.model.sample(
+        if self.cfg.modelname == "SimpleConditionalTransformer":
+            self.gen_mean = self.gen_mean.to(self.device)
+            self.gen_std = self.gen_std.to(self.device)
+            self.det_mean = self.det_mean.to(self.device)
+            self.det_std = self.det_std.to(self.device)
+
+        elif self.cfg.modelname == "SimpleConditionalGATr":
+            self.gen_mean = self.gen_mean.to(self.device)
+            self.gen_std = self.gen_std.to(self.device)
+
+        for i in range(n_batches):
+            batch = next(it).to(self.device)
+
+            sample_batch = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
             )
-            samples = torch.cat([samples, sample], dim=0)
-            samples_ptr = torch.cat(
-                [samples_ptr, torch.tensor(ptr[1:]) + samples_ptr[-1]], dim=0
-            )
 
-        return samples, samples_ptr, targets, targets_ptr
+            if self.cfg.modelname == "SimpleConditionalTransformer":
+
+                # undo gen standardization
+                gen_indices = (
+                    torch.arange(len(batch.x_gen), device=batch.x_gen.device)
+                    - batch.x_gen_ptr[batch.x_gen_batch]
+                )
+
+                gen_std_broadcasted = self.gen_std.squeeze(0)[gen_indices]
+                gen_mean_broadcasted = self.gen_mean.squeeze(0)[gen_indices]
+
+                sample_batch.x_gen = (
+                    sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+                )
+                batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+
+                # undo det standardization
+                det_indices = (
+                    torch.arange(len(batch.x_det), device=batch.x_det.device)
+                    - batch.x_det_ptr[batch.x_det_batch]
+                )
+
+                det_std_broadcasted = self.det_std.squeeze(0)[det_indices]
+                det_mean_broadcasted = self.det_mean.squeeze(0)[det_indices]
+                sample_batch.x_det = (
+                    sample_batch.x_det * det_std_broadcasted + det_mean_broadcasted
+                )
+                batch.x_det = batch.x_det * det_std_broadcasted + det_mean_broadcasted
+
+                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen
+                )
+                sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    sample_batch.x_det
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
+                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det
+                )
+
+            elif self.cfg.modelname == "SimpleConditionalGATr":
+                # undo gen standardization
+                gen_indices = (
+                    torch.arange(len(batch.x_gen), device=batch.x_gen.device)
+                    - batch.x_gen_ptr[batch.x_gen_batch]
+                )
+
+                gen_std_broadcasted = self.gen_std.squeeze(0)[gen_indices]
+                gen_mean_broadcasted = self.gen_mean.squeeze(0)[gen_indices]
+
+                sample_batch.x_gen = (
+                    sample_batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+                )
+                batch.x_gen = batch.x_gen * gen_std_broadcasted + gen_mean_broadcasted
+
+                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
+
+            samples.extend(sample_batch.detach().to_data_list())
+            targets.extend(batch.detach().to_data_list())
+
+        if self.cfg.data.embed_det_in_GA:
+            if self.spurions is not None and len(self.spurions) > 0:
+                for data in samples:
+                    data.x_det = extract_vector(
+                        data.x_det[: -len(self.spurions)]
+                    ).squeeze(-2)
+                for data in targets:
+                    data.x_det = extract_vector(
+                        data.x_det[: -len(self.spurions)]
+                    ).squeeze(-2)
+            else:
+                for data in samples:
+                    data.x_det = extract_vector(data.x_det).squeeze(-2)
+                for data in targets:
+                    data.x_det = extract_vector(data.x_det).squeeze(-2)
+
+        self.data_raw["samples"] = Batch.from_data_list(
+            samples, follow_batch=["x_gen", "x_det"]
+        )
+
+        self.data_raw["truth"] = Batch.from_data_list(
+            targets, follow_batch=["x_gen", "x_det"]
+        )
+
+        if self.cfg.data.add_jet:
+            self.data_raw["samples"] = remove_det_jet(self.data_raw["samples"])
+            self.data_raw["truth"] = remove_det_jet(self.data_raw["truth"])
+
+        # convert the list into a dataloader
+        sampler = torch.utils.data.DistributedSampler(
+            samples,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+        self.sample_loader = DataLoader(
+            dataset=samples,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+
+        if self.cfg.evaluation.save_samples:
+            path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
+            os.makedirs(os.path.join(path), exist_ok=True)
+            LOGGER.info(f"Saving samples in {path}")
+            t0 = time.time()
+            torch.save(self.data_raw["samples"], os.path.join(path, "samples.pt"))
+            torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
+            LOGGER.info(f"Saved samples in {time.time() - t0:.2f}s")
+
+    def _load_samples(self):
+        path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.warm_start_idx}")
+        LOGGER.info(f"Loading samples from {path}")
+        t0 = time.time()
+        self.data_raw = {}
+        self.data_raw["samples"] = torch.load(
+            os.path.join(path, "samples.pt"), weights_only=False
+        )
+        self.data_raw["truth"] = torch.load(
+            os.path.join(path, "truth.pt"), weights_only=False
+        )
+        LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
+        self.sample_loader = None
+        LOGGER.info(f"Loaded samples in {time.time() - t0:.2f}s")
 
     def plot(self):
-        pass
+        path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
+        os.makedirs(os.path.join(path), exist_ok=True)
+        LOGGER.info(f"Creating plots in {path}")
+        t0 = time.time()
+
+        if self.cfg.modelname == "ConditionalTransformer":
+            model_label = "CondTr"
+        elif self.cfg.modelname == "SimpleConditionalTransformer":
+            model_label = "SCondTr"
+        elif self.cfg.modelname == "ConditionalGATr":
+            model_label = "CondGATr"
+        elif self.cfg.modelname == "SimpleConditionalGATr":
+            model_label = "SCondGATr"
+        elif self.cfg.modelname == "ConditionalAutoregressiveTransformer":
+            model_label = "CondARTr"
+        elif self.cfg.modelname == "ConditionalMLP":
+            model_label = "MLP"
+        kwargs = {
+            "exp": self,
+            "model_label": model_label,
+        }
+
+        if self.cfg.train:
+            filename = os.path.join(path, "training.pdf")
+            plotter.plot_losses(filename=filename, **kwargs)
+
+        if not self.cfg.evaluate:
+            return
+
+        weights, mask_dict = None, None
+        if (
+            self.cfg.plotting.log_prob
+            and len(self.cfg.evaluation.eval_log_prob) > 0
+            and self.cfg.evaluate
+        ):
+            filename = os.path.join(path, "neg_log_prob.pdf")
+            plotter.plot_log_prob(filename=filename, **kwargs)
+
+        if self.cfg.evaluation.classifier and self.cfg.evaluate:
+            filename = os.path.join(path, "classifier.pdf")
+            plotter.plot_classifier(filename=filename, **kwargs)
+
+        if self.cfg.evaluation.sample or self.cfg.evaluation.load_samples:
+            if self.cfg.plotting.fourmomenta:
+                filename = os.path.join(path, "fourmomenta.pdf")
+                plotter.plot_fourmomenta(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+
+            if self.cfg.plotting.jetmomenta:
+                filename = os.path.join(path, "jetmomenta.pdf")
+                plotter.plot_jetmomenta(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+
+            if self.cfg.plotting.preprocessed:
+                filename = os.path.join(path, "preprocessed.pdf")
+                plotter.plot_preprocessed(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+            if len(self.obs.keys()) > 0:
+                filename = os.path.join(path, "observables.pdf")
+                plotter.plot_observables(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+        LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
     def _init_loss(self):
         # loss defined manually within the model
         pass
 
     def _batch_loss(self, batch):
-        batch[0], batch[1] = batch[0].to(self.device), batch[1].to(self.device)
+        batch = batch.to(self.device)
         loss, component_loss = self.model.batch_loss(batch)
         mse = loss.cpu().item()
-        component_mse = [x.cpu().item() for x in component_loss]
         assert torch.isfinite(loss).all()
         metrics = {"mse": mse}
         for k in range(4):
-            metrics[f"mse_{k}"] = component_mse[k]
+            metrics[f"mse_{k}"] = component_loss[k].cpu().item()
         return loss, metrics
 
     def _init_metrics(self):
@@ -327,3 +807,154 @@ class UnfoldingExperiment(BaseExperiment):
         for k in range(4):
             metrics[f"mse_{k}"] = []
         return metrics
+
+    def define_process_specifics(self):
+        if self.cfg.data.max_constituents == -1:
+            n_const = "All"
+        else:
+            n_const = str(self.cfg.data.max_constituents)
+        self.plot_title = n_const + " constituents"
+
+        self.obs_coords = {}
+
+        if "jet" in self.cfg.plotting.observables:
+
+            def form_jet(constituents, batch_idx, other_batch_idx):
+                jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
+                return jet * self.cfg.data.units
+
+            self.obs_coords[r"\text{ jet }"] = form_jet
+
+        if self.cfg.plotting.n_pt > 0:
+            if self.cfg.data.max_constituents == -1:
+                n_pt = self.cfg.plotting.n_pt
+            else:
+                n_pt = min(self.cfg.data.max_constituents, self.cfg.plotting.n_pt)
+
+            for i in range(n_pt):
+
+                def select_pt(i):
+                    def ith_pt(constituents, batch_idx, other_batch_idx):
+                        idx = []
+                        batch_ptr = get_ptr_from_batch(batch_idx)
+                        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+                        for n in range(len(batch_ptr) - 1):
+                            if i < batch_ptr[n + 1] - batch_ptr[n]:
+                                if i < other_batch_ptr[n + 1] - other_batch_ptr[n]:
+                                    idx.append(batch_ptr[n] + i)
+                        selected_constituents = constituents[idx]
+                        return selected_constituents * self.cfg.data.units
+
+                    return ith_pt
+
+                self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = select_pt(i)
+
+        self.obs = {}
+
+        if "dimass" in self.cfg.plotting.observables:
+            # dijet mass (only for CMS dataset with 3 jets)
+            def dimass(i, j):
+                def dimass_ij(constituents, batch_idx, other_batch_idx):
+                    batch_ptr = get_ptr_from_batch(batch_idx)
+                    other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+                    dimass = []
+                    for n in range(len(batch_ptr) - 1):
+                        if batch_ptr[n + 1] - batch_ptr[n] == 3:
+                            dijet = (
+                                constituents[batch_ptr[n] + i]
+                                + constituents[batch_ptr[n] + j]
+                            )
+                            dimass.append(
+                                torch.sqrt(dijet[0] ** 2 - (dijet[1:] ** 2).sum(dim=-1))
+                            )
+                    return torch.stack(dimass) * self.cfg.data.units
+
+                return dimass_ij
+
+            for i in range(3):
+                for j in range(i + 1, 3):
+                    self.obs[r"M_{" + str(i + 1) + str(j + 1) + "}"] = dimass(i, j)
+
+        if "trimass" in self.cfg.plotting.observables:
+
+            def trimass(constituents, batch_idx, other_batch_idx):
+                batch_ptr = get_ptr_from_batch(batch_idx)
+                other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+                trimass = []
+                for n in range(len(batch_ptr) - 1):
+                    if batch_ptr[n + 1] - batch_ptr[n] == 3:
+                        jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
+                        trimass.append(
+                            torch.sqrt(jet[0] ** 2 - (jet[1:] ** 2).sum(dim=-1))
+                        )
+                return torch.stack(trimass) * self.cfg.data.units
+
+            self.obs[r"M_{jjj}"] = trimass
+
+        if "deltaR" in self.cfg.plotting.observables:
+
+            def deltaR(i, j):
+                def deltaR_ij(constituents, batch_idx, other_batch_idx):
+                    batch_ptr = get_ptr_from_batch(batch_idx)
+                    other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+                    deltaR = []
+                    for n in range(len(batch_ptr) - 1):
+                        if batch_ptr[n + 1] - batch_ptr[n] == 3:
+                            jet_i = fourmomenta_to_jetmomenta(
+                                constituents[batch_ptr[n] + i]
+                            )
+                            jet_j = fourmomenta_to_jetmomenta(
+                                constituents[batch_ptr[n] + j]
+                            )
+                            dR2 = (
+                                ensure_angle(jet_i[..., 1] - jet_j[..., 1]) ** 2
+                                + (jet_i[..., 2] - jet_j[..., 2]) ** 2
+                            )
+                            deltaR.append(torch.sqrt(dR2))
+                    return torch.stack(deltaR)
+
+                return deltaR_ij
+
+            for i in range(3):
+                for j in range(i + 1, 3):
+                    self.obs[r"\Delta R_{" + str(i + 1) + str(j + 1) + "}"] = deltaR(
+                        i, j
+                    )
+
+        if "nsubjettiness" in self.cfg.plotting.observables:
+
+            if self.cfg.data.dataset == "zplusjet":
+                R0 = 0.4
+            elif self.cfg.data.dataset == "cms":
+                R0 = 1.2
+
+            def tau1(constituents, batch_idx, other_batch_idx):
+                constituents = np.array(constituents.detach().cpu())
+                batch_ptr = get_ptr_from_batch(batch_idx)
+                taus = []
+                for i in range(len(batch_ptr) - 1):
+                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
+                    tau = compute_nsubjettiness(event, N=1, beta=1.0, R0=R0)
+                    taus.append(tau)
+                return torch.tensor(taus)
+
+            def tau2(constituents, batch_idx, other_batch_idx):
+                constituents = np.array(constituents.detach().cpu())
+                batch_ptr = get_ptr_from_batch(batch_idx)
+                taus = []
+                for i in range(len(batch_ptr) - 1):
+                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
+                    tau = compute_nsubjettiness(event, N=2, beta=1.0, R0=R0)
+                    taus.append(tau)
+                return torch.tensor(taus)
+
+            self.obs[r"\tau_1"] = tau1
+            self.obs[r"\tau_2"] = tau2
+            self.obs[r"\tau_{21}"] = (
+                lambda constituents, batch_idx, other_batch_idx: torch.where(
+                    tau1(constituents, batch_idx, other_batch_idx) != 0,
+                    tau2(constituents, batch_idx, other_batch_idx)
+                    / tau1(constituents, batch_idx, other_batch_idx),
+                    torch.tensor(0.0),
+                )
+            )

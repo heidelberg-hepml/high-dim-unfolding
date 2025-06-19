@@ -1,5 +1,5 @@
 exp_type: unfolding
-exp_name: unfolding_debug
+exp_name: simplecondtest
 
 seed: 42
 
@@ -7,15 +7,17 @@ use_mlflow: false
 
 data:
  data_dir: data/
- dataset: zplusjets
- length: 100000
- split: [0.8, 0.1, 0.1]
- dtype: float32
- standardize: true
- pid_raw: false
- pid_encoding: true
- mass: 0.1
+ dataset: zplusjet
+ num_data: -1
+ train_test_val: [0.8, 0.1, 0.1]
+ pid_encoding: false
  max_num_particles: 152
+ max_constituents: -1
+ det_mult: 1
+ standardize: true
+ pos_encoding_dim: 0
+ add_spurions: false
+ embed_det_in_GA: false
  beam_reference: xyplane
  two_beams: true
  beam_token: true
@@ -25,49 +27,63 @@ data:
  add_pid: false
  add_scalar_features: false
  reinsert_channels: false
- base_type: 2
+ base_type: 4
  pt_min: 0.0
- units: 1.0
+ units: 10
+ mass: 1.0
+ add_jet: false
 
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.
  hutchinson: true
  coordinates: StandardLogPtPhiEtaLogM2
+ condition_coordinates: StandardLogPtPhiEtaLogM2
  geometry:
   type: simple
   periodic: true
- transforms_float64: false
+ transforms_float64: true
+ zero_condition: false
+ masked_dims: [3]
 
 odeint:
  method: rk4
  rtol: 1e-5
  atol: 1e-5
  options:
-  step_size: 0.01
+  step_size: 0.05
 
 train: true
 training:
  iterations: 100000
- batchsize: 128
+ batchsize: 1024
  lr: 1e-3
+ scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
- force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
  clip_grad_norm: 5.
 
 evaluate: true
 evaluation:
- batchsize: 128
+ batchsize: 4096
  classifier: false
  sample: true
- n_batches: 500
- eval_loss: ["train"]
+ n_batches: -1
+ eval_loss: []
+ save_samples: false
+ load_samples: false
 
-plot: false
+plot: true
 plotting:
- n_distributions: 128
+ log_prob: false
+ fourmomenta: false
+ jetmomenta: false
+ preprocessed: false
+ observables: ["nsubjettiness"]
+ n_pt: 3
+ correlations: false
 
 defaults:
- - model: cond_tr_unfolding
+ - model: scond_tr_unfolding
  - default
  - _self_

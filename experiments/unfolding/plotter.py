@@ -1,22 +1,19 @@
 import numpy as np
+import torch
 import math
 from matplotlib.backends.backend_pdf import PdfPages
 
-from experiments.eventgen.helpers import (
-    delta_eta,
-    delta_phi,
-    delta_r,
-    get_virtual_particle,
-    fourmomenta_to_jetmomenta,
-)
+
 from experiments.base_plots import plot_loss, plot_metric
-from experiments.eventgen.plots import (
+from experiments.unfolding.plots import (
     plot_histogram,
-    plot_histogram_2d,
     plot_calibration,
     simple_histogram,
     plot_roc,
+    plot_correlations,
 )
+from experiments.unfolding.utils import get_range, fourmomenta_to_jetmomenta
+from experiments.logger import LOGGER
 
 
 def plot_losses(exp, filename, model_label):
@@ -26,7 +23,7 @@ def plot_losses(exp, filename, model_label):
             [exp.train_loss, exp.val_loss],
             exp.train_lr,
             labels=["train loss", "val loss"],
-            logy=True if exp.modeltype == "CFM" else False,
+            logy=True,
         )
         plot_metric(
             file,
@@ -34,29 +31,17 @@ def plot_losses(exp, filename, model_label):
             "Gradient norm",
             logy=True,
         )
-
-        for ijet, n_jets in enumerate(exp.cfg.data.n_jets):
+        for k in range(4):
             plot_loss(
                 file,
                 [
-                    exp.train_metrics[f"{n_jets}j.mse"],
-                    exp.val_metrics[f"{n_jets}j.mse"],
+                    exp.train_metrics[f"mse_{k}"],
+                    exp.val_metrics[f"mse_{k}"],
                 ],
                 lr=exp.train_lr,
-                labels=[f"train mse {n_jets}j", f"val mse {n_jets}j"],
-                logy=True if exp.modeltype == "CFM" else False,
+                labels=[f"train mse_{k}", f"val mse_{k}"],
+                logy=True,
             )
-            for k in range(4):
-                plot_loss(
-                    file,
-                    [
-                        exp.train_metrics[f"{n_jets}j.mse_{k}"],
-                        exp.val_metrics[f"{n_jets}j.mse_{k}"],
-                    ],
-                    lr=exp.train_lr,
-                    labels=[f"train mse_{k} {n_jets}j", f"val mse_{k} {n_jets}j"],
-                    logy=True if exp.modeltype == "CFM" else False,
-                )
 
 
 def plot_log_prob(exp, filename, model_label):
@@ -64,364 +49,382 @@ def plot_log_prob(exp, filename, model_label):
     import matplotlib.pyplot as plt
 
     with PdfPages(filename) as file:
-        for ijet, n_jets in enumerate(exp.cfg.data.n_jets):
-            plt.hist(exp.NLLs[f"{n_jets}j"], bins=100, alpha=0.5)
-            plt.xlabel(r"$-\log p(x)$")
-            plt.savefig(file, bbox_inches="tight", format="pdf")
-            plt.close()
+        plt.hist(exp.NLLs, bins=100, alpha=0.5)
+        plt.xlabel(r"$-\log p(x)$")
+        plt.savefig(file, bbox_inches="tight", format="pdf")
+        plt.close()
 
 
 def plot_classifier(exp, filename, model_label):
     with PdfPages(filename) as file:
-        for ijet, n_jets in enumerate(exp.cfg.data.n_jets):
-            # classifier train and validation loss
-            plot_loss(
-                file,
-                [exp.classifiers[ijet].tracker[key] for key in ["loss", "val_loss"]],
-                lr=exp.classifiers[ijet].tracker["lr"],
-                labels=[f"train mse {n_jets}j", f"val mse {n_jets}j"],
-                logy=True,
-            )
+        # classifier train and validation loss
+        plot_loss(
+            file,
+            [exp.classifier.tracker[key] for key in ["loss", "val_loss"]],
+            lr=exp.classifier.tracker["lr"],
+            labels=[f"train mse", f"val mse"],
+            logy=True,
+        )
 
-            # probabilities
-            data = [
-                exp.classifiers[ijet].results["logits"]["true"],
-                exp.classifiers[ijet].results["logits"]["fake"],
-            ]
-            simple_histogram(
-                file,
-                data,
-                labels=["Test", "Generator"],
-                xrange=[0, 1],
-                xlabel="Classifier score",
-                logx=False,
-                logy=False,
-            )
-            simple_histogram(
-                file,
-                data,
-                labels=["Test", "Generator"],
-                xrange=[0, 1],
-                xlabel="Classifier score",
-                logx=False,
-                logy=True,
-            )
+        # probabilities
+        data = [
+            exp.classifier.results["logits"]["true"],
+            exp.classifier.results["logits"]["fake"],
+        ]
+        simple_histogram(
+            file,
+            data,
+            labels=["Test", "Generator"],
+            xrange=[0, 1],
+            xlabel="Classifier score",
+            logx=False,
+            logy=False,
+        )
+        simple_histogram(
+            file,
+            data,
+            labels=["Test", "Generator"],
+            xrange=[0, 1],
+            xlabel="Classifier score",
+            logx=False,
+            logy=True,
+        )
 
-            # weights
-            data = [
-                exp.classifiers[ijet].results["weights"]["true"],
-                exp.classifiers[ijet].results["weights"]["fake"],
-            ]
-            simple_histogram(
-                file,
-                data,
-                labels=["Test", "Generator"],
-                xrange=[0, 5],
-                xlabel="Classifier weights",
-                logx=False,
-                logy=False,
-            )
-            simple_histogram(
-                file,
-                data,
-                labels=["Test", "Generator"],
-                xrange=[1e-3, 1e2],
-                xlabel="Classifier weights",
-                logx=True,
-                logy=True,
-            )
+        # weights
+        data = [
+            exp.classifier.results["weights"]["true"],
+            exp.classifier.results["weights"]["fake"],
+        ]
+        simple_histogram(
+            file,
+            data,
+            labels=["Test", "Generator"],
+            xrange=[0, 5],
+            xlabel="Classifier weights",
+            logx=False,
+            logy=False,
+        )
+        simple_histogram(
+            file,
+            data,
+            labels=["Test", "Generator"],
+            xrange=[1e-3, 1e2],
+            xlabel="Classifier weights",
+            logx=True,
+            logy=True,
+        )
 
-            # roc curve
-            plot_roc(
-                file,
-                exp.classifiers[ijet].results["tpr"],
-                exp.classifiers[ijet].results["fpr"],
-                exp.classifiers[ijet].results["auc"],
-            )
-            # calibration curve
-            plot_calibration(
-                file,
-                exp.classifiers[ijet].results["prob_true"],
-                exp.classifiers[ijet].results["prob_pred"],
-            )
+        # roc curve
+        plot_roc(
+            file,
+            exp.classifier.results["tpr"],
+            exp.classifier.results["fpr"],
+            exp.classifier.results["auc"],
+        )
+        # calibration curve
+        plot_calibration(
+            file,
+            exp.classifier.results["prob_true"],
+            exp.classifier.results["prob_pred"],
+        )
 
 
-def plot_fourmomenta(exp, filename, model_label, weights, mask_dict):
-    obs_names = []
-    for name in exp.obs_names_index:
-        obs_names.extend(
-            [
+def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
+
+    with PdfPages(filename) as file:
+        for name in exp.obs_coords.keys():
+            extract = exp.obs_coords[name]
+            det_lvl = (
+                extract(
+                    exp.data_raw["samples"].x_det,
+                    exp.data_raw["samples"].x_det_batch,
+                    exp.data_raw["samples"].x_gen_batch,
+                )
+                .cpu()
+                .detach()
+            )
+            part_lvl = (
+                extract(
+                    exp.data_raw["truth"].x_gen,
+                    exp.data_raw["truth"].x_gen_batch,
+                    exp.data_raw["truth"].x_det_batch,
+                )[: len(det_lvl)]
+                .cpu()
+                .detach()
+            )
+            model = (
+                extract(
+                    exp.data_raw["samples"].x_gen,
+                    exp.data_raw["samples"].x_gen_batch,
+                    exp.data_raw["samples"].x_det_batch,
+                )
+                .cpu()
+                .detach()
+            )
+            obs_names = [
                 "E_{" + name + "}",
                 "p_{x," + name + "}",
                 "p_{y," + name + "}",
                 "p_{z," + name + "}",
             ]
-        )
 
-    with PdfPages(filename) as file:
-        for ijet in range(len(exp.cfg.data.n_jets)):
-            num_components = 4 * (exp.n_hard_particles + exp.cfg.data.n_jets[ijet])
-            for channel in range(num_components):
-
-                def extract(event):
-                    event = event.clone()
-                    event = event.reshape(event.shape[0], -1)[:, channel]
-                    return event
-
-                train = extract(exp.data_raw[ijet]["trn"])
-                test = extract(exp.data_raw[ijet]["tst"])
-                model = extract(exp.data_raw[ijet]["gen"])
+            for channel in range(4):
                 xlabel = obs_names[channel]
-                xrange = exp.fourmomentum_ranges[channel % 4]
-                logy = False
+                xrange = np.array(
+                    get_range(
+                        [
+                            part_lvl[..., channel],
+                            # det_lvl[..., channel],
+                            model[..., channel],
+                        ]
+                    )
+                )
+                logy = True
                 plot_histogram(
                     file=file,
-                    train=train,
-                    test=test,
-                    model=model,
-                    title=exp.plot_titles[ijet],
+                    train=part_lvl[..., channel],
+                    test=det_lvl[..., channel],
+                    model=model[..., channel],
+                    title=exp.plot_title,
                     xlabel=xlabel,
                     xrange=xrange,
                     logy=logy,
                     model_label=model_label,
-                    weights=weights[ijet],
-                    mask_dict=mask_dict[ijet],
+                    weights=weights,
+                    mask_dict=mask_dict,
                 )
+                if exp.cfg.plotting.correlations:
+                    plot_correlations(
+                        file=file,
+                        det=det_lvl[..., channel],
+                        part=part_lvl[..., channel],
+                        gen=model[..., channel],
+                        title=exp.plot_title,
+                        label=xlabel,
+                        range=xrange,
+                        model_label=model_label,
+                    )
 
 
-def plot_jetmomenta(exp, filename, model_label, weights, mask_dict):
-    obs_names = []
-    for name in exp.obs_names_index:
-        obs_names.extend(
-            [
-                "p_{T," + name + "}",
+def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
+
+    with PdfPages(filename) as file:
+        for name in exp.obs_coords.keys():
+            extract = exp.obs_coords[name]
+            det_lvl = extract(
+                exp.data_raw["samples"].x_det,
+                exp.data_raw["samples"].x_det_batch,
+                exp.data_raw["samples"].x_gen_batch,
+            )
+            part_lvl = extract(
+                exp.data_raw["truth"].x_gen,
+                exp.data_raw["truth"].x_gen_batch,
+                exp.data_raw["truth"].x_det_batch,
+            )[: len(det_lvl)]
+            model = extract(
+                exp.data_raw["samples"].x_gen,
+                exp.data_raw["samples"].x_gen_batch,
+                exp.data_raw["samples"].x_det_batch,
+            )
+            part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
+            det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()
+            model = fourmomenta_to_jetmomenta(model).cpu().detach()
+            part_lvl[..., 3] = torch.sqrt(part_lvl[..., 3])
+            det_lvl[..., 3] = torch.sqrt(det_lvl[..., 3])
+            model[..., 3] = torch.sqrt(model[..., 3])
+            obs_names = [
+                r"p_{T," + name + "}",
                 "\phi_{" + name + "}",
                 "\eta_{" + name + "}",
                 "m_{" + name + "}",
             ]
-        )
-    logys = [True, False, False, False]
-
-    with PdfPages(filename) as file:
-        for ijet in range(len(exp.cfg.data.n_jets)):
-            num_components = 4 * (exp.n_hard_particles + exp.cfg.data.n_jets[ijet])
-            for channel in range(num_components):
-
-                def extract(event):
-                    event = event.clone()
-                    event = fourmomenta_to_jetmomenta(event)
-                    event = event.reshape(event.shape[0], -1)[:, channel]
-                    return event
-
-                train = extract(exp.data_raw[ijet]["trn"])
-                test = extract(exp.data_raw[ijet]["tst"])
-                model = extract(exp.data_raw[ijet]["gen"])
+            for channel in range(4):
                 xlabel = obs_names[channel]
-                xrange = exp.jetmomentum_ranges[channel % 4]
-                logy = logys[channel % 4]
+                xrange = np.array(
+                    get_range(
+                        [
+                            part_lvl[..., channel],
+                            # det_lvl[..., channel],
+                            model[..., channel],
+                        ]
+                    )
+                )
+                if channel == 0:
+                    logy = True
+                else:
+                    logy = False
                 plot_histogram(
                     file=file,
-                    train=train,
-                    test=test,
-                    model=model,
-                    title=exp.plot_titles[ijet],
+                    train=part_lvl[..., channel],
+                    test=det_lvl[..., channel],
+                    model=model[..., channel],
+                    title=exp.plot_title,
                     xlabel=xlabel,
                     xrange=xrange,
                     logy=logy,
                     model_label=model_label,
-                    weights=weights[ijet],
-                    mask_dict=mask_dict[ijet],
+                    weights=weights,
+                    mask_dict=mask_dict,
                 )
+                if exp.cfg.plotting.correlations:
+                    plot_correlations(
+                        file=file,
+                        det=det_lvl[..., channel],
+                        part=part_lvl[..., channel],
+                        gen=model[..., channel],
+                        title=exp.plot_title,
+                        label=xlabel,
+                        range=xrange,
+                        model_label=model_label,
+                    )
 
 
-def plot_preprocessed(exp, filename, model_label, weights, mask_dict):
+def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
+
+    coords = exp.model.coordinates
+    det_lvl_coords = exp.model.condition_coordinates
+
     with PdfPages(filename) as file:
-        for ijet in range(len(exp.cfg.data.n_jets)):
+        for name in exp.obs_coords.keys():
+            extract = exp.obs_coords[name]
+            det_lvl = extract(
+                exp.data_raw["samples"].x_det,
+                exp.data_raw["samples"].x_det_batch,
+                exp.data_raw["samples"].x_gen_batch,
+            )
+            part_lvl = extract(
+                exp.data_raw["truth"].x_gen,
+                exp.data_raw["truth"].x_gen_batch,
+                exp.data_raw["truth"].x_det_batch,
+            )[: len(det_lvl)]
+            model = extract(
+                exp.data_raw["samples"].x_gen,
+                exp.data_raw["samples"].x_gen_batch,
+                exp.data_raw["samples"].x_det_batch,
+            )
+            part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
+            det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl).cpu().detach()
+            model = coords.fourmomenta_to_x(model).cpu().detach()
 
-            def extract(x, channel):
-                x = exp.model.coordinates.fourmomenta_to_x(x)
-                x = x.reshape(x.shape[0], -1)
-                return x[:, channel]
+            obs_names = [
+                r"\log p_{T," + name + "}",
+                "\phi_{" + name + "}",
+                "\eta_{" + name + "}",
+                "\log m^2_{" + name + "}",
+            ]
 
-            for channel in range(
-                exp.data_prepd[ijet]["trn"]
-                .reshape(exp.data_prepd[ijet]["trn"].shape[0], -1)
-                .shape[1]
-            ):
-                train = extract(exp.data_prepd[ijet]["trn"], channel)
-                test = extract(exp.data_prepd[ijet]["tst"], channel)
-                model = extract(exp.data_prepd[ijet]["gen"], channel)
-                xlabel = r"\mathrm{channel}\ " + str(channel)
-                xrange = [-5, 5]
-                logy = False
+            for channel in range(4):
+                xlabel = obs_names[channel]
+                xrange = np.array(
+                    get_range(
+                        [
+                            part_lvl[..., channel],
+                            # det_lvl[..., channel],
+                            model[..., channel],
+                        ]
+                    )
+                )
+                if channel == 0:
+                    logy = True
+                else:
+                    logy = False
                 plot_histogram(
                     file=file,
-                    train=train,
-                    test=test,
-                    model=model,
-                    title=exp.plot_titles[ijet],
+                    train=part_lvl[..., channel],
+                    test=det_lvl[..., channel],
+                    model=model[..., channel],
+                    title=exp.plot_title,
                     xlabel=xlabel,
                     xrange=xrange,
                     logy=logy,
                     model_label=model_label,
-                    weights=weights[ijet],
-                    mask_dict=mask_dict[ijet],
+                    weights=weights,
+                    mask_dict=mask_dict,
                 )
+                if exp.cfg.plotting.correlations:
+                    plot_correlations(
+                        file=file,
+                        det=det_lvl[..., channel],
+                        part=part_lvl[..., channel],
+                        gen=model[..., channel],
+                        title=exp.plot_title,
+                        label=xlabel,
+                        range=xrange,
+                        model_label=model_label,
+                    )
 
 
-def plot_delta(exp, filename, model_label, weights, mask_dict):
+def plot_observables(
+    exp,
+    filename,
+    model_label,
+    weights=None,
+    mask_dict=None,
+):
     with PdfPages(filename) as file:
-        for ijet in range(len(exp.cfg.data.n_jets)):
-            num_particles = exp.n_hard_particles + exp.cfg.data.n_jets[ijet]
-            particles = np.arange(num_particles)
-
-            for idx1 in particles:
-                for idx2 in particles:
-                    if idx1 >= idx2:
-                        continue
-
-                    # delta eta
-                    get_delta_eta = lambda x: delta_eta(
-                        fourmomenta_to_jetmomenta(x), idx1, idx2
-                    )
-                    xlabel = (
-                        r"\Delta \eta_{%s}"
-                        % f"{exp.obs_names_index[idx1]},{exp.obs_names_index[idx2]}"
-                    )
-                    xrange = [-6.0, 6.0]
-                    train = get_delta_eta(exp.data_raw[ijet]["trn"])
-                    test = get_delta_eta(exp.data_raw[ijet]["tst"])
-                    model = get_delta_eta(exp.data_raw[ijet]["gen"])
-                    plot_histogram(
-                        file=file,
-                        train=train,
-                        test=test,
-                        model=model,
-                        title=exp.plot_titles[ijet],
-                        xlabel=xlabel,
-                        xrange=xrange,
-                        logy=False,
-                        model_label=model_label,
-                        weights=weights[ijet],
-                        mask_dict=mask_dict[ijet],
-                    )
-
-                    # delta phi
-                    get_delta_phi = lambda x: delta_phi(
-                        fourmomenta_to_jetmomenta(x), idx1, idx2
-                    )
-                    xlabel = (
-                        r"\Delta \phi_{%s}"
-                        % f"{exp.obs_names_index[idx1]},{exp.obs_names_index[idx2]}"
-                    )
-                    xrange = [-math.pi, math.pi]
-                    train = get_delta_phi(exp.data_raw[ijet]["trn"])
-                    test = get_delta_phi(exp.data_raw[ijet]["tst"])
-                    model = get_delta_phi(exp.data_raw[ijet]["gen"])
-                    plot_histogram(
-                        file=file,
-                        train=train,
-                        test=test,
-                        model=model,
-                        title=exp.plot_titles[ijet],
-                        xlabel=xlabel,
-                        xrange=xrange,
-                        logy=False,
-                        model_label=model_label,
-                        weights=weights[ijet],
-                        mask_dict=mask_dict[ijet],
-                    )
-
-                    # delta R
-                    get_delta_r = lambda x: delta_r(
-                        fourmomenta_to_jetmomenta(x), idx1, idx2
-                    )
-                    xlabel = (
-                        r"\Delta R_{%s}"
-                        % f"{exp.obs_names_index[idx1]},{exp.obs_names_index[idx2]}"
-                    )
-                    xrange = [0.0, 8.0]
-                    train = get_delta_r(exp.data_raw[ijet]["trn"])
-                    test = get_delta_r(exp.data_raw[ijet]["tst"])
-                    model = get_delta_r(exp.data_raw[ijet]["gen"])
-                    plot_histogram(
-                        file=file,
-                        train=train,
-                        test=test,
-                        model=model,
-                        title=exp.plot_titles[ijet],
-                        xlabel=xlabel,
-                        xrange=xrange,
-                        logy=False,
-                        model_label=model_label,
-                        weights=weights[ijet],
-                        mask_dict=mask_dict[ijet],
-                    )
-
-
-def plot_virtual(exp, filename, model_label, weights, mask_dict):
-    logys = [True, False, False, False]
-    with PdfPages(filename) as file:
-        for ijet in range(len(exp.cfg.data.n_jets)):
-            for i, components in enumerate(exp.virtual_components):
-                get_virtual = lambda x: get_virtual_particle(
-                    fourmomenta_to_jetmomenta(x), components
+        for name in exp.obs.keys():
+            extract = exp.obs[name]
+            det_lvl = (
+                extract(
+                    exp.data_raw["samples"].x_det,
+                    exp.data_raw["samples"].x_det_batch,
+                    exp.data_raw["samples"].x_gen_batch,
                 )
-                train = get_virtual(exp.data_raw[ijet]["trn"])
-                test = get_virtual(exp.data_raw[ijet]["tst"])
-                model = get_virtual(exp.data_raw[ijet]["gen"])
-                for j in range(4):
-                    plot_histogram(
-                        file=file,
-                        train=train[:, j],
-                        test=test[:, j],
-                        model=model[:, j],
-                        title=exp.plot_titles[ijet],
-                        xlabel=exp.virtual_names[4 * i + j],
-                        xrange=exp.virtual_ranges[4 * i + j],
-                        logy=logys[j],
-                        model_label=model_label,
-                        weights=weights[ijet],
-                        mask_dict=mask_dict[ijet],
-                    )
+                .cpu()
+                .detach()
+            )
+            part_lvl = (
+                extract(
+                    exp.data_raw["truth"].x_gen,
+                    exp.data_raw["truth"].x_gen_batch,
+                    exp.data_raw["truth"].x_det_batch,
+                )[: len(det_lvl)]
+                .cpu()
+                .detach()
+            )
+            model = (
+                extract(
+                    exp.data_raw["samples"].x_gen,
+                    exp.data_raw["samples"].x_gen_batch,
+                    exp.data_raw["samples"].x_det_batch,
+                )
+                .cpu()
+                .detach()
+            )
 
+            xrange = np.array(
+                get_range(
+                    [
+                        part_lvl,
+                        # det_lvl[..., channel],
+                        model,
+                    ]
+                )
+            )
+            xlabel = name
+            logy = False
 
-def plot_deta_dphi(exp, filename, model_label):
-    with PdfPages(filename) as file:
-        for ijet in range(len(exp.cfg.data.n_jets)):
-            num_particles = exp.n_hard_particles + exp.cfg.data.n_jets[ijet]
-            particles = np.arange(num_particles)
-
-            for idx1 in particles:
-                for idx2 in particles:
-                    if idx1 >= idx2:
-                        continue
-
-                    def construct(event):
-                        deta = delta_eta(fourmomenta_to_jetmomenta(event), idx1, idx2)
-                        dphi = delta_phi(fourmomenta_to_jetmomenta(event), idx1, idx2)
-                        return np.stack([deta, dphi], axis=-1)
-
-                    test = construct(exp.data_raw[ijet]["tst"])
-                    model = construct(exp.data_raw[ijet]["gen"])
-                    xlabel = (
-                        r"\Delta \eta_{%s}"
-                        % f"{exp.obs_names_index[idx1]},{exp.obs_names_index[idx2]}"
-                    )
-                    ylabel = (
-                        r"\Delta \phi_{%s}"
-                        % f"{exp.obs_names_index[idx1]},{exp.obs_names_index[idx2]}"
-                    )
-                    xrange = [-4.0, 4.0]
-                    yrange = [-np.pi, np.pi]
-                    plot_histogram_2d(
-                        file=file,
-                        test=test,
-                        model=model,
-                        title=exp.plot_titles[ijet],
-                        xlabel=xlabel,
-                        ylabel=ylabel,
-                        xrange=xrange,
-                        yrange=yrange,
-                        model_label=model_label,
-                    )
+            plot_histogram(
+                file=file,
+                train=part_lvl,
+                test=det_lvl,
+                model=model,
+                title=exp.plot_title,
+                xlabel=xlabel,
+                xrange=xrange,
+                logy=logy,
+                model_label=model_label,
+                weights=weights,
+                mask_dict=mask_dict,
+            )
+            if exp.cfg.plotting.correlations:
+                plot_correlations(
+                    file=file,
+                    det=det_lvl,
+                    part=part_lvl,
+                    gen=model,
+                    title=exp.plot_title,
+                    label=xlabel,
+                    range=xrange,
+                    model_label=model_label,
+                )

@@ -5,14 +5,12 @@ net:
  _target_: gatr.nets.ConditionalGATr
 
  in_mv_channels: 1
- condition_mv_channels: 1
  out_mv_channels: 1
- hidden_mv_channels: 8
+ hidden_mv_channels: 16
 
  in_s_channels: 1
- condition_s_channels: 1
  out_s_channels: 4
- hidden_s_channels: 8
+ hidden_s_channels: 16
 
  num_blocks: 4
  reinsert_mv_channels: null
@@ -23,7 +21,7 @@ net:
  attention:
   num_heads: 4
   multi_query: false
-  increase_hidden_channels: 2
+  increase_hidden_channels: 1
   head_scale: false
 
  crossattention:
@@ -32,10 +30,27 @@ net:
   increase_hidden_channels: 2
   head_scale: false
 
- attention_condition:
+net_condition:
+ _target_: gatr.nets.GATr
+
+ in_mv_channels: 1
+ out_mv_channels: 1
+ hidden_mv_channels: 16
+
+ in_s_channels: 1
+ out_s_channels: 1
+ hidden_s_channels: 16
+
+ num_blocks: 4
+ reinsert_mv_channels: null
+ reinsert_s_channels: null
+ dropout_prob: null
+ double_layernorm: false
+
+ attention:
   num_heads: 4
   multi_query: false
-  increase_hidden_channels: 2
+  increase_hidden_channels: 1
   head_scale: false
 
 defaults:
@@ -43,3 +58,4 @@ defaults:
  - /base_attention_condition@net.attention_condition
  - /base_cross_attention@net.crossattention
  - /base_mlp@net.mlp
+ - /base_mlp@net_condition.mlp

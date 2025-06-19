@@ -6,11 +6,9 @@ from experiments.unfolding.utils import (
     EPS1,
     EPS2,
     CUTOFF,
-    stable_arctanh,
     get_pt,
     get_phi,
     get_eta,
-    get_mass,
 )
 
 
@@ -117,12 +115,12 @@ class EPPP_to_PPPM2(BaseTransform):
 
         m2 = E**2 - (px**2 + py**2 + pz**2)
         m2 = torch.abs(m2)
+
         return torch.stack((px, py, pz, m2), dim=-1)
 
     def _inverse(self, pppm2):
         px, py, pz, m2 = unpack_last(pppm2)
         m2 = torch.abs(m2)
-
         E = torch.sqrt(m2 + (px**2 + py**2 + pz**2))
         return torch.stack((E, px, py, pz), dim=-1)
 
@@ -176,11 +174,11 @@ class EPPP_to_EPhiPtPz(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_E = torch.stack((one, zero, zero, zero), dim=-1)
         jac_px = torch.stack(
-            (zero, -py / pt**2, px / pt, zero),
+            (zero, -torch.sin(phi) / pt, torch.cos(phi), zero),
             dim=-1,
         )
         jac_py = torch.stack(
-            (zero, px / pt**2, py / pt, zero),
+            (zero, torch.cos(phi) / pt, torch.sin(phi), zero),
             dim=-1,
         )
         jac_pz = torch.stack((zero, zero, zero, one), dim=-1)
@@ -239,11 +237,21 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_E = torch.stack((zero, zero, zero, one), dim=-1)
         jac_px = torch.stack(
-            (px / pt, -py / pt**2, -px * pz / (pt**3 * torch.cosh(eta)), zero),
+            (
+                torch.cos(phi),
+                -torch.sin(phi) / pt,
+                -torch.cos(phi) * torch.tanh(eta) / pt,
+                zero,
+            ),
             dim=-1,
         )
         jac_py = torch.stack(
-            (py / pt, px / pt**2, -py * pz / (pt**3 * torch.cosh(eta)), zero),
+            (
+                torch.sin(phi),
+                torch.cos(phi) / pt,
+                -torch.sin(phi) * torch.tanh(eta) / pt,
+                zero,
+            ),
             dim=-1,
         )
         jac_pz = torch.stack((zero, zero, 1 / (pt * torch.cosh(eta)), zero), dim=-1)
@@ -368,6 +376,7 @@ class M2_to_LogM2(BaseTransform):
 
 class Pt_to_LogPt(BaseTransform):
     def __init__(self, pt_min, units):
+        super().__init__()
         self.pt_min = torch.tensor(pt_min) / units
 
     def get_dpt(self, pt):
@@ -427,30 +436,43 @@ class StandardNormal(BaseTransform):
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
     def __init__(self, dims_fixed=[]):
+        super().__init__()
         self.dims_fixed = dims_fixed
+        self.mean = torch.zeros(1, 4)
+        self.std = torch.ones(1, 4)
 
     def init_fit(self, x):
         self.mean = torch.mean(x, dim=0, keepdim=True)
         self.std = torch.std(x, dim=0, keepdim=True)
-        self.mean[:, self.dims_fixed] = 0
+        # self.mean[:, self.dims_fixed] = 0
         self.std[:, self.dims_fixed] = 1
 
+    def init_unit(self, device, dtype):
+        self.mean = torch.zeros(1, 4, device=device, dtype=dtype)
+        self.std = torch.ones(1, 4, device=device, dtype=dtype)
+
     def _forward(self, x):
-        xunit = (x - self.mean.to(x.device)) / self.std.to(x.device)
+        xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
+            x.device, dtype=x.dtype
+        )
         return xunit
 
     def _inverse(self, xunit):
-        x = xunit * self.std.to(xunit.device) + self.mean.to(xunit.device)
+        x = xunit * self.std.to(xunit.device, dtype=xunit.dtype) + self.mean.to(
+            xunit.device, dtype=xunit.dtype
+        )
         return x
 
     def _jac_forward(self, x, xunit):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        jac[..., torch.arange(4), torch.arange(4)] = 1 / self.std.unsqueeze(0)
+        std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
+        jac[..., torch.arange(4), torch.arange(4)] = 1 / std
         return jac
 
     def _jac_inverse(self, xunit, x):
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        jac[..., torch.arange(4), torch.arange(4)] = self.std.unsqueeze(0)
+        std = self.std.unsqueeze(0).to(x.device, dtype=x.dtype)
+        jac[..., torch.arange(4), torch.arange(4)] = std
         return jac
 
     def _detjac_forward(self, x, xunit):

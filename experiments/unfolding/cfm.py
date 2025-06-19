@@ -7,12 +7,13 @@ from experiments.unfolding.distributions import (
     BaseDistribution,
     NaivePPP,
     StandardPPP,
+    LogPtPhiEta,
     StandardLogPtPhiEta,
+    StandardPtPhiEta,
 )
-from experiments.unfolding.utils import TimeEmbedding
+from experiments.unfolding.utils import GaussianFourierProjection, get_pt, mask_dims
 import experiments.unfolding.coordinates as c
 from experiments.unfolding.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
-from experiments.logger import LOGGER
 
 
 def hutchinson_trace(x_out, x_in):
@@ -49,8 +50,11 @@ class CFM(nn.Module):
         odeint={"method": "dopri5", "atol": 1e-5, "rtol": 1e-5, "options": None},
     ):
         super().__init__()
-        self.t_embedding = TimeEmbedding(
-            embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
+        self.t_embedding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
+            ),
+            nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
         )
         self.trace_fn = hutchinson_trace if cfm.hutchinson else autograd_trace
         self.odeint = odeint
@@ -59,6 +63,7 @@ class CFM(nn.Module):
         # initialize to base objects, this will be overwritten later
         self.distribution = BaseDistribution()
         self.coordinates = c.BaseCoordinates()
+        self.condition_coordinates = c.BaseCoordinates()
         self.geometry = BaseGeometry()
 
         if cfm.transforms_float64:
@@ -108,17 +113,17 @@ class CFM(nn.Module):
         -------
         loss : torch.tensor with shape (1)
         """
-        x0_fourmomenta = batch[0].x
+        x0_fourmomenta = batch.x_gen
         t = torch.rand(
-            x0_fourmomenta.shape[0],
+            batch.num_graphs,
             1,
             dtype=x0_fourmomenta.dtype,
             device=x0_fourmomenta.device,
         )
+        t = torch.repeat_interleave(t, batch.x_gen_batch.bincount(), dim=0)
         x1_fourmomenta = self.sample_base(
             x0_fourmomenta.shape, x0_fourmomenta.device, x0_fourmomenta.dtype
         )
-
         # construct target trajectories
         x0_straight = self.coordinates.fourmomenta_to_x(x0_fourmomenta)
         x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
@@ -126,9 +131,13 @@ class CFM(nn.Module):
         xt_straight, vt_straight = self.geometry.get_trajectory(
             x0_straight, x1_straight, t
         )
+        condition = self.get_condition(batch)
+        if self.cfm.zero_condition:
+            condition = torch.zeros_like(condition)
+        vp_straight = self.get_velocity(xt_straight, t, batch, condition)
 
-        vp_straight = self.get_velocity(xt_straight, t, batch)
-
+        vp_straight = mask_dims(vp_straight, self.cfm.masked_dims)
+        vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(
             vp_straight, vt_straight, xt_straight
@@ -155,44 +164,53 @@ class CFM(nn.Module):
             Generated events
         """
 
+        sample_batch = batch.clone()
+
+        condition = self.get_condition(batch)
+        if self.cfm.zero_condition:
+            condition = torch.zeros_like(condition)
+
         def velocity(t, xt_straight):
             xt_straight = self.geometry._handle_periodic(xt_straight)
             t = t * torch.ones(
                 shape[0], 1, dtype=xt_straight.dtype, device=xt_straight.device
             )
-            vt_straight = self.get_velocity(xt_straight, t, batch)
+            vt_straight = self.get_velocity(xt_straight, t, batch, condition)
             vt_straight = self.handle_velocity(vt_straight)
+            vt_straight = mask_dims(vt_straight, self.cfm.masked_dims)
             return vt_straight
 
         # sample fourmomenta from base distribution
-        shape = batch[0].x.shape
-        x1_fourmomenta = self.sample_base(shape, device, dtype)
-        x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+        shape = batch.x_gen.shape
+        # x1_fourmomenta = self.sample_base(shape, device, dtype)
+        # x1_straight = self.coordinates.fourmomenta_to_x(x1_fourmomenta)
+        x1_straight = self.sample_base(shape, device, dtype)
 
         # solve ODE in straight space
         x0_straight = odeint(
             velocity,
             x1_straight,
-            torch.tensor([1.0, 0.0]),
+            torch.tensor([1.0, 0.0], device=x1_straight.device),
             **self.odeint,
         )[-1]
-
-        # the infamous nan remover
-        # (MLP sometimes returns nan for single events,
-        # and all components of the event are nan...
-        # just sample another event in this case)
-        mask = torch.isfinite(x0_straight).all(dim=-1)
-        if (~mask).any():
-            mask2 = torch.isfinite(x0_straight)
-            x0_straight = x0_straight[mask, ...]
-            x1_fourmomenta = x1_fourmomenta[mask, ...]
-            LOGGER.warning(
-                f"Found {(~mask2).sum(dim=0).numpy()} nan events while sampling"
-            )
+        x0_straight = self.geometry._handle_periodic(x0_straight)
 
         # transform generated event back to fourmomenta
         x0_fourmomenta = self.coordinates.x_to_fourmomenta(x0_straight)
-        return x0_fourmomenta, batch[0].ptr
+
+        """
+        # sort generated events by pT
+        pt = get_pt(x0_fourmomenta).unsqueeze(-1)
+        x_perm = torch.argsort(pt, dim=0, descending=True)
+        x0_fourmomenta = x0_fourmomenta.take_along_dim(x_perm, dim=0)
+        index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+        index_perm = torch.argsort(index, dim=0, stable=True)
+        x0_fourmomenta = x0_fourmomenta.take_along_dim(index_perm, dim=0)
+        """
+
+        sample_batch.x_gen = x0_fourmomenta
+
+        return sample_batch
 
     def log_prob(self, batch):
         """
@@ -213,8 +231,9 @@ class CFM(nn.Module):
         log_prob_fourmomenta : torch.tensor with shape (batchsize)
             log_prob of each event in x0, evaluated in fourmomenta space
         """
+        raise NotImplementedError
 
-        x0_fourmomenta = batch[0].x
+        x0_fourmomenta = batch.x_gen
 
         def net_wrapper(t, state):
             with torch.set_grad_enabled(True):
@@ -254,19 +273,6 @@ class CFM(nn.Module):
         logdetjac_cfm_straight = logdetjact_cfm_straight[-1].detach()
         x1_straight = xt_straight[-1].detach()
 
-        # the infamous nan remover
-        # (MLP sometimes returns nan for single events,
-        # just remove these events from the log_prob computation)
-        mask = torch.isfinite(x1_straight).all(dim=-1)
-        if (~mask).any():
-            mask2 = torch.isfinite(x1_straight)
-            logdetjac_cfm_straight = logdetjac_cfm_straight[mask]
-            x1_straight = x1_straight[mask]
-            x0_fourmomenta = x0_fourmomenta[mask]
-            LOGGER.warning(
-                f"Found {(~mask2).sum(dim=0).numpy()} nan events while sampling"
-            )
-
         x1_fourmomenta = self.coordinates.x_to_fourmomenta(x1_straight)
         logdetjac_forward = self.coordinates.logdetjac_fourmomenta_to_x(x0_fourmomenta)[
             0
@@ -297,7 +303,7 @@ class EventCFM(CFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    def init_physics(self, units, pt_min, base_type, onshell_mass, device):
+    def init_physics(self, units, pt_min, base_type, onshell_mass):
         """
         Pass physics information to the CFM class
 
@@ -331,12 +337,22 @@ class EventCFM(CFM):
         elif self.base_type == 2:
             self.distribution = StandardPPP(*args)
         elif self.base_type == 3:
+            self.distribution = LogPtPhiEta(*args)
+        elif self.base_type == 4:
             self.distribution = StandardLogPtPhiEta(*args)
+        elif self.base_type == 5:
+            self.distribution = StandardPtPhiEta(*args)
         else:
             raise ValueError(f"base_type={self.base_type} not implemented")
 
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.condition_coordinates = self._init_coordinates(
+            self.cfm.condition_coordinates
+        )
+        if self.cfm.transforms_float64:
+            self.coordinates.to(torch.float64)
+            self.condition_coordinates.to(torch.float64)
 
     def _init_coordinates(self, coordinates_label):
         if coordinates_label == "Fourmomenta":
@@ -365,6 +381,7 @@ class EventCFM(CFM):
             coordinates = c.StandardLogPtPhiEtaLogM2(
                 self.pt_min,
                 self.units,
+                fixed_dims=self.cfm.masked_dims,
             )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")
@@ -393,7 +410,5 @@ class EventCFM(CFM):
         return fourmomenta
 
     def handle_velocity(self, v):
-        if self.coordinates.contains_mass:
-            # manually set mass velocity to zero
-            v[..., 3] = 0.0
+        v[..., self.cfm.masked_dims] = 0.0
         return v

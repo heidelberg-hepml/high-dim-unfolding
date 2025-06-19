@@ -2,8 +2,7 @@ import torch
 from xformers.ops.fmha import BlockDiagonalMask
 import math
 from torch import nn
-
-from experiments.logger import LOGGER
+import numpy as np
 
 
 class GaussianFourierProjection(nn.Module):
@@ -18,20 +17,6 @@ class GaussianFourierProjection(nn.Module):
     def forward(self, t):
         projection = 2 * math.pi * torch.matmul(t, self.weights)
         embedding = torch.cat([torch.sin(projection), torch.cos(projection)], dim=-1)
-        return embedding
-
-
-class TimeEmbedding(nn.Module):
-    def __init__(self, embed_dim, input_dim=1, scale=30.0):
-        super().__init__()
-        self.proj = GaussianFourierProjection(embed_dim, input_dim, scale)
-        self.linear = nn.Linear(embed_dim, embed_dim)
-        self.linear.weight.requires_grad = False
-        self.linear.bias.requires_grad = False
-
-    def forward(self, t):
-        projection = self.proj(t)
-        embedding = self.linear(projection)
         return embedding
 
 
@@ -53,27 +38,31 @@ def unpack_last(x):
 
 
 def fourmomenta_to_jetmomenta(fourmomenta):
+    in_dtype = fourmomenta.dtype
+    fourmomenta = fourmomenta.to(dtype=torch.float64)
     pt = get_pt(fourmomenta)
     phi = get_phi(fourmomenta)
     eta = get_eta(fourmomenta)
     mass = get_mass(fourmomenta)
 
-    jetmomenta = torch.stack((pt, phi, eta, mass), dim=-1)
+    jetmomenta = torch.stack((pt, phi, eta, mass**2), dim=-1)
     assert torch.isfinite(jetmomenta).all()
-    return jetmomenta
+    return jetmomenta.to(in_dtype)
 
 
 def jetmomenta_to_fourmomenta(jetmomenta):
-    pt, phi, eta, mass = unpack_last(jetmomenta)
+    in_dtype = jetmomenta.dtype
+    jetmomenta = jetmomenta.to(dtype=torch.float64)
+    pt, phi, eta, m2 = unpack_last(jetmomenta)
 
     px = pt * torch.cos(phi)
     py = pt * torch.sin(phi)
     pz = pt * torch.sinh(eta.clamp(min=-CUTOFF, max=CUTOFF))
-    E = torch.sqrt(mass**2 + px**2 + py**2 + pz**2)
+    E = torch.sqrt(m2 + px**2 + py**2 + pz**2)
 
     fourmomenta = torch.stack((E, px, py, pz), dim=-1)
     assert torch.isfinite(fourmomenta).all()
-    return fourmomenta
+    return fourmomenta.to(in_dtype)
 
 
 def ensure_angle(phi):
@@ -109,8 +98,21 @@ def xformers_sa_mask(batch, materialize=False):
 
 
 def get_batch_from_ptr(ptr):
-    return torch.arange(len(ptr) - 1, device=ptr.device).repeat_interleave(
-        ptr[1:] - ptr[:-1],
+    ptr = ptr.to(torch.int)
+    return (
+        torch.arange(len(ptr) - 1, device=ptr.device)
+        .repeat_interleave(
+            ptr[1:] - ptr[:-1],
+        )
+        .to(torch.int64)
+    )
+
+
+def get_ptr_from_batch(batch):
+    return (
+        torch.cat([torch.tensor([0], device=batch.device), torch.bincount(batch)])
+        .cumsum(dim=0)
+        .to(torch.int64)
     )
 
 
@@ -119,7 +121,7 @@ def get_pt(fourmomenta):
 
 
 def get_phi(fourmomenta):
-    return torch.arctan2(fourmomenta[..., 2], fourmomenta[..., 1])
+    return ensure_angle(torch.arctan2(fourmomenta[..., 2], fourmomenta[..., 1]))
 
 
 def get_eta(fourmomenta):
@@ -136,7 +138,7 @@ def stable_arctanh(x, eps=EPS2):
 def get_mass(fourmomenta, eps=EPS2):
     m2 = fourmomenta[..., 0] ** 2 - torch.sum(fourmomenta[..., 1:] ** 2, dim=-1)
     m2 = torch.abs(m2)
-    m = torch.sqrt(m2.clamp(min=EPS2))
+    m = torch.sqrt(m2.clamp(min=eps))
     return m
 
 
@@ -192,3 +194,51 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
     encoded = pid_lookup[rounded_pids.flatten()].reshape(original_shape)
 
     return encoded
+
+
+def get_range(input):
+    if type(input) in [list, tuple]:
+        tensor = torch.cat(input, dim=0)
+    elif isinstance(input, np.ndarray):
+        tensor = torch.from_numpy(input)
+    elif isinstance(input, torch.Tensor):
+        tensor = input
+    else:
+        raise ValueError("Input must be a list, tuple, numpy array, or torch tensor")
+    quantiles = torch.quantile(
+        tensor, torch.tensor([0.005, 0.995], device=tensor.device)
+    )
+    scale = quantiles[1] - quantiles[0]
+    quantiles[0] -= 0.05 * scale
+    quantiles[1] += 0.05 * scale
+    return quantiles
+
+
+def mask_dims(input, dims):
+    mask = torch.ones_like(input)
+    mask[..., dims] = 0
+    return input * mask
+
+
+def remove_det_jet(batch):
+    new_batch = batch.clone()
+    seq = new_batch.x_det
+    scalars = new_batch.scalars_det
+    ptr = new_batch.x_det_ptr
+
+    n_constituents = ptr[1:] - ptr[:-1] - 1
+
+    new_ptr = torch.zeros(len(ptr), dtype=ptr.dtype, device=ptr.device)
+    new_ptr[1:] = torch.cumsum(n_constituents, dim=0)
+
+    full_idx = torch.arange(seq.shape[0], device=seq.device)
+    new_idx = torch.cat(
+        [full_idx[ptr[i] + 1 : ptr[i + 1]] for i in range(len(ptr) - 1)]
+    )
+
+    new_batch.x_det = seq[new_idx]
+    new_batch.scalars_det = scalars[new_idx]
+    new_batch.x_det_ptr = new_ptr
+    new_batch.x_det_batch = get_batch_from_ptr(new_ptr)
+
+    return new_batch

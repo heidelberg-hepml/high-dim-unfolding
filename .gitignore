@@ -13,6 +13,7 @@ mlruns/
 outputs/
 scripts/
 logs/
+notebooks/
 *~
 
 *.png
@@ -20,3 +21,4 @@ logs/
 *.pt
 *.npz
 *.npy
+*.pdf

@@ -4,7 +4,7 @@ import experiments.unfolding.transforms as tr
 DTYPE = torch.float64
 
 
-class BaseCoordinates:
+class BaseCoordinates(torch.nn.Module):
     """
     Class that implements transformations
     from fourmomenta to an abstract set of variables
@@ -12,6 +12,7 @@ class BaseCoordinates:
     """
 
     def __init__(self):
+        super().__init__()
         self.contains_phi = False
         self.contains_mass = False
         self.transforms = []
@@ -99,6 +100,17 @@ class PPPM2(BaseCoordinates):
         self.transforms = [tr.EPPP_to_PPPM2()]
 
 
+class StandardPPPM2(BaseCoordinates):
+    # fitted (px, py, pz, m^2)
+    def __init__(self):
+        super().__init__()
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PPPM2(),
+            tr.StandardNormal([3]),
+        ]
+
+
 class EPhiPtPz(BaseCoordinates):
     # (E, phi, pt, pz)
     def __init__(self):
@@ -157,6 +169,18 @@ class LogPtPhiEtaE(BaseCoordinates):
         self.transforms = [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min, units)]
 
 
+class PtPhiEtaM2(BaseCoordinates):
+    # (pt, phi, eta, log(m^2))
+    def __init__(self):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+        ]
+
+
 class PtPhiEtaLogM2(BaseCoordinates):
     # (pt, phi, eta, log(m^2))
     def __init__(self):
@@ -167,6 +191,20 @@ class PtPhiEtaLogM2(BaseCoordinates):
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.M2_to_LogM2(),
+        ]
+
+
+class StandardPtPhiEtaLogM2(BaseCoordinates):
+    # (pt, phi, eta, log(m^2))
+    def __init__(self):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_LogM2(),
+            tr.StandardNormal([3]),
         ]
 
 
@@ -199,7 +237,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, units):
+    def __init__(self, pt_min, units, fixed_dims=[3]):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -208,5 +246,5 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.Pt_to_LogPt(pt_min, units),
             tr.M2_to_LogM2(),
-            tr.StandardNormal([3]),
+            tr.StandardNormal([1] + fixed_dims),
         ]

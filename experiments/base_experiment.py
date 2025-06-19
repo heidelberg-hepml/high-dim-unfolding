@@ -3,6 +3,7 @@ import torch
 import torch.distributed as dist
 
 import os, time
+import gc
 import zipfile
 import logging
 from pathlib import Path
@@ -144,7 +145,7 @@ class BaseExperiment:
         )
         if self.cfg.use_mlflow:
             log_mlflow("num_parameters", float(num_parameters), step=0)
-        modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+        modelname = self.cfg.model._target_.rsplit(".", 1)[-1]
         LOGGER.info(
             f"Instantiated model {modelname} with {num_parameters} learnable parameters"
         )
@@ -532,6 +533,22 @@ class BaseExperiment:
                 epoch += 1
 
         iterator = iter(cycle(self.train_loader))
+
+        # with torch.profiler.profile(
+        #     activities=[
+        #         torch.profiler.ProfilerActivity.CPU,
+        #         torch.profiler.ProfilerActivity.CUDA,
+        #     ],
+        #     schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
+        #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+        #         os.path.join(self.cfg.run_dir, "profiler")
+        #     ),
+        #     record_shapes=True,
+        #     profile_memory=True,
+        #     with_stack=True,
+        #     with_modules=True,
+        # ) as prof:
+
         for step in range(self.cfg.training.iterations):
             # training
             self.model.train()
@@ -562,6 +579,10 @@ class BaseExperiment:
                 if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
                     self.scheduler.step(val_loss)
 
+            # gc.collect()
+            # if self.device == torch.device("cuda"):
+            #     torch.cuda.empty_cache()
+
             # output
             dt = time.time() - self.training_start_time
             if step in [0, 999]:
@@ -571,12 +592,14 @@ class BaseExperiment:
                     f"training time estimate: {dt_estimate/60:.2f}min "
                     f"= {dt_estimate/60**2:.2f}h"
                 )
+            # prof.step()
 
         dt = time.time() - self.training_start_time
         LOGGER.info(
             f"Finished training for {step} iterations = {step / len(self.train_loader):.1f} epochs "
             f"after {dt/60:.2f}min = {dt/60**2:.2f}h"
         )
+
         if self.cfg.use_mlflow:
             log_mlflow("iterations", step)
             log_mlflow("epochs", step / len(self.train_loader))
@@ -695,6 +718,11 @@ class BaseExperiment:
             log_mlflow("val.loss", val_loss, step=step)
             for key, values in self.val_metrics.items():
                 log_mlflow(f"val.{key}", values[-1], step=step)
+
+        gc.collect()
+        if self.device == torch.device("cuda"):
+            torch.cuda.empty_cache()
+
         return val_loss
 
     def _save_config(self, filename, to_mlflow=False):

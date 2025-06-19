@@ -1,5 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
+
+from experiments.unfolding.coordinates import LogPtPhiEtaLogM2
+from experiments.unfolding.utils import get_range
 
 # load fonts
 import matplotlib.font_manager as font_manager
@@ -18,8 +22,8 @@ plt.rcParams["text.latex.preamble"] = (
 )
 
 # fontsize
-FONTSIZE = 14
-FONTSIZE_LEGEND = 13
+FONTSIZE = 18
+FONTSIZE_LEGEND = FONTSIZE
 TICKLABELSIZE = 10
 
 
@@ -60,7 +64,7 @@ def plot_histogram(
         mask (np.ndarray), condition (str)
     """
     # construct labels and colors
-    labels = ["Train", "Test", model_label]
+    labels = ["Particle-level", "Detector-level", model_label]
     colors = ["black", "#0343DE", "#A52A2A"]
 
     # construct histograms
@@ -139,7 +143,7 @@ def plot_histogram(
             step="post",
         )
 
-        if label == "Train":
+        if label == "Particle-level":
             axs[0].fill_between(
                 bins,
                 dup_last(y) * scale,
@@ -153,54 +157,55 @@ def plot_histogram(
         if mask_dict is not None:
             continue
 
-        ratio = (y * scale) / (hists[0] * scales[0])
-        ratio_err = np.sqrt((y_err / y) ** 2 + (hist_errors[0] / hists[0]) ** 2)
-        ratio_isnan = np.isnan(ratio)
-        ratio[ratio_isnan] = 1.0
-        ratio_err[ratio_isnan] = 0.0
+        if label == model_label:
+            ratio = (y * scale) / (hists[0] * scales[0])
+            ratio_err = np.sqrt((y_err / y) ** 2 + (hist_errors[0] / hists[0]) ** 2)
+            ratio_isnan = np.isnan(ratio)
+            ratio[ratio_isnan] = 1.0
+            ratio_err[ratio_isnan] = 0.0
 
-        axs[1].step(bins, dup_last(ratio), linewidth=1.0, where="post", color=color)
-        axs[1].step(
-            bins,
-            dup_last(ratio + ratio_err),
-            color=color,
-            alpha=0.5,
-            linewidth=0.5,
-            where="post",
-        )
-        axs[1].step(
-            bins,
-            dup_last(ratio - ratio_err),
-            color=color,
-            alpha=0.5,
-            linewidth=0.5,
-            where="post",
-        )
-        axs[1].fill_between(
-            bins,
-            dup_last(ratio - ratio_err),
-            dup_last(ratio + ratio_err),
-            facecolor=color,
-            alpha=0.3,
-            step="post",
-        )
+            axs[1].step(bins, dup_last(ratio), linewidth=1.0, where="post", color=color)
+            axs[1].step(
+                bins,
+                dup_last(ratio + ratio_err),
+                color=color,
+                alpha=0.5,
+                linewidth=0.5,
+                where="post",
+            )
+            axs[1].step(
+                bins,
+                dup_last(ratio - ratio_err),
+                color=color,
+                alpha=0.5,
+                linewidth=0.5,
+                where="post",
+            )
+            axs[1].fill_between(
+                bins,
+                dup_last(ratio - ratio_err),
+                dup_last(ratio + ratio_err),
+                facecolor=color,
+                alpha=0.3,
+                step="post",
+            )
 
-        delta = np.fabs(ratio - 1) * 100
-        delta_err = ratio_err * 100
+            delta = np.fabs(ratio - 1) * 100
+            delta_err = ratio_err * 100
 
-        markers, caps, bars = axs[2].errorbar(
-            (bins[:-1] + bins[1:]) / 2,
-            delta,
-            yerr=delta_err,
-            ecolor=color,
-            color=color,
-            elinewidth=0.5,
-            linewidth=0,
-            fmt=".",
-            capsize=2,
-        )
-        [cap.set_alpha(0.5) for cap in caps]
-        [bar.set_alpha(0.5) for bar in bars]
+            markers, caps, bars = axs[2].errorbar(
+                (bins[:-1] + bins[1:]) / 2,
+                delta,
+                yerr=delta_err,
+                ecolor=color,
+                color=color,
+                elinewidth=0.5,
+                linewidth=0,
+                fmt=".",
+                capsize=2,
+            )
+            [cap.set_alpha(0.5) for cap in caps]
+            [bar.set_alpha(0.5) for bar in bars]
 
     axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
@@ -389,15 +394,142 @@ def simple_histogram(
     plt.close()
 
 
-def plot_kinematics(path, samples, targets):
+def plot_kinematics(path, samples, targets, base):
     fig, axs = plt.subplots(2, 2, figsize=(8, 8))
     labels = ["Energy", "p_x", "p_y", "p_z"]
+    xrange = [[0, 1000], [-400, 400], [-400, 400], [-750, 750]]
     for i, ax in enumerate(axs.flatten()):
-        bins = np.histogram(targets[:, i].cpu(), bins=100, range=None)[1]
-        ax.hist(samples[:, i].cpu(), bins=bins, range=None, label="samples")
-        ax.hist(targets[:, i].cpu(), bins=bins, range=None, alpha=0.5, label="targets")
+        bins = np.linspace(xrange[i][0], xrange[i][1], 30)
+        ax.hist(
+            samples[:, i].cpu(),
+            bins=bins,
+            range=None,
+            label="samples",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            targets[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="targets",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            base[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="base",
+            density=True,
+            histtype="step",
+        )
         ax.set_xlabel(labels[i], fontsize=FONTSIZE)
         ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     plt.tight_layout()
     plt.savefig(path + "/kinematics.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
+    coords = LogPtPhiEtaLogM2(pt_min=0.0, units=1.0)
+    samples = coords.fourmomenta_to_x(samples)
+    targets = coords.fourmomenta_to_x(targets)
+    base = coords.fourmomenta_to_x(base)
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["log pt", "phi", "eta", "log m2"]
+    xrange = [[-10, 10], [-np.pi, np.pi], [-3, 3], [-5, -4.2]]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.linspace(xrange[i][0], xrange[i][1], 30)
+        ax.hist(
+            samples[:, i].cpu(),
+            bins=bins,
+            range=None,
+            label="samples",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            targets[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="targets",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            base[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="base",
+            density=True,
+            histtype="step",
+        )
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics_alt.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
+
+
+def plot_correlations(file, det, part, gen, title, label, range, model_label):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+
+    bins = np.linspace(range[0], range[1], 50)
+    hist = ax1.hist2d(det, part, bins=bins, norm=mcolors.LogNorm(), rasterized=True)
+    vmin, vmax = hist[-1].get_clim()
+    ax1.set_xlabel("Detector-level", fontsize=FONTSIZE)
+    ax1.set_ylabel("Particle-level", fontsize=FONTSIZE)
+    ax1.set_title("Truth", fontsize=FONTSIZE)
+    ax1.grid(False)
+
+    ax2.hist2d(
+        det, gen, bins=bins, norm=mcolors.LogNorm(vmax=vmax, vmin=vmin), rasterized=True
+    )
+    ax2.set_xlabel("Detector-level", fontsize=FONTSIZE)
+    ax2.set_ylabel("Particle-level", fontsize=FONTSIZE)
+    ax2.set_title(model_label, fontsize=FONTSIZE)
+    ax2.grid(False)
+
+    plt.savefig(file, bbox_inches="tight", format="pdf")
+    plt.close()
+
+
+def plot_data(gen_jet, det_jet, filename):
+    gen_jet, det_jet = gen_jet.cpu().detach(), det_jet.cpu().detach()
+    if gen_jet.ndim == 3:
+        gen_jet = gen_jet.reshape(-1, 4)
+    if det_jet.ndim == 3:
+        det_jet = det_jet.reshape(-1, 4)
+
+    fig, axs = plt.subplots(2, 2, figsize=(10, 10))
+    # xlims = [[0, 600], [-3, 3], [-3.5, 3.5], [0, 1500]]
+
+    for i in range(4):
+        xlims = np.array(get_range([gen_jet[..., i], det_jet[..., i]]))
+        bins = np.linspace(xlims[0], xlims[1], 100)
+        axs[i // 2, i % 2].hist(
+            gen_jet[:, i],
+            bins=bins,
+            alpha=0.5,
+            label="gen_jet",
+            histtype="step",
+            density=True,
+        )
+        axs[i // 2, i % 2].hist(
+            det_jet[:, i],
+            bins=bins,
+            alpha=0.5,
+            label="det_jet",
+            histtype="step",
+            density=True,
+        )
+        axs[i // 2, i % 2].set_title(f"Variable {i}")
+        axs[i // 2, i % 2].set_xlim(xlims)
+        axs[i // 2, i % 2].legend()
+    axs[0, 0].set_yscale("log")
+    axs[1, 1].set_yscale("log")
+    plt.tight_layout()
+    plt.savefig(filename, bbox_inches="tight", format="pdf")
     plt.close()
