@@ -6,7 +6,11 @@ import os, time
 from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
-from experiments.multiplicity.dataset import MultiplicityDataset
+from experiments.multiplicity.dataset import (
+    MultiplicityDataset,
+    load_zplusjet,
+    load_ttbar,
+)
 from experiments.multiplicity.distributions import (
     GammaMixture,
     CategoricalDistribution,
@@ -44,6 +48,12 @@ class MultiplicityExperiment(BaseExperiment):
 
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+
+            if self.cfg.data.dataset == "zplusjet":
+                self.cfg.data.max_num_particles = 152
+            elif self.cfg.data.dataset == "ttbar":
+                self.cfg.data.max_num_particles = 238
+
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
                 if self.cfg.data.pid_encoding:
@@ -122,39 +132,23 @@ class MultiplicityExperiment(BaseExperiment):
         LOGGER.info(f"Created MultiplicityDataset in {time.time() - t0:.2f} seconds")
 
     def _init_data(self, data_path):
-        data = energyflow.zjets_delphes.load(
-            "Herwig",
-            num_data=self.cfg.data.length,
-            pad=True,
-            cache_dir=data_path,
-            include_keys=["particles", "mults", "jets"],
-        )
+
+        if self.cfg.data.dataset == "zplusjet":
+            data = load_zplusjet(self.cfg.data, self.dtype, data_path)
+        elif self.cfg.data.dataset == "ttbar":
+            data = load_ttbar(self.cfg.data, self.dtype, data_path)
+        else:
+            raise ValueError(f"Dataset not implemented: {self.cfg.data.dataset}")
+
+        det_particles = data["det_particles"]
+        det_pids = data["det_pids"]
+        det_mults = data["det_mults"]
+        gen_mults = data["gen_mults"]
 
         split = self.cfg.data.split
-        size = len(data["sim_particles"])
+        size = len(det_mults)
         train_idx = int(split[0] * size)
         val_idx = int(split[1] * size)
-
-        det_particles = torch.tensor(data["sim_particles"], dtype=self.dtype)
-        det_jets = torch.tensor(data["sim_jets"], dtype=self.dtype)
-        det_mults = torch.tensor(data["sim_mults"], dtype=torch.int)
-        gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
-
-        # undo the dataset scaling
-        det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
-        det_particles[..., 2] = ensure_angle(det_particles[..., 2])
-        det_particles[..., 0] = det_particles[..., 0] * 100
-
-        # swap eta and phi for consistency
-        det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
-
-        # save pids before replacing with mass
-        if self.cfg.data.pid_encoding:
-            det_pids = det_particles[..., 3].clone().unsqueeze(-1)
-            det_pids = pid_encoding(det_pids)
-        else:
-            det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=self.dtype)
-        det_particles[..., 3] = self.cfg.data.mass
 
         if self.cfg.modelname == "GATr":
             det_particles = jetmomenta_to_fourmomenta(det_particles)
@@ -179,23 +173,23 @@ class MultiplicityExperiment(BaseExperiment):
                 std[..., -1] = 1
             det_particles = (det_particles - mean) / std
 
-        self.train_data = MultiplicityDataset(self.dtype)
-        self.val_data = MultiplicityDataset(self.dtype)
-        self.test_data = MultiplicityDataset(self.dtype)
+        self.data_train = MultiplicityDataset(self.dtype)
+        self.data_val = MultiplicityDataset(self.dtype)
+        self.data_test = MultiplicityDataset(self.dtype)
 
-        self.train_data.create_data_list(
+        self.data_train.create_data_list(
             det_particles[:train_idx],
             det_pids[:train_idx],
             det_mults[:train_idx],
             gen_mults[:train_idx],
         )
-        self.val_data.create_data_list(
+        self.data_val.create_data_list(
             det_particles[train_idx : train_idx + val_idx],
             det_pids[train_idx : train_idx + val_idx],
             det_mults[train_idx : train_idx + val_idx],
             gen_mults[train_idx : train_idx + val_idx],
         )
-        self.test_data.create_data_list(
+        self.data_test.create_data_list(
             det_particles[train_idx + val_idx :],
             det_pids[train_idx + val_idx :],
             det_mults[train_idx + val_idx :],
@@ -203,20 +197,38 @@ class MultiplicityExperiment(BaseExperiment):
         )
 
     def _init_dataloader(self):
-        self.train_loader = DataLoader(
-            dataset=self.train_data,
-            batch_size=self.cfg.training.batchsize,
+        train_sampler = torch.utils.data.DistributedSampler(
+            self.data_train,
+            num_replicas=self.world_size,
+            rank=self.rank,
             shuffle=True,
         )
+        self.train_loader = DataLoader(
+            dataset=self.data_train,
+            batch_size=self.cfg.training.batchsize,
+            sampler=train_sampler,
+        )
+        val_sampler = torch.utils.data.DistributedSampler(
+            self.data_val,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
         self.val_loader = DataLoader(
-            dataset=self.val_data,
+            dataset=self.data_val,
             batch_size=self.cfg.evaluation.batchsize,
+            sampler=val_sampler,
+        )
+        test_sampler = torch.utils.data.DistributedSampler(
+            self.data_test,
+            num_replicas=self.world_size,
+            rank=self.rank,
             shuffle=False,
         )
         self.test_loader = DataLoader(
-            dataset=self.test_data,
+            dataset=self.data_test,
             batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
+            sampler=test_sampler,
         )
 
         LOGGER.info(
@@ -244,6 +256,19 @@ class MultiplicityExperiment(BaseExperiment):
                 self.results_train = self._evaluate_single(self.train_loader, "train")
                 self.results_val = self._evaluate_single(self.val_loader, "val")
                 self.results_test = self._evaluate_single(self.test_loader, "test")
+            if self.cfg.evaluation.save != 0:
+                tensor_path = os.path.join(
+                    self.cfg.run_dir, f"tensors_{self.cfg.run_idx}"
+                )
+                os.makedirs(tensor_path, exist_ok=True)
+                torch.save(
+                    self.results_test["samples"][: self.cfg.evaluation.save],
+                    f"{tensor_path}/samples.pt",
+                )
+                torch.save(
+                    self.results_test["params"][: self.cfg.evaluation.save],
+                    f"{tensor_path}/params.pt",
+                )
 
     def _evaluate_single(self, loader, title, step=None):
         LOGGER.info(
