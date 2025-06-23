@@ -14,6 +14,7 @@ from experiments.dataset import Dataset, load_dataset
 from experiments.coordinates import fourmomenta_to_jetmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.logger import LOGGER
+import experiments.kinematics.observables as obs
 from experiments.kinematics.observables import (
     create_partial_jet,
     compute_angles,
@@ -582,6 +583,12 @@ class KinematicsExperiment(BaseExperiment):
         self.obs = {}
 
         if "angle" in self.cfg.plotting.observables:
+            self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
+            self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
+            self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
+            self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
+            self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
+            self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
             self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
             self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
             self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
@@ -602,14 +609,14 @@ class KinematicsExperiment(BaseExperiment):
                     )
 
         if self.cfg.data.dataset == "zplusjet":
-            R0 = 0.4
-            R0SoftDrop = 0.8
+            obs.R0 = 0.4
+            obs.R0SoftDrop = 0.8
         elif self.cfg.data.dataset == "cms":
-            R0 = 1.2
-            R0SoftDrop = 1.2
+            obs.R0 = 1.2
+            obs.R0SoftDrop = 1.2
         elif self.cfg.data.dataset == "ttbar":
-            R0 = 1.2
-            R0SoftDrop = 1.2
+            obs.R0 = 1.2
+            obs.R0SoftDrop = 1.2
 
         if "tau1" in self.cfg.plotting.observables:
             self.obs[r"\tau_1"] = tau1

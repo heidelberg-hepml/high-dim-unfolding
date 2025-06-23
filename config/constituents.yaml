@@ -64,6 +64,7 @@ plotting:
  fourmomenta: false
  jetmomenta: true
  preprocessed: false
+ jetscaled: false
  observables: ["jet"]
  n_pt: 3
  correlations: false

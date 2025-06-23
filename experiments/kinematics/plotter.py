@@ -15,6 +15,8 @@ from experiments.coordinates import fourmomenta_to_jetmomenta
 from experiments.kinematics.observables import create_partial_jet
 from experiments.logger import LOGGER
 
+N_SAMPLES = 100000
+
 
 def plot_losses(exp, filename, model_label):
     with PdfPages(filename) as file:
@@ -220,7 +222,7 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
-            max_n = 100000
+            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
             det_lvl = extract(
@@ -393,7 +395,7 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
                 filter=None,
                 units=exp.cfg.data.units,
             )
-            max_n = 100000
+            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
             det_lvl = extract(
@@ -517,7 +519,7 @@ def plot_correlations(exp, filename, model_label, weights=None, mask_dict=None):
     with PdfPages(filename) as file:
         for name in exp.corr.keys():
             extract_x = exp.corr[name][0]
-            max_n = 50000
+            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             gen_lvl_x = (
                 extract_x(
@@ -595,7 +597,7 @@ def plot_observables(
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             extract = exp.obs[name]
-            max_n = 100000
+            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
             det_lvl = extract(
