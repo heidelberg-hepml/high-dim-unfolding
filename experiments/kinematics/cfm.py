@@ -322,6 +322,10 @@ class EventCFM(CFM):
             coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
                 self.pt_min, self.cfm.masked_dims
             )
+        elif coordinates_label == "IndividualStandardJetScaledLogPtPhiEtaLogM2":
+            coordinates = c.IndividualStandardJetScaledLogPtPhiEtaLogM2(
+                self.pt_min, self.cfm.masked_dims
+            )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")
         return coordinates

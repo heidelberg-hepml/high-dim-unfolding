@@ -17,11 +17,17 @@ class BaseCoordinates(torch.nn.Module):
         self.contains_mass = False
         self.transforms = []
 
-    def init_fit(self, fourmomenta, **kwargs):
+    def init_fit(self, fourmomenta, mask, **kwargs):
         x = fourmomenta.clone()
+        assert torch.isfinite(x).all()
         for transform in self.transforms[:-1]:
-            x = transform.forward(x, **kwargs)
-        self.transforms[-1].init_fit(x, **kwargs)
+            x[mask] = transform.forward(x[mask], **kwargs)
+            assert torch.isfinite(
+                x
+            ).all(), (
+                f"Transform {transform.__class__.__name__} produced non-finite values."
+            )
+        self.transforms[-1].init_fit(x, mask, **kwargs)
 
     def fourmomenta_to_x(self, a_in, **kwargs):
         assert torch.isfinite(a_in).all()
@@ -263,6 +269,24 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.M2_to_LogM2(),
             tr.Pt_to_LogPt(pt_min),
             tr.StandardNormal(fixed_dims, scaling),
+        ]
+
+
+class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
+    # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
+    def __init__(
+        self, pt_min, fixed_dims=[3], scaling=torch.tensor([[1.0, 2.0, 2.0, 1.0]])
+    ):
+        super().__init__()
+        self.contains_phi = False
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.PtPhiEtaM2_to_JetScale(),
+            tr.M2_to_LogM2(),
+            tr.Pt_to_LogPt(pt_min),
+            tr.IndividualNormal(fixed_dims, scaling),
         ]
 
 

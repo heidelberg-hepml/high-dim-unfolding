@@ -443,17 +443,13 @@ class StandardNormal(BaseTransform):
         self.std = torch.ones(1, 4)
         self.scaling = scaling
 
-    def init_fit(self, x, **kwargs):
-        self.mean = torch.mean(x, dim=0, keepdim=True)
-        self.std = torch.std(x, dim=0, keepdim=True) / self.scaling.to(
+    def init_fit(self, x, mask, **kwargs):
+        self.mean = torch.mean(x[mask], dim=0, keepdim=True)
+        self.std = torch.std(x[mask], dim=0, keepdim=True) / self.scaling.to(
             x.device, dtype=x.dtype
         )
         # self.mean[:, self.dims_fixed] = 0
         self.std[:, self.dims_fixed] = 1
-
-    def init_unit(self, device, dtype):
-        self.mean = torch.zeros(1, 4, device=device, dtype=dtype)
-        self.std = torch.ones(1, 4, device=device, dtype=dtype)
 
     def _forward(self, x, **kwargs):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
@@ -536,3 +532,56 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
     def _detjac_forward(self, ptphietam2, y, jet, **kwargs):
         jet_pt = jet[:, 0]
         return 1 / jet_pt
+
+
+class IndividualNormal(BaseTransform):
+
+    def __init__(self, dims_fixed=[], scaling=torch.ones(1, 4)):
+        super().__init__()
+        self.dims_fixed = dims_fixed
+        self.scaling = scaling
+
+    def init_fit(self, x, mask, **kwargs):
+        mask = mask.unsqueeze(-1)
+        self.mean = (x * mask).sum(dim=0) / mask.sum(dim=0)
+        self.mean[-20:] = torch.mean(
+            self.mean[-20:][~torch.isnan(self.mean[-20:]).any(dim=-1)], dim=0
+        )
+        self.std = torch.sqrt(
+            ((x * mask - self.mean * mask) ** 2).sum(dim=0) / mask.sum(dim=0)
+        ) / self.scaling.to(x.device, dtype=x.dtype)
+        self.std[-20:] = torch.mean(
+            self.std[-20:][~torch.isnan(self.std[-20:]).any(dim=-1)], dim=0
+        )
+        self.std[..., self.dims_fixed] = 1.0
+        self.std[torch.abs(self.std) <= 1e-3] = 1.0
+
+    def _forward(self, x, ptr, **kwargs):
+        idx = torch.arange(
+            x.shape[0], device=ptr.device, dtype=torch.int64
+        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+        return (x - self.mean.to(x.device)[idx]) / self.std.to(x.device)[idx]
+
+    def _inverse(self, xunit, ptr, **kwargs):
+        idx = torch.arange(
+            xunit.shape[0], device=ptr.device, dtype=torch.int64
+        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+        return xunit * self.std.to(xunit.device)[idx] + self.mean.to(xunit.device)[idx]
+
+    def _jac_forward(self, x, xunit, ptr, **kwargs):
+        idx = torch.arange(
+            x.shape[0], device=ptr.device, dtype=torch.int64
+        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+        jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
+        std = self.std.to(x.device, dtype=x.dtype)[idx].unsqueeze(0)
+        jac[..., torch.arange(4), torch.arange(4)] = 1 / std
+        return jac
+
+    def _jac_inverse(self, xunit, x, ptr, **kwargs):
+        idx = torch.arange(
+            x.shape[0], device=ptr.device, dtype=torch.int64
+        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+        jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
+        std = self.std.to(x.device, dtype=x.dtype)[ptr].unsqueeze(0)
+        jac[..., torch.arange(4), torch.arange(4)] = std
+        return jac

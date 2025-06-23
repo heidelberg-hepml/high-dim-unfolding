@@ -147,7 +147,8 @@ class KinematicsExperiment(BaseExperiment):
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
         self.model.coordinates.init_fit(
-            gen_particles[:train_idx][train_gen_mask],
+            gen_particles[:train_idx],
+            mask=train_gen_mask,
             jet=torch.repeat_interleave(
                 gen_jets[:train_idx], gen_mults[:train_idx], dim=0
             ),
@@ -157,7 +158,8 @@ class KinematicsExperiment(BaseExperiment):
             torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         )
         self.model.condition_coordinates.init_fit(
-            det_particles[:train_idx][train_det_mask],
+            det_particles[:train_idx],
+            mask=train_det_mask,
             jet=torch.repeat_interleave(
                 det_jets[:train_idx], det_mults[:train_idx], dim=0
             ),
@@ -167,12 +169,18 @@ class KinematicsExperiment(BaseExperiment):
         det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
             det_particles[det_mask],
             jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0), dim=0
+            ),
         )
 
         gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
         gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
             gen_particles[gen_mask],
             jet=torch.repeat_interleave(gen_jets, gen_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), gen_mults], dim=0), dim=0
+            ),
         )
 
         self.train_data = Dataset(
@@ -319,24 +327,26 @@ class KinematicsExperiment(BaseExperiment):
 
             sample_batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
-                    sample_batch.x_det, jet=det_jets
+                    sample_batch.x_det, jet=det_jets, ptr=sample_batch.x_det_ptr
                 )
                 * self.cfg.data.units
             )
             sample_batch.x_gen = (
                 self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen, jet=gen_jets
+                    sample_batch.x_gen, jet=gen_jets, ptr=sample_batch.x_gen_ptr
                 )
                 * self.cfg.data.units
             )
             batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
-                    batch.x_det, jet=det_jets
+                    batch.x_det, jet=det_jets, ptr=batch.x_det_ptr
                 )
                 * self.cfg.data.units
             )
             batch.x_gen = (
-                self.model.coordinates.x_to_fourmomenta(batch.x_gen, jet=gen_jets)
+                self.model.coordinates.x_to_fourmomenta(
+                    batch.x_gen, jet=gen_jets, ptr=batch.x_gen_ptr
+                )
                 * self.cfg.data.units
             )
 
