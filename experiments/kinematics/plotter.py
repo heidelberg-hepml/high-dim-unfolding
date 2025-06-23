@@ -10,7 +10,6 @@ from experiments.kinematics.plots import (
 )
 from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta
-from experiments.logger import LOGGER
 
 
 def plot_losses(exp, filename, model_label):
@@ -141,6 +140,9 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
             det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()
             model = fourmomenta_to_jetmomenta(model).cpu().detach()
+            part_lvl[..., 3] = torch.sqrt(part_lvl[..., 3])
+            det_lvl[..., 3] = torch.sqrt(det_lvl[..., 3])
+            model[..., 3] = torch.sqrt(model[..., 3])
             obs_names = [
                 r"p_{T," + name + "}",
                 "\phi_{" + name + "}",
@@ -303,9 +305,6 @@ def plot_observables(
 
             nan_mask = torch.isnan(part_lvl) | torch.isnan(det_lvl) | torch.isnan(model)
 
-            LOGGER.info(
-                f"Masking {nan_mask.sum()} NaNs in {name} observable, keeping {(~nan_mask).sum()} valid entries"
-            )
             part_lvl = part_lvl[~nan_mask]
             det_lvl = det_lvl[~nan_mask]
             model = model[~nan_mask]

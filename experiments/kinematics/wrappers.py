@@ -5,6 +5,8 @@ from lgatr.interface import extract_vector
 from experiments.utils import xformers_mask
 from experiments.kinematics.cfm import EventCFM
 from experiments.embedding import embed_data_into_ga
+from experiments.coordinates import jetmomenta_to_fourmomenta
+from experiments.logger import LOGGER
 
 
 class ConditionalTransformerCFM(EventCFM):
@@ -20,7 +22,6 @@ class ConditionalTransformerCFM(EventCFM):
         net_condition,
         cfm,
         odeint,
-        force_xformers=True,
     ):
         # See GATrCFM.__init__ for documentation
         super().__init__(
@@ -29,25 +30,28 @@ class ConditionalTransformerCFM(EventCFM):
         )
         self.net = net
         self.net_condition = net_condition
-        self.force_xformers = force_xformers
+        self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
         attention_mask = xformers_mask(
-            batch.x_gen_batch, materialize=not self.force_xformers
+            batch.x_gen_batch, materialize=not self.use_xformers
         )
         condition_attention_mask = xformers_mask(
-            batch.x_det_batch, materialize=not self.force_xformers
+            batch.x_det_batch, materialize=not self.use_xformers
         )
         cross_attention_mask = xformers_mask(
             batch.x_gen_batch,
             batch.x_det_batch,
-            materialize=not self.force_xformers,
+            materialize=not self.use_xformers,
         )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
         input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
-        return self.net_condition(input.unsqueeze(0), attention_mask=attention_mask)
+        attn_kwargs = {
+            "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+        }
+        return self.net_condition(input.unsqueeze(0), **attn_kwargs)
 
     def get_velocity(
         self,
@@ -68,8 +72,12 @@ class ConditionalTransformerCFM(EventCFM):
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
-            attention_mask=attention_mask,
-            crossattention_mask=crossattention_mask,
+            attn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+            },
+            crossattn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
+            },
         ).squeeze(0)
         return self.geometry._handle_periodic(vp)
 
@@ -87,7 +95,6 @@ class ConditionalLGATrCFM(EventCFM):
         scalar_dims,
         odeint,
         GA_config,
-        force_xformers=True,
     ):
         """
         Parameters
@@ -115,44 +122,45 @@ class ConditionalLGATrCFM(EventCFM):
         self.ga_cfg = GA_config
         self.net = net
         self.net_condition = net_condition
-        self.force_xformers = force_xformers
+        self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
-        gen_embedding = embed_data_into_ga(
+        _, _, gen_batch_idx, _ = embed_data_into_ga(
             batch.x_gen,
             batch.scalars_gen,
             batch.x_gen_ptr,
             self.ga_cfg,
         )
-        det_embedding = embed_data_into_ga(
+        _, _, det_batch_idx, _ = embed_data_into_ga(
             batch.x_det,
             batch.scalars_det,
             batch.x_det_ptr,
             self.ga_cfg,
         )
-        attention_mask = xformers_mask(
-            gen_embedding["batch"], materialize=not self.force_xformers
-        )
+        attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
         condition_attention_mask = xformers_mask(
-            det_embedding["batch"], materialize=not self.force_xformers
+            det_batch_idx, materialize=not self.use_xformers
         )
         cross_attention_mask = xformers_mask(
-            gen_embedding["batch"],
-            det_embedding["batch"],
-            materialize=not self.force_xformers,
+            gen_batch_idx,
+            det_batch_idx,
+            materialize=not self.use_xformers,
         )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
-        embedding = embed_data_into_ga(
+        mv, s, _, _ = embed_data_into_ga(
             batch.x_det,
             batch.scalars_det,
             batch.x_det_ptr,
             self.ga_cfg,
         )
-        mv = embedding["mv"].unsqueeze(0)
-        s = embedding["s"].unsqueeze(0)
-        condition_mv, condition_s = self.net_condition(mv, s, attn_bias=attention_mask)
+        mv = mv.unsqueeze(0)
+        s = s.unsqueeze(0)
+        attn_kwargs = {
+            "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+        }
+        condition_mv, condition_s = self.net_condition(mv, s, **attn_kwargs)
         return condition_mv, condition_s
 
     def get_velocity(
@@ -167,10 +175,18 @@ class ConditionalLGATrCFM(EventCFM):
     ):
         assert self.coordinates is not None
 
-        fourmomenta = self.coordinates.x_to_fourmomenta(
-            xt,
-            jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0),
+        jet_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
+        if self.cfm.add_jet:
+            jet_mask[batch.x_gen_ptr[:-1]] = False
+        gen_jets = torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0)
+
+        fourmomenta = torch.zeros_like(xt)
+        fourmomenta[jet_mask] = self.coordinates.x_to_fourmomenta(
+            xt[jet_mask],
+            jet=gen_jets[jet_mask],
         )
+        fourmomenta[~jet_mask] = jetmomenta_to_fourmomenta(xt[~jet_mask])
+
         condition_mv, condition_s = condition
         if self_condition is not None:
             scalars = torch.cat(
@@ -179,33 +195,40 @@ class ConditionalLGATrCFM(EventCFM):
         else:
             scalars = torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1)
 
-        embedding = embed_data_into_ga(
+        mv, s, _, spurions_mask = embed_data_into_ga(
             fourmomenta,
             scalars,
             batch.x_gen_ptr,
             # self.ga_cfg,
         )
-        mv = embedding["mv"].unsqueeze(0)
-        s = embedding["s"].unsqueeze(0)
-        spurions_mask = embedding["mask"]
 
         mv_outputs, s_outputs = self.net(
-            multivectors=mv,
+            multivectors=mv.unsqueeze(0),
             multivectors_condition=condition_mv,
-            scalars=s,
+            scalars=s.unsqueeze(0),
             scalars_condition=condition_s,
-            attn_kwargs={"attn_bias": attention_mask},
-            crossattn_kwargs={"attn_bias": crossattention_mask},
+            attn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+            },
+            crossattn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
+            },
         )
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
-        v_fourmomenta, v_s = self.extract_from_ga(mv_outputs, s_outputs, spurions_mask)
+        v_fourmomenta = extract_vector(mv_outputs[spurions_mask]).squeeze(dim=-2)
+        v_s = s[spurions_mask]
 
-        v_straight = self.coordinates.velocity_fourmomenta_to_x(
-            v_fourmomenta,
-            fourmomenta,
-            jet=torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0),
+        LOGGER.info(
+            f"Velocity output shape: {v_fourmomenta.shape}, {v_fourmomenta[jet_mask].shape}"
+        )
+
+        v_straight = torch.zeros_like(v_fourmomenta)
+        v_straight[jet_mask] = self.coordinates.velocity_fourmomenta_to_x(
+            v_fourmomenta[jet_mask],
+            fourmomenta[jet_mask],
+            jet=gen_jets[jet_mask],
         )[0]
 
         # Overwrite transformed velocities with scalar outputs
@@ -213,7 +236,3 @@ class ConditionalLGATrCFM(EventCFM):
         v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
 
         return v_straight
-
-    def extract_from_ga(self, mv, s, mask):
-        v = extract_vector(mv[mask]).squeeze(dim=-2)
-        return v, s[mask]

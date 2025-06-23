@@ -1,21 +1,18 @@
 import torch
 from torch_geometric.loader import DataLoader
+from torch.distributions import Categorical
 import numpy as np
 
 import os, time
 from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import (
-    Dataset,
-    load_zplusjet,
-    load_ttbar,
-)
-from experiments.distributions import (
+from experiments.dataset import Dataset, load_dataset
+from experiments.multiplicity.distributions import (
     GammaMixture,
-    CategoricalDistribution,
     GaussianMixture,
     cross_entropy,
+    process_params,
 )
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
@@ -33,16 +30,14 @@ class MultiplicityExperiment(BaseExperiment):
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
 
-            if self.cfg.data.dataset == "zplusjet":
-                self.cfg.data.max_num_particles = 152
-                self.cfg.data.diff = [-53, 78]
-                self.cfg.data.pt_min = 0.0
-                self.cfg.data.units = 1.0
-            elif self.cfg.data.dataset == "ttbar":
-                self.cfg.data.max_num_particles = 238
-                self.cfg.data.diff = [-35, 101]
-                self.cfg.data.pt_min = 0.0
-                self.cfg.data.units = 1.0
+            max_num_particles, diff, pt_min, _, load_fn = load_dataset(
+                self.cfg.data.dataset
+            )
+
+            self.cfg.data.max_num_particles = max_num_particles
+            self.cfg.data.diff = diff
+            self.cfg.data.pt_min = pt_min
+            self.load_fn = load_fn
 
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
@@ -57,7 +52,7 @@ class MultiplicityExperiment(BaseExperiment):
                     self.distribution = GaussianMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "Categorical":
-                    self.distribution = CategoricalDistribution
+                    self.distribution = Categorical
                     if self.cfg.dist.diff:
                         self.cfg.model.net.out_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
@@ -74,7 +69,7 @@ class MultiplicityExperiment(BaseExperiment):
                     self.distribution = GaussianMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "Categorical":
-                    self.distribution = CategoricalDistribution
+                    self.distribution = Categorical
                     if self.cfg.dist.diff:
                         self.cfg.model.net.out_mv_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
@@ -106,12 +101,7 @@ class MultiplicityExperiment(BaseExperiment):
 
     def _init_data(self, data_path):
 
-        if self.cfg.data.dataset == "zplusjet":
-            data = load_zplusjet(data_path, self.cfg.data, self.dtype)
-        elif self.cfg.data.dataset == "ttbar":
-            data = load_ttbar(data_path, self.cfg.data, self.dtype)
-        else:
-            raise ValueError(f"Dataset not implemented: {self.cfg.data.dataset}")
+        data = self.load_fn(data_path, self.cfg.data, self.dtype)
 
         det_particles = data["det_particles"]
         det_pids = data["det_pids"]
@@ -291,10 +281,7 @@ class MultiplicityExperiment(BaseExperiment):
         batch = batch.to(self.device)
 
         output = self.model(batch)
-        params = torch.clamp(output, min=-10, max=5)  # avoid inf and 0
-        params = torch.exp(params)  # ensure positive params
-        if self.distribution == "Categorical":
-            params = torch.nn.functional.softmax(params, dim=-1)
+        params = process_params(output)
         predicted_dist = self.distribution(params)  # batch of mixtures
 
         label = batch.x_gen_ptr.diff()

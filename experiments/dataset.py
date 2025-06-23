@@ -5,14 +5,12 @@ import numpy as np
 import awkward as ak
 import os
 
-from lgatr.interface import embed_vector
 from experiments.utils import (
     ensure_angle,
     pid_encoding,
 )
 from experiments.coordinates import (
     jetmomenta_to_fourmomenta,
-    fourmomenta_to_jetmomenta,
 )
 
 
@@ -66,6 +64,29 @@ class Dataset(torch.utils.data.Dataset):
             )
 
             self.data_list.append(graph)
+
+
+def load_dataset(dataset_name):
+    if dataset_name == "zplusjet":
+        max_num_particles = 152
+        diff = [-53, 78]
+        pt_min = 0.0
+        masked_dim = [3]
+        load_fn = load_zplusjet
+    elif dataset_name == "cms":
+        max_num_particles = 3
+        diff = [0, 0]
+        pt_min = 30.0
+        masked_dim = []
+        load_fn = load_cms
+
+    elif dataset_name == "ttbar":
+        max_num_particles = 238
+        diff = [-35, 101]
+        pt_min = 0.0
+        masked_dim = [3]
+        load_fn = load_ttbar
+    return max_num_particles, diff, pt_min, masked_dim, load_fn
 
 
 def load_zplusjet(data_path, cfg, dtype):

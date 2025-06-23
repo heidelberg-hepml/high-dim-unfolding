@@ -1,5 +1,4 @@
 import torch
-import numpy as np
 
 
 def custom_rk4(func, y1, t, step_size=0.01):

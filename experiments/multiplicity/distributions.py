@@ -1,9 +1,6 @@
 import torch
 import torch.distributions as D
-import math
 import einops
-
-import experiments.coordinates as c
 
 
 def cross_entropy(distribution, target):
@@ -27,12 +24,6 @@ class GammaMixture(D.MixtureSameFamily):
         return torch.round(samples)
 
 
-class CategoricalDistribution(D.Categorical):
-    @property
-    def params(self):
-        return self.logits
-
-
 class GaussianMixture(D.MixtureSameFamily):
     def __init__(self, params):
         if len(params.shape) == 2:
@@ -47,3 +38,9 @@ class GaussianMixture(D.MixtureSameFamily):
     def sample(self, *args, **kwargs):
         samples = super().sample(*args, **kwargs)
         return torch.round(samples)
+
+
+def process_params(params):
+    params = torch.clamp(params, min=-10, max=5)  # avoid inf and 0
+    params = torch.exp(params)  # ensure positive params
+    return params

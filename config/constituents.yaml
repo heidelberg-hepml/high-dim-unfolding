@@ -1,8 +1,6 @@
 exp_type: constituents
 exp_name: simplecondtest
 
-seed: 42
-
 use_mlflow: false
 
 data:
@@ -11,11 +9,10 @@ data:
  length: -1
  train_val_test: [0.8, 0.1, 0.1]
  max_num_particles: null
- diff: null
  max_constituents: -1
  add_pid: false
  pt_min: null
- units: null
+ units: 1.0
  mass: 0.001
  pos_encoding_dim: 8
 

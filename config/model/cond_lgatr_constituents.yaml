@@ -1,7 +1,5 @@
 _target_: experiments.kinematics.wrappers.ConditionalLGATrCFM
 
-force_xformers: '${training.force_xformers}'
-
 scalar_dims: [0, 3]
 
 GA_config:

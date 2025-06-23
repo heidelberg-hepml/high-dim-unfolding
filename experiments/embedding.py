@@ -74,16 +74,17 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
         scalars[~insert_spurion] = scalars_buffer
         new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
 
+        mask = ~insert_spurion
+    else:
+        mask = torch.ones(
+            multivectors.shape[0],
+            dtype=torch.bool,
+            device=multivectors.device,
+        )
+
     batch = get_batch_from_ptr(new_ptr)
 
-    # return dict
-    embedding = {
-        "mv": multivectors,
-        "s": scalars,
-        "batch": batch,
-        "mask": ~insert_spurion,
-    }
-    return embedding
+    return multivectors, scalars, batch, mask
 
 
 def add_jet_to_sequence(batch):
@@ -101,14 +102,6 @@ def add_jet_to_sequence(batch):
         device=new_batch.x_gen.device,
     )
     insert_gen_jets[gen_jets_idx] = True
-    scalars_gen = torch.zeros(
-        x_gen.shape[0],
-        new_batch.scalars_gen.shape[1],
-        dtype=new_batch.scalars_gen.dtype,
-        device=new_batch.scalars_gen.device,
-    )
-    scalars_gen[~insert_gen_jets] = new_batch.scalars_gen
-
     x_gen = torch.empty(
         insert_gen_jets.shape[0],
         *new_batch.x_gen.shape[1:],
@@ -117,6 +110,16 @@ def add_jet_to_sequence(batch):
     )
     x_gen[~insert_gen_jets] = new_batch.x_gen
     x_gen[insert_gen_jets] = new_batch.jet_gen
+    scalars_gen = torch.zeros(
+        x_gen.shape[0],
+        new_batch.scalars_gen.shape[1],
+        dtype=new_batch.scalars_gen.dtype,
+        device=new_batch.scalars_gen.device,
+    )
+    scalars_gen[~insert_gen_jets] = new_batch.scalars_gen
+    scalars_gen = torch.cat(
+        [scalars_gen, insert_gen_jets.unsqueeze(-1).to(scalars_gen.dtype)], dim=-1
+    )
 
     insert_det_jets = torch.zeros(
         new_batch.x_det.shape[0] + batchsize,
@@ -140,6 +143,9 @@ def add_jet_to_sequence(batch):
         device=new_batch.scalars_det.device,
     )
     scalars_det[~insert_det_jets] = new_batch.scalars_det
+    scalars_det = torch.cat(
+        [scalars_det, insert_det_jets.unsqueeze(-1).to(scalars_det.dtype)], dim=-1
+    )
 
     new_batch.x_gen = x_gen
     new_batch.scalars_gen = scalars_gen

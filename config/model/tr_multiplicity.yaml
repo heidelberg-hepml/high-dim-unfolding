@@ -1,5 +1,4 @@
 _target_: experiments.multiplicity.wrappers.MultiplicityTransformerWrapper
-force_xformers: '${training.force_xformers}'
 
 net:
   _target_: experiments.baselines.Transformer
@@ -11,5 +10,3 @@ net:
   num_blocks: 2
   num_heads: 4
   dropout_prob: null
-
-  pos_encoding: false

@@ -13,7 +13,7 @@ data:
  max_constituents: -1
  add_pid: false
  pt_min: null
- units: null
+ units: 1.
  mass: 0.001
  pos_encoding_dim: 8
 

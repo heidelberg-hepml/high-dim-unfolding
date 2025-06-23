@@ -12,21 +12,14 @@ from fastjet_contribs import (
     apply_soft_drop,
 )
 
-from lgatr.interface import get_spurions, extract_vector
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import (
-    Dataset,
-    load_cms,
-    load_zplusjet,
-    load_ttbar,
-)
+from experiments.dataset import Dataset, load_dataset
 from experiments.utils import (
     get_ptr_from_batch,
     ensure_angle,
 )
 from experiments.coordinates import fourmomenta_to_jetmomenta
 import experiments.kinematics.plotter as plotter
-from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 
 
@@ -36,22 +29,14 @@ class KinematicsExperiment(BaseExperiment):
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
 
-            if self.cfg.data.dataset == "cms":
-                self.cfg.data.max_num_particles = 3
-                self.cfg.data.pt_min = 30.0
-                self.cfg.data.units = 1.0
+            max_num_particles, _, pt_min, masked_dims, load_fn = load_dataset(
+                self.cfg.data.dataset
+            )
 
-            if self.cfg.data.dataset == "zplusjet":
-                self.cfg.data.max_num_particles = 152
-                self.cfg.data.pt_min = 0.0
-                self.cfg.data.units = 1.0
-                self.cfg.cfm.masked_dims = [3]
-
-            if self.cfg.data.dataset == "ttbar":
-                self.cfg.data.max_num_particles = 238
-                self.cfg.data.pt_min = 0.0
-                self.cfg.data.units = 1.0
-                self.cfg.cfm.masked_dims = [3]
+            self.cfg.data.max_num_particles = max_num_particles
+            self.cfg.data.pt_min = pt_min
+            self.cfg.cfm.masked_dims = masked_dims
+            self.load_fn = load_fn
 
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
@@ -124,14 +109,7 @@ class KinematicsExperiment(BaseExperiment):
 
     def _init_data(self, data_path):
         t0 = time.time()
-        if self.cfg.data.dataset == "zplusjet":
-            data = load_zplusjet(data_path, self.cfg.data, self.dtype)
-        elif self.cfg.data.dataset == "cms":
-            data = load_cms(data_path, self.cfg.data, self.dtype)
-        elif self.cfg.data.dataset == "ttbar":
-            data = load_ttbar(data_path, self.cfg.data, self.dtype)
-        else:
-            raise ValueError(f"Unknown dataset {self.cfg.data.dataset}")
+        data = self.load_fn(data_path, self.cfg.data, self.dtype)
         det_particles = data["det_particles"]
         det_mults = data["det_mults"]
         det_pids = data["det_pids"]
@@ -195,13 +173,6 @@ class KinematicsExperiment(BaseExperiment):
         gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
             gen_particles[gen_mask],
             jet=torch.repeat_interleave(gen_jets, gen_mults, dim=0),
-        )
-
-        plot_kinematics(
-            self.cfg.run_dir,
-            gen_particles[gen_mask],
-            det_particles[det_mask],
-            filename="pre_kinematics.pdf",
         )
 
         self.train_data = Dataset(
@@ -339,64 +310,35 @@ class KinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            if i == 0:
-                plot_kinematics(
-                    self.cfg.run_dir,
-                    batch.x_det.cpu(),
-                    batch.x_gen.cpu(),
-                    sample_batch.x_gen.cpu(),
-                    filename="post_kinematics.pdf",
-                )
+            gen_jets = torch.repeat_interleave(
+                sample_batch.jet_gen, sample_batch.x_gen_ptr.diff(), dim=0
+            )
+            det_jets = torch.repeat_interleave(
+                sample_batch.jet_det, sample_batch.x_det_ptr.diff(), dim=0
+            )
 
             sample_batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
-                    sample_batch.x_det,
-                    jet=torch.repeat_interleave(
-                        sample_batch.jet_det,
-                        sample_batch.x_det_ptr.diff(),
-                        dim=0,
-                    ),
+                    sample_batch.x_det, jet=det_jets
                 )
                 * self.cfg.data.units
             )
             sample_batch.x_gen = (
                 self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen,
-                    jet=torch.repeat_interleave(
-                        sample_batch.jet_gen,
-                        sample_batch.x_gen_ptr.diff(),
-                        dim=0,
-                    ),
+                    sample_batch.x_gen, jet=gen_jets
                 )
                 * self.cfg.data.units
             )
             batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
-                    batch.x_det,
-                    jet=torch.repeat_interleave(
-                        batch.jet_det, batch.x_det_ptr.diff(), dim=0
-                    ),
+                    batch.x_det, jet=det_jets
                 )
                 * self.cfg.data.units
             )
             batch.x_gen = (
-                self.model.coordinates.x_to_fourmomenta(
-                    batch.x_gen,
-                    jet=torch.repeat_interleave(
-                        batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
-                    ),
-                )
+                self.model.coordinates.x_to_fourmomenta(batch.x_gen, jet=gen_jets)
                 * self.cfg.data.units
             )
-
-            if i == 0:
-                plot_kinematics(
-                    self.cfg.run_dir,
-                    fourmomenta_to_jetmomenta(batch.x_det).cpu(),
-                    fourmomenta_to_jetmomenta(batch.x_gen).cpu(),
-                    fourmomenta_to_jetmomenta(sample_batch.x_gen).cpu(),
-                    filename="post_jetmomenta.pdf",
-                )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

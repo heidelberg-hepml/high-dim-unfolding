@@ -1,15 +1,10 @@
 from typing import Optional, Tuple
-
 import torch
 from einops import rearrange
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-
-from experiments.baselines.positional_encoding import (
-    ApplyRotaryPositionalEncoding,
-    ApplyAbsolutePositionalEncoding,
-)
 from lgatr.primitives.attention import scaled_dot_product_attention
+
 from experiments.utils import to_nd
 
 
@@ -167,11 +162,6 @@ class BaselineSelfAttention(nn.Module):
         Number of hidden channels = size of query, key, and value.
     num_heads : int
         Number of attention heads.
-    pos_encoding : bool
-        Whether to apply rotary positional embeddings along the item dimension to the scalar keys
-        and queries.
-    pos_encoding_base : int
-        Maximum frequency used in positional encodings. (The minimum frequency is always 1.)
     multi_query : bool
         Use multi-query attention instead of multi-head attention.
     """
@@ -182,9 +172,6 @@ class BaselineSelfAttention(nn.Module):
         out_channels: int,
         hidden_channels: int,
         num_heads: int = 8,
-        pos_encoding: bool = False,
-        pos_encoding_type: str = "absolute",
-        pos_encoding_base: int = 4096,
         multi_query: bool = True,
         dropout_prob=None,
     ) -> None:
@@ -199,19 +186,6 @@ class BaselineSelfAttention(nn.Module):
         self.qkv_linear = qkv_class(in_channels, hidden_channels, num_heads)
         self.out_linear = nn.Linear(hidden_channels * num_heads, out_channels)
 
-        # Optional positional encoding
-        if pos_encoding:
-            if pos_encoding_type == "absolute":
-                self.pos_encoding = ApplyAbsolutePositionalEncoding(
-                    hidden_channels, pos_encoding_base, seq="q"
-                )
-            elif pos_encoding_type == "rotary":
-                self.pos_encoding = ApplyRotaryPositionalEncoding(
-                    hidden_channels, item_dim=-2, base=pos_encoding_base
-                )
-        else:
-            self.pos_encoding = None
-
         if dropout_prob is not None:
             self.dropout = nn.Dropout(dropout_prob)
         else:
@@ -220,7 +194,7 @@ class BaselineSelfAttention(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs: Optional[dict],
     ) -> torch.Tensor:
         """Forward pass.
 
@@ -228,8 +202,6 @@ class BaselineSelfAttention(nn.Module):
         ----------
         inputs : Tensor
             Input data
-        attention_mask : None or Tensor or xformers.ops.AttentionBias
-            Optional attention mask
 
         Returns
         -------
@@ -240,13 +212,8 @@ class BaselineSelfAttention(nn.Module):
             inputs
         )  # each: (..., num_heads, num_items, num_channels, 16)
 
-        # Positional encoding
-        if self.pos_encoding is not None:
-            q = self.pos_encoding(q, attention_mask)
-            k = self.pos_encoding(k, attention_mask)
-
         # Attention layer
-        h = self._attend(q, k, v, attention_mask)
+        h = self._attend(q, k, v, **kwargs)
 
         # Concatenate heads and transform linearly
         h = rearrange(
@@ -261,7 +228,7 @@ class BaselineSelfAttention(nn.Module):
         return outputs
 
     @staticmethod
-    def _attend(q, k, v, attention_mask=None):
+    def _attend(q, k, v, **kwargs):
         """Scaled dot-product attention."""
 
         # Add batch dimension if needed
@@ -275,7 +242,7 @@ class BaselineSelfAttention(nn.Module):
             q.contiguous(),
             k.expand_as(q).contiguous(),
             v.expand_as(q).contiguous(),
-            attn_bias=attention_mask,
+            **kwargs,
         )
 
         # Return batch dimensions to inputs
@@ -297,11 +264,6 @@ class BaselineTransformerBlock(nn.Module):
         Number of input and output channels.
     num_heads : int
         Number of attention heads.
-    pos_encoding : bool
-        Whether to apply rotary positional embeddings along the item dimension to the scalar keys
-        and queries.
-    pos_encoding_base : int
-        Maximum frequency used in positional encodings. (The minimum frequency is always 1.)
     increase_hidden_channels : int
         Factor by which the key, query, and value size is increased over the default value of
         hidden_channels / num_heads.
@@ -313,9 +275,6 @@ class BaselineTransformerBlock(nn.Module):
         self,
         channels,
         num_heads: int = 8,
-        pos_encoding: bool = False,
-        pos_encoding_type: str = "absolute",
-        pos_encoding_base: int = 4096,
         increase_hidden_channels=1,
         multi_query: bool = True,
         dropout_prob=None,
@@ -324,20 +283,13 @@ class BaselineTransformerBlock(nn.Module):
 
         self.norm = BaselineLayerNorm()
 
-        # When using positional encoding, the number of scalar hidden channels needs to be even.
-        # It also should not be too small.
         hidden_channels = channels // num_heads * increase_hidden_channels
-        if pos_encoding:
-            hidden_channels = (hidden_channels + 1) // 2 * 2
-            hidden_channels = max(hidden_channels, 16)
 
         self.attention = BaselineSelfAttention(
             channels,
             channels,
             hidden_channels,
             num_heads=num_heads,
-            pos_encoding=pos_encoding,
-            pos_encoding_base=pos_encoding_base,
             multi_query=multi_query,
             dropout_prob=dropout_prob,
         )
@@ -350,15 +302,13 @@ class BaselineTransformerBlock(nn.Module):
             nn.Dropout(dropout_prob) if dropout_prob is not None else nn.Identity(),
         )
 
-    def forward(self, inputs: torch.Tensor, attention_mask=None) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         """Forward pass.
 
         Parameters
         ----------
         inputs : Tensor
             Input data
-        attention_mask : None or Tensor or xformers.ops.AttentionBias
-            Optional attention mask
 
         Returns
         -------
@@ -368,7 +318,7 @@ class BaselineTransformerBlock(nn.Module):
 
         # Residual attention
         h = self.norm(inputs)
-        h = self.attention(h, attention_mask=attention_mask)
+        h = self.attention(h, **kwargs)
         outputs = inputs + h
 
         # Residual MLP
@@ -397,11 +347,6 @@ class Transformer(nn.Module):
         Number of transformer blocks.
     num_heads : int
         Number of attention heads.
-    pos_encoding : bool
-        Whether to apply rotary positional embeddings along the item dimension to the scalar keys
-        and queries.
-    pos_encoding_base : int
-        Maximum frequency used in positional encodings. (The minimum frequency is always 1.)
     increase_hidden_channels : int
         Factor by which the key, query, and value size is increased over the default value of
         hidden_channels / num_heads.
@@ -416,9 +361,6 @@ class Transformer(nn.Module):
         hidden_channels: int,
         num_blocks: int = 10,
         num_heads: int = 8,
-        pos_encoding: bool = False,
-        pos_encoding_type: str = "absolute",
-        pos_encoding_base: int = 256,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,
         multi_query: bool = False,
@@ -432,8 +374,6 @@ class Transformer(nn.Module):
                 BaselineTransformerBlock(
                     hidden_channels,
                     num_heads=num_heads,
-                    pos_encoding=pos_encoding,
-                    pos_encoding_base=pos_encoding_base,
                     increase_hidden_channels=increase_hidden_channels,
                     multi_query=multi_query,
                     dropout_prob=dropout_prob,
@@ -443,15 +383,13 @@ class Transformer(nn.Module):
         )
         self.linear_out = nn.Linear(hidden_channels, out_channels)
 
-    def forward(self, inputs: torch.Tensor, attention_mask=None) -> torch.Tensor:
+    def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         """Forward pass.
 
         Parameters
         ----------
         inputs : Tensor with shape (..., num_items, num_channels)
             Input data
-        attention_mask : None or Tensor or xformers.ops.AttentionBias
-            Optional attention mask
 
         Returns
         -------
@@ -464,10 +402,10 @@ class Transformer(nn.Module):
                 h = checkpoint(
                     block,
                     inputs=h,
-                    attention_mask=attention_mask,
+                    **kwargs,
                 )
             else:
-                h = block(h, attention_mask=attention_mask)
+                h = block(h, **kwargs)
         outputs = self.linear_out(h)
 
         return outputs
@@ -497,11 +435,6 @@ class AxialTransformer(nn.Module):
         Number of transformer blocks.
     num_heads : int
         Number of attention heads.
-    pos_encodings : tuple of bool
-        Whether to apply rotary positional embeddings along the item dimensions to the scalar keys
-        and queries.
-    pos_encoding_base : int
-        Maximum frequency used in positional encodings. (The minimum frequency is always 1.)
     """
 
     def __init__(
@@ -511,8 +444,6 @@ class AxialTransformer(nn.Module):
         hidden_channels: int,
         num_blocks: int = 20,
         num_heads: int = 8,
-        pos_encodings: Tuple[bool, bool] = (False, False),
-        pos_encoding_base: int = 4096,
     ) -> None:
         super().__init__()
         self.linear_in = nn.Linear(in_channels, hidden_channels)
@@ -521,8 +452,6 @@ class AxialTransformer(nn.Module):
                 BaselineTransformerBlock(
                     hidden_channels,
                     num_heads=num_heads,
-                    pos_encoding=pos_encodings[(block + 1) % 2],
-                    pos_encoding_base=pos_encoding_base,
                 )
                 for block in range(num_blocks)
             ]

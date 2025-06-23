@@ -2,11 +2,11 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 import torch
+from torch.distributions import Categorical, Gamma, Normal
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.base_plots import plot_loss
-from experiments.distributions import (
-    CategoricalDistribution,
+from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
 )
@@ -361,7 +361,7 @@ def plot_distributions(
         elif distribution_label == "GaussianMixture":
             distribution = GaussianMixture
         elif distribution_label == "Categorical":
-            distribution = CategoricalDistribution
+            distribution = Categorical
 
         fig, ax = plt.subplots(figsize=(6, 4))
         if distribution_label == "Categorical":
@@ -389,7 +389,7 @@ def plot_distributions(
 
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 4))
-            if distribution == CategoricalDistribution:
+            if distribution == Categorical:
                 if diff:
                     ax.step(
                         bins,
@@ -408,7 +408,7 @@ def plot_distributions(
                 x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1)
                 dist = distribution(params[i].unsqueeze(0))
                 density = dist.log_prob(x).exp().detach().numpy()
-                ax.plot(x, density, label=f"Predicted\ndistribution", color=colors[3])
+                ax.plot(x, density, label="Predicted\ndistribution", color=colors[3])
             if diff:
                 ax.axvline(
                     samples[i, 1] - samples[i, 2],
@@ -471,9 +471,9 @@ def plot_correlations(
 def plot_components(file, params, samples, xrange, distribution_label, diff, n_plots=5):
 
     if distribution_label == "GammaMixture":
-        distribution = torch.distributions.Gamma
+        distribution = Gamma
     elif distribution_label == "GaussianMixture":
-        distribution = torch.distributions.Normal
+        distribution = Normal
     elif distribution_label == "Categorical":
         LOGGER.info("Not plotting components for categorical distribution")
         return
