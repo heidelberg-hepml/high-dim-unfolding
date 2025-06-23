@@ -1,8 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from matplotlib.backends.backend_pdf import PdfPages
 
+from experiments.coordinates import LogPtPhiEtaLogM2, fourmomenta_to_jetmomenta
 from experiments.utils import get_range
 
 # load fonts
@@ -208,7 +208,7 @@ def plot_histogram(
             [bar.set_alpha(0.5) for bar in bars]
 
     axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-    axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
+    axs[0].set_ylabel("Density", fontsize=FONTSIZE)
 
     if logy:
         axs[0].set_yscale("log")
@@ -378,7 +378,7 @@ def simple_histogram(
             where="post",
         )
     ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-    ax.set_ylabel("Normalized", fontsize=FONTSIZE)
+    ax.set_ylabel("Density", fontsize=FONTSIZE)
     ax.set_xlabel(xlabel, fontsize=FONTSIZE)
 
     if logy:
@@ -394,61 +394,161 @@ def simple_histogram(
     plt.close()
 
 
-def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
-    with PdfPages(path + "/" + filename) as pdf:
-        fig, axs = plt.subplots(2, 2, figsize=(8, 8))
-        for i, ax in enumerate(axs.flatten()):
-            xlims = np.array(get_range([reco[..., i], gen[..., i]]))
-            bins = np.linspace(xlims[0], xlims[1], 100)
-            ax.hist(
-                reco[:, i].cpu(),
-                bins=bins,
-                range=None,
-                label="reco",
-                density=True,
-                histtype="step",
-            )
-            ax.hist(
-                gen[:, i].cpu(),
-                bins=bins,
-                range=None,
-                alpha=0.5,
-                label="gen",
-                density=True,
-                histtype="step",
-            )
-            if model is not None:
-                ax.hist(
-                    model[:, i].cpu(),
-                    bins=bins,
-                    range=None,
-                    alpha=0.5,
-                    label="model",
-                    density=True,
-                    histtype="step",
-                )
-            ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-        plt.tight_layout()
-        plt.savefig(pdf, bbox_inches="tight", format="pdf")
-        plt.close()
+def plot_kinematics(path, samples, targets, base):
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["Energy", "p_x", "p_y", "p_z"]
+    xrange = [[0, 1000], [-400, 400], [-400, 400], [-750, 750]]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
+        ax.hist(
+            samples[:, i].cpu(),
+            bins=bins,
+            range=None,
+            label="samples",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            targets[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="targets",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            base[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="base",
+            density=True,
+            histtype="step",
+        )
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
+    jet_samples = fourmomenta_to_jetmomenta(samples)
+    jet_targets = fourmomenta_to_jetmomenta(targets)
+    jet_base = fourmomenta_to_jetmomenta(base)
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["pt", "phi", "eta", "m"]
+    xrange = [[300, 1000], [-np.pi, np.pi], [-3, 3], [0, 300]]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
+        ax.hist(
+            jet_samples[:, i].cpu(),
+            bins=bins,
+            range=None,
+            label="samples",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            jet_targets[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="targets",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            jet_base[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="base",
+            density=True,
+            histtype="step",
+        )
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics_jet.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
+    coords = LogPtPhiEtaLogM2(pt_min=0.0, units=1.0)
+    samples = coords.fourmomenta_to_x(samples)
+    targets = coords.fourmomenta_to_x(targets)
+    base = coords.fourmomenta_to_x(base)
+    fig, axs = plt.subplots(2, 2, figsize=(8, 8))
+    labels = ["log pt", "phi", "eta", "log m2"]
+    xrange = [[-10, 10], [-np.pi, np.pi], [-3, 3], [-5, -4.2]]
+    for i, ax in enumerate(axs.flatten()):
+        bins = np.linspace(xrange[i][0], xrange[i][1], 100)
+        ax.hist(
+            samples[:, i].cpu(),
+            bins=bins,
+            range=None,
+            label="samples",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            targets[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="targets",
+            density=True,
+            histtype="step",
+        )
+        ax.hist(
+            base[:, i].cpu(),
+            bins=bins,
+            range=None,
+            alpha=0.5,
+            label="base",
+            density=True,
+            histtype="step",
+        )
+        ax.set_xlabel(labels[i], fontsize=FONTSIZE)
+        ax.legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
+    plt.tight_layout()
+    plt.savefig(path + "/kinematics_prep.pdf", format="pdf", bbox_inches="tight")
+    plt.close()
 
 
-def plot_correlations(file, det, part, gen, title, label, range, model_label):
+def plot_2d_histogram(file, x1, y1, x2, y2, xlabel, ylabel, range, model_label):
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
 
-    bins = np.linspace(range[0], range[1], 50)
-    hist = ax1.hist2d(det, part, bins=bins, norm=mcolors.LogNorm(), rasterized=True)
+    if isinstance(range, tuple):
+        xrange = range[0]
+        yrange = range[1]
+    else:
+        xrange = range
+        yrange = range
+    bins = (
+        np.linspace(xrange[0], xrange[1], 50),
+        np.linspace(yrange[0], yrange[1], 50),
+    )
+    hist = ax1.hist2d(x1, y1, bins=bins, norm=mcolors.LogNorm(), rasterized=True)
     vmin, vmax = hist[-1].get_clim()
-    ax1.set_xlabel("Detector-level", fontsize=FONTSIZE)
-    ax1.set_ylabel("Particle-level", fontsize=FONTSIZE)
+    ax1.set_xlabel(
+        r"${%s}$" % xlabel,
+        fontsize=FONTSIZE,
+    )
+    ax1.set_ylabel(
+        r"${%s}$" % ylabel,
+        fontsize=FONTSIZE,
+    )
     ax1.set_title("Truth", fontsize=FONTSIZE)
     ax1.grid(False)
 
     ax2.hist2d(
-        det, gen, bins=bins, norm=mcolors.LogNorm(vmax=vmax, vmin=vmin), rasterized=True
+        x2, y2, bins=bins, norm=mcolors.LogNorm(vmax=vmax, vmin=vmin), rasterized=True
     )
-    ax2.set_xlabel("Detector-level", fontsize=FONTSIZE)
-    ax2.set_ylabel("Particle-level", fontsize=FONTSIZE)
+    ax2.set_xlabel(
+        r"${%s}$" % xlabel,
+        fontsize=FONTSIZE,
+    )
+    ax2.set_ylabel(
+        r"${%s}$" % ylabel,
+        fontsize=FONTSIZE,
+    )
     ax2.set_title(model_label, fontsize=FONTSIZE)
     ax2.grid(False)
 
