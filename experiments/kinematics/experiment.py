@@ -7,20 +7,25 @@ from torch_geometric.data import Batch
 import os, time
 from omegaconf import open_dict
 
-from fastjet_contribs import (
-    compute_nsubjettiness,
-    apply_soft_drop,
-)
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import Dataset, load_dataset
-from experiments.utils import (
-    get_ptr_from_batch,
-    ensure_angle,
-)
+
 from experiments.coordinates import fourmomenta_to_jetmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.logger import LOGGER
+from experiments.kinematics.observables import (
+    create_partial_jet,
+    compute_angles,
+    select_pt,
+    tau1,
+    tau2,
+    dimass,
+    deltaR,
+    sd_mass,
+    compute_zg,
+    jet_mass,
+)
 
 
 class KinematicsExperiment(BaseExperiment):
@@ -484,21 +489,34 @@ class KinematicsExperiment(BaseExperiment):
         return metrics
 
     def define_process_specifics(self):
-        if self.cfg.data.max_constituents == -1:
+        if self.cfg.data.max_constituents >= self.cfg.data.max_num_particles:
             n_const = "All"
         else:
             n_const = str(self.cfg.data.max_constituents)
-        self.plot_title = n_const + " constituents"
+        # self.plot_title = n_const + " constituents"
+        self.plot_title = None
 
         self.obs_coords = {}
 
         if "jet" in self.cfg.plotting.observables:
 
-            def form_jet(constituents, batch_idx, other_batch_idx):
-                jet = scatter(constituents, batch_idx, dim=0, reduce="sum")
-                return jet
-
-            self.obs_coords[r"\text{ jet }"] = form_jet
+            self.obs_coords[r"\text{ jet 10 to 20\%}"] = create_partial_jet(0.1, 0.2)
+            self.obs_coords[r"\text{ jet 10 to 30\%}"] = create_partial_jet(0.1, 0.3)
+            self.obs_coords[r"\text{ jet 10 to 40\%}"] = create_partial_jet(0.1, 0.4)
+            self.obs_coords[r"\text{ jet 10 to 50\%}"] = create_partial_jet(0.1, 0.5)
+            self.obs_coords[r"\text{ jet 20 to 30\%}"] = create_partial_jet(0.2, 0.3)
+            self.obs_coords[r"\text{ jet 20 to 40\%}"] = create_partial_jet(0.2, 0.4)
+            self.obs_coords[r"\text{ jet 20 to 50\%}"] = create_partial_jet(0.2, 0.5)
+            self.obs_coords[r"\text{ jet 30 to 50\%}"] = create_partial_jet(0.3, 0.5)
+            # self.obs_coords[r"\text{ jet 11 to 20}"] = create_partial_jet(
+            #     10, 20, filter=(190, 220)
+            # )
+            # self.obs_coords[r"\text{ jet 21 to 30}"] = create_partial_jet(
+            #     20, 30, filter=(190, 220)
+            # )
+            # self.obs_coords[r"\text{ jet 31 to 40}"] = create_partial_jet(
+            #     30, 40, filter=(190, 220)
+            # )
 
         if self.cfg.plotting.n_pt > 0:
             if self.cfg.data.max_constituents == -1:
@@ -508,69 +526,74 @@ class KinematicsExperiment(BaseExperiment):
 
             for i in range(n_pt):
 
-                def select_pt(i):
-                    def ith_pt(constituents, batch_idx, other_batch_idx):
-                        idx = []
-                        batch_ptr = get_ptr_from_batch(batch_idx)
-                        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
-                        for n in range(len(batch_ptr) - 1):
-                            if i < batch_ptr[n + 1] - batch_ptr[n]:
-                                if i < other_batch_ptr[n + 1] - other_batch_ptr[n]:
-                                    idx.append(batch_ptr[n] + i)
-                        selected_constituents = constituents[idx]
-                        return selected_constituents
+                self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = (
+                    create_partial_jet(
+                        start=i, end=i + 1, filter=None, units=self.cfg.data.units
+                    )
+                )
 
-                    return ith_pt
+        self.corr = {}
 
-                self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = select_pt(i)
+        if "subjet_corr" in self.cfg.plotting.observables:
+            extract_pt = lambda f: (
+                lambda constituents, batch_idx, other_batch_idx: fourmomenta_to_jetmomenta(
+                    f(constituents, batch_idx, other_batch_idx)
+                )[
+                    ..., 0
+                ]
+            )
+            self.corr[r"p_{T \text{ Jet}} 1-5 vs p_{T \text{ Jet}} 6-10"] = (
+                extract_pt(create_partial_jet(0, 5)),
+                extract_pt(create_partial_jet(5, 10)),
+            )
+            self.corr[r"p_{T \text{ Jet}} 1-10 vs p_{T \text{ Jet}} 11-20"] = (
+                extract_pt(create_partial_jet(0, 10)),
+                extract_pt(create_partial_jet(11, 15)),
+            )
+            self.corr[r"p_{T,1} vs p_{T,2}"] = (
+                extract_pt(select_pt(1, 2)),
+                extract_pt(select_pt(2)),
+            )
+            self.corr[r"p_{T,1} vs p_{T,3}"] = (
+                extract_pt(select_pt(1, 3)),
+                extract_pt(select_pt(3)),
+            )
+            self.corr[r"p_{T,1} vs p_{T,4}"] = (
+                extract_pt(select_pt(1, 4)),
+                extract_pt(select_pt(4)),
+            )
+            self.corr[r"p_{T,1} vs p_{T,10}"] = (
+                extract_pt(select_pt(1, 10)),
+                extract_pt(select_pt(10)),
+            )
+            self.corr[r"p_{T,2} vs p_{T,3}"] = (
+                extract_pt(select_pt(2, 3)),
+                extract_pt(select_pt(3)),
+            )
+            self.corr[r"p_{T,2} vs p_{T,4}"] = (
+                extract_pt(select_pt(2, 4)),
+                extract_pt(select_pt(4)),
+            )
+            self.corr[r"p_{T,2} vs p_{T,10}"] = (
+                extract_pt(select_pt(2, 10)),
+                extract_pt(select_pt(10)),
+            )
 
         self.obs = {}
 
+        if "angle" in self.cfg.plotting.observables:
+            self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
+            self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
+            self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
+
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)
-            def dimass(i, j):
-                def dimass_ij(constituents, batch_idx, other_batch_idx):
-                    batch_ptr = get_ptr_from_batch(batch_idx)
-                    dimass = []
-                    for n in range(len(batch_ptr) - 1):
-                        if batch_ptr[n + 1] - batch_ptr[n] == 3:
-                            dijet = (
-                                constituents[batch_ptr[n] + i]
-                                + constituents[batch_ptr[n] + j]
-                            )
-                            dimass.append(
-                                torch.sqrt(dijet[0] ** 2 - (dijet[1:] ** 2).sum(dim=-1))
-                            )
-                    return torch.stack(dimass)
-
-                return dimass_ij
 
             for i in range(3):
                 for j in range(i + 1, 3):
                     self.obs[r"M_{" + str(i + 1) + str(j + 1) + "}"] = dimass(i, j)
 
         if "deltaR" in self.cfg.plotting.observables:
-
-            def deltaR(i, j):
-                def deltaR_ij(constituents, batch_idx, other_batch_idx):
-                    batch_ptr = get_ptr_from_batch(batch_idx)
-                    deltaR = []
-                    for n in range(len(batch_ptr) - 1):
-                        if batch_ptr[n + 1] - batch_ptr[n] == 3:
-                            jet_i = fourmomenta_to_jetmomenta(
-                                constituents[batch_ptr[n] + i]
-                            )
-                            jet_j = fourmomenta_to_jetmomenta(
-                                constituents[batch_ptr[n] + j]
-                            )
-                            dR2 = (
-                                ensure_angle(jet_i[..., 1] - jet_j[..., 1]) ** 2
-                                + (jet_i[..., 2] - jet_j[..., 2]) ** 2
-                            )
-                            deltaR.append(torch.sqrt(dR2))
-                    return torch.stack(deltaR)
-
-                return deltaR_ij
 
             for i in range(3):
                 for j in range(i + 1, 3):
@@ -588,30 +611,6 @@ class KinematicsExperiment(BaseExperiment):
             R0 = 1.2
             R0SoftDrop = 1.2
 
-        def tau1(constituents, batch_idx, other_batch_idx):
-            constituents = np.array(constituents.detach().cpu())
-            batch_ptr = get_ptr_from_batch(batch_idx)
-            taus = []
-            for i in range(len(batch_ptr) - 1):
-                event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-                tau = compute_nsubjettiness(
-                    event[..., [1, 2, 3, 0]], N=1, beta=1.0, R0=R0, axis_mode=3
-                )
-                taus.append(tau)
-            return torch.tensor(taus)
-
-        def tau2(constituents, batch_idx, other_batch_idx):
-            constituents = np.array(constituents.detach().cpu())
-            batch_ptr = get_ptr_from_batch(batch_idx)
-            taus = []
-            for i in range(len(batch_ptr) - 1):
-                event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-                tau = compute_nsubjettiness(
-                    event[..., [1, 2, 3, 0]], N=2, beta=1.0, R0=R0, axis_mode=3
-                )
-                taus.append(tau)
-            return torch.tensor(taus)
-
         if "tau1" in self.cfg.plotting.observables:
             self.obs[r"\tau_1"] = tau1
         if "tau2" in self.cfg.plotting.observables:
@@ -627,50 +626,12 @@ class KinematicsExperiment(BaseExperiment):
             )
         if "sd_mass" in self.cfg.plotting.observables:
 
-            def sd_mass(constituents, batch_idx, other_batch_idx):
-                constituents = np.array(constituents.detach().cpu())
-                batch_ptr = get_ptr_from_batch(batch_idx)
-                log_rhos = []
-                for i in range(len(batch_ptr) - 1):
-                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-                    sd_fourm = np.array(
-                        apply_soft_drop(
-                            event[..., [1, 2, 3, 0]], R0=R0SoftDrop, beta=0.0, zcut=0.1
-                        )
-                    )
-                    mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
-                    pt2 = np.sum(np.sum(event[..., 1:3], axis=0) ** 2)
-                    log_rho = np.log(mass2 / pt2)
-                    log_rhos.append(log_rho)
-                return torch.tensor(log_rhos)
-
             self.obs[r"\log \rho"] = sd_mass
 
         if "momentum_fraction" in self.cfg.plotting.observables:
 
-            def compute_zg(constituents, batch_idx, other_batch_idx):
-                constituents = np.array(constituents.detach().cpu())
-                batch_ptr = get_ptr_from_batch(batch_idx)
-                zgs = []
-                for i in range(len(batch_ptr) - 1):
-                    event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-                    zg = apply_soft_drop(
-                        event[..., [1, 2, 3, 0]], R0=R0SoftDrop, beta=0.0, zcut=0.1
-                    )[-1]
-                    zgs.append(zg)
-                return torch.tensor(zgs)
-
             self.obs[r"z_g"] = compute_zg
 
         if "jet_mass" in self.cfg.plotting.observables:
-
-            def jet_mass(constituents, batch_idx, other_batch_idx):
-                batch_ptr = get_ptr_from_batch(batch_idx)
-                jet_masses = []
-                for n in range(len(batch_ptr) - 1):
-                    jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
-                    mass2 = jet[0] ** 2 - (jet[1:] ** 2).sum(dim=-1)
-                    jet_masses.append(torch.sqrt(mass2))
-                return torch.stack(jet_masses)
 
             self.obs[r"M_{jet}"] = jet_mass
