@@ -138,63 +138,54 @@ class CFM(nn.Module):
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
-        # if self.cfm.self_condition_prob > 0.0:
-        #     self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
-        #     if torch.rand(1) < self.cfm.self_condition_prob:
-        #         self_condition = self.get_velocity(
-        #             xt=xt,
-        #             t=t,
-        #             batch=new_batch,
-        #             condition=condition,
-        #             attention_mask=attention_mask,
-        #             crossattention_mask=crossattention_mask,
-        #             self_condition=self_condition,
-        #         ).detach()
+        if self.cfm.self_condition_prob > 0.0:
+            self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
+            if torch.rand(1) < self.cfm.self_condition_prob:
+                self_condition = self.get_velocity(
+                    xt=xt,
+                    t=t,
+                    batch=new_batch,
+                    condition=condition,
+                    attention_mask=attention_mask,
+                    crossattention_mask=crossattention_mask,
+                    self_condition=self_condition,
+                ).detach()
 
-        #     vp = self.get_velocity(
-        #         xt=xt,
-        #         t=t,
-        #         batch=new_batch,
-        #         condition=condition,
-        #         attention_mask=attention_mask,
-        #         crossattention_mask=crossattention_mask,
-        #         self_condition=self_condition,
-        #     )
-        # else:
-        #     vp = self.get_velocity(
-        #         xt=xt,
-        #         t=t,
-        #         batch=new_batch,
-        #         condition=condition,
-        #         attention_mask=attention_mask,
-        #         crossattention_mask=crossattention_mask,
-        #     )
+            vp = self.get_velocity(
+                xt=xt,
+                t=t,
+                batch=new_batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
+                self_condition=self_condition,
+            )
+        else:
+            vp = self.get_velocity(
+                xt=xt,
+                t=t,
+                batch=new_batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
+            )
 
-        vp = self.get_velocity(
-            xt=xt,
-            t=t,
-            batch=new_batch,
-            condition=condition,
-            attention_mask=attention_mask,
-            crossattention_mask=crossattention_mask,
-        )
-
-        # vp = self.handle_velocity(vp[mask])
-        # vt = self.handle_velocity(vt[mask])
+        vp = self.handle_velocity(vp[mask])
+        vt = self.handle_velocity(vt[mask])
 
         # evaluate conditional flow matching objective
-        LOGGER.info(f"vp shape: {vp.shape}, vt shape: {vt.shape}")
         distance = ((vp - vt) ** 2).mean()
-        # if self.cfm.cosine_similarity_factor > 0.0:
-        #     cosine_similarity = (
-        #         1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
-        #     ).mean()
-        #     loss = (
-        #         1 - self.cfm.cosine_similarity_factor
-        #     ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
-        # else:
-        #     loss = distance
-        loss = distance
+
+        if self.cfm.cosine_similarity_factor > 0.0:
+            cosine_similarity = (
+                1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
+            ).mean()
+            loss = (
+                1 - self.cfm.cosine_similarity_factor
+            ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
+        else:
+            loss = distance
+
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
         return loss, distance_particlewise
 
