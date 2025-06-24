@@ -400,7 +400,7 @@ def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
         for i, ax in enumerate(axs.flatten()):
             xlims = np.array(get_range([reco[..., i], gen[..., i]]))
-            bins = np.linspace(xlims[0], xlims[1], 100)
+            bins = np.linspace(xlims[0], xlims[1], 40)
             ax.hist(
                 reco[:, i].cpu(),
                 bins=bins,
