@@ -8,14 +8,18 @@ from fastjet_contribs import (
 from experiments.utils import get_ptr_from_batch, ensure_angle
 from experiments.coordinates import fourmomenta_to_jetmomenta
 
+R0 = None
+R0SoftDrop = None
 
-def create_partial_jet(start, end, filter=None, units=10.0):
+
+def create_partial_jet(start, end):
     assert end > start or end == -1, "End index must be greater than start index"
 
     def form_partial_jet(constituents, batch_idx, other_batch_idx):
 
         batch_ptr = get_ptr_from_batch(batch_idx)
         jets = []
+        true_jets = []
         for n in range(len(batch_ptr) - 1):
             event_size = batch_ptr[n + 1] - batch_ptr[n]
             if isinstance(start, float):
@@ -30,13 +34,6 @@ def create_partial_jet(start, end, filter=None, units=10.0):
                 end_idx = end
             if start_idx < event_size:
                 if end_idx >= event_size:
-                    if filter is not None:
-                        true_jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(
-                            dim=0
-                        )
-                        true_jet_pt = fourmomenta_to_jetmomenta(true_jet)[..., 0]
-                        if true_jet_pt < filter[0] or true_jet_pt > filter[1]:
-                            continue
                     jet = constituents[batch_ptr[n] + start_idx : batch_ptr[n + 1]].sum(
                         dim=0
                     )
@@ -45,7 +42,9 @@ def create_partial_jet(start, end, filter=None, units=10.0):
                         batch_ptr[n] + start_idx : batch_ptr[n] + end_idx
                     ].sum(dim=0)
                 jets.append(jet)
-        return torch.stack(jets) * units
+                true_jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
+                true_jets.append(true_jet)
+        return torch.stack(jets), torch.stack(true_jets)
 
     return form_partial_jet
 

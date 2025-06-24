@@ -7,6 +7,8 @@ import experiments.coordinates as c
 from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.baselines import custom_rk4
 from experiments.embedding import add_jet_to_sequence
+from experiments.kinematics.plots import plot_kinematics
+from experiments.logger import LOGGER
 
 
 class CFM(nn.Module):
@@ -98,7 +100,11 @@ class CFM(nn.Module):
             new_batch, mask = add_jet_to_sequence(batch)
         else:
             new_batch = batch
-            mask = torch.arange(new_batch.x_gen.shape[0], device=new_batch.x_gen.device)
+            mask = torch.ones(
+                new_batch.x_gen.shape[0],
+                device=new_batch.x_gen.device,
+                dtype=torch.bool,
+            )
 
         x0 = new_batch.x_gen
         t = torch.rand(
@@ -108,6 +114,7 @@ class CFM(nn.Module):
             device=x0.device,
         )
         t = torch.repeat_interleave(t, new_batch.x_gen_batch.bincount(), dim=0)
+        # t[1:] = t[0].item()
 
         x1 = self.sample_base(x0, mask)
 
@@ -121,54 +128,73 @@ class CFM(nn.Module):
             new_batch
         )
 
+        # plot_kinematics(
+        #     self.cfm.run_dir,
+        #     x0.cpu().detach(),
+        #     x1.cpu().detach(),
+        #     xt.cpu().detach(),
+        #     f"kinematics_{t[0].item():.2f}.pdf",
+        # )
+
         condition = self.get_condition(new_batch, condition_attention_mask)
 
-        if self.cfm.self_condition_prob > 0.0:
-            self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
-            if torch.rand(1) < self.cfm.self_condition_prob:
-                self_condition = self.get_velocity(
-                    xt=xt,
-                    t=t,
-                    batch=new_batch,
-                    condition=condition,
-                    attention_mask=attention_mask,
-                    crossattention_mask=crossattention_mask,
-                    self_condition=self_condition,
-                ).detach()
+        # if self.cfm.self_condition_prob > 0.0:
+        #     self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
+        #     if torch.rand(1) < self.cfm.self_condition_prob:
+        #         self_condition = self.get_velocity(
+        #             xt=xt,
+        #             t=t,
+        #             batch=new_batch,
+        #             condition=condition,
+        #             attention_mask=attention_mask,
+        #             crossattention_mask=crossattention_mask,
+        #             self_condition=self_condition,
+        #         ).detach()
 
-            vp = self.get_velocity(
-                xt=xt,
-                t=t,
-                batch=new_batch,
-                condition=condition,
-                attention_mask=attention_mask,
-                crossattention_mask=crossattention_mask,
-                self_condition=self_condition,
-            )
-        else:
-            vp = self.get_velocity(
-                xt=xt,
-                t=t,
-                batch=new_batch,
-                condition=condition,
-                attention_mask=attention_mask,
-                crossattention_mask=crossattention_mask,
-            )
+        #     vp = self.get_velocity(
+        #         xt=xt,
+        #         t=t,
+        #         batch=new_batch,
+        #         condition=condition,
+        #         attention_mask=attention_mask,
+        #         crossattention_mask=crossattention_mask,
+        #         self_condition=self_condition,
+        #     )
+        # else:
+        #     vp = self.get_velocity(
+        #         xt=xt,
+        #         t=t,
+        #         batch=new_batch,
+        #         condition=condition,
+        #         attention_mask=attention_mask,
+        #         crossattention_mask=crossattention_mask,
+        #     )
 
-        vp = self.handle_velocity(vp[mask])
-        vt = self.handle_velocity(vt[mask])
+        vp = self.get_velocity(
+            xt=xt,
+            t=t,
+            batch=new_batch,
+            condition=condition,
+            attention_mask=attention_mask,
+            crossattention_mask=crossattention_mask,
+        )
+
+        # vp = self.handle_velocity(vp[mask])
+        # vt = self.handle_velocity(vt[mask])
 
         # evaluate conditional flow matching objective
+        LOGGER.info(f"vp shape: {vp.shape}, vt shape: {vt.shape}")
         distance = ((vp - vt) ** 2).mean()
-        if self.cfm.cosine_similarity_factor > 0.0:
-            cosine_similarity = (
-                1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
-            ).mean()
-            loss = (
-                1 - self.cfm.cosine_similarity_factor
-            ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
-        else:
-            loss = distance
+        # if self.cfm.cosine_similarity_factor > 0.0:
+        #     cosine_similarity = (
+        #         1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
+        #     ).mean()
+        #     loss = (
+        #         1 - self.cfm.cosine_similarity_factor
+        #     ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
+        # else:
+        #     loss = distance
+        loss = distance
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
         return loss, distance_particlewise
 
@@ -313,18 +339,21 @@ class EventCFM(CFM):
             coordinates = c.LogPtPhiEtaLogM2(self.pt_min)
         elif coordinates_label == "StandardLogPtPhiEtaLogM2":
             coordinates = c.StandardLogPtPhiEtaLogM2(
-                self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
+                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
+        elif coordinates_label == "IndividualStandardLogPtPhiEtaLogM2":
+            coordinates = c.IndividualStandardLogPtPhiEtaLogM2(
+                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
             )
         elif coordinates_label == "JetScaledPtPhiEtaM2":
             coordinates = c.JetScaledPtPhiEtaM2()
         elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
-                self.pt_min, self.cfm.masked_dims
+                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
             )
         elif coordinates_label == "IndividualStandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.IndividualStandardJetScaledLogPtPhiEtaLogM2(
-                self.pt_min, self.cfm.masked_dims
+                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
             )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")

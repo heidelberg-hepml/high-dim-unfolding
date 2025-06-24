@@ -486,7 +486,8 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         pt, phi, eta, m2 = unpack_last(ptphietam2)
         jet_pt, jet_phi, jet_eta, _ = unpack_last(jet)
 
-        pt = pt / jet_pt
+        # pt = pt / jet_pt
+        pt = pt
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
@@ -497,7 +498,8 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         pt, phi, eta, m2 = unpack_last(y)
         jet_pt, jet_phi, jet_eta, _ = unpack_last(jet)
 
-        pt = pt * jet_pt
+        # pt = pt * jet_pt
+        pt = pt
         phi = phi + jet_phi
         phi = ensure_angle(phi)
         eta = eta + jet_eta
@@ -509,7 +511,8 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
-        jac_pt = torch.stack((one / jet_pt, zero, zero, zero), dim=-1)
+        # jac_pt = torch.stack((one / jet_pt, zero, zero, zero), dim=-1)
+        jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
         jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
@@ -522,7 +525,8 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
-        jac_pt = torch.stack((jet_pt, zero, zero, zero), dim=-1)
+        # jac_pt = torch.stack((jet_pt, zero, zero, zero), dim=-1)
+        jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
         jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
@@ -531,7 +535,63 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
     def _detjac_forward(self, ptphietam2, y, jet, **kwargs):
         jet_pt = jet[:, 0]
-        return 1 / jet_pt
+        # return 1 / jet_pt
+        return torch.ones_like(jet_pt)
+
+
+class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
+    def _forward(self, logptphietalogm2, jet, **kwargs):
+        logpt, phi, eta, logm2 = unpack_last(logptphietalogm2)
+        jet_pt, jet_phi, jet_eta, jet_m2 = unpack_last(jet)
+
+        # pt = pt / jet_pt
+        logpt = logpt - torch.log(jet_pt + EPS1)
+        phi = phi - jet_phi
+        phi = ensure_angle(phi)
+        eta = eta - jet_eta
+        logm2 = logm2 - torch.log(jet_m2 + EPS1)
+
+        return torch.stack((logpt, phi, eta, logm2), dim=-1)
+
+    def _inverse(self, y, jet, **kwargs):
+        logpt, phi, eta, logm2 = unpack_last(y)
+        jet_pt, jet_phi, jet_eta, jet_m2 = unpack_last(jet)
+
+        logpt = logpt + torch.log(jet_pt + EPS1)
+        phi = phi + jet_phi
+        phi = ensure_angle(phi)
+        eta = eta + jet_eta
+        logm2 = logm2 + torch.log(jet_m2 + EPS1)
+
+        return torch.stack((logpt, phi, eta, logm2), dim=-1)
+
+    def _jac_forward(self, logptphietalogm2, y, jet, **kwargs):
+
+        zero, one = torch.zeros_like(logptphietalogm2[..., 0]), torch.ones_like(
+            logptphietalogm2[..., 0]
+        )
+
+        jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
+        jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
+        jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
+        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+
+        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+
+    def _jac_reverse(self, logptphietalogm2, y, jet, **kwargs):
+        zero, one = torch.zeros_like(logptphietalogm2[..., 0]), torch.ones_like(
+            logptphietalogm2[..., 0]
+        )
+
+        jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
+        jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
+        jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
+        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+
+        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+
+    def _detjac_forward(self, logptphietalogm2, y, jet, **kwargs):
+        return torch.ones_like(logptphietalogm2[..., 0])
 
 
 class IndividualNormal(BaseTransform):

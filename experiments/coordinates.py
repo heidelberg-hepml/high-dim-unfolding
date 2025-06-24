@@ -241,6 +241,21 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
         ]
 
 
+class IndividualStandardLogPtPhiEtaLogM2(BaseCoordinates):
+    # Position fitted (log(pt), phi, eta, log(m^2)
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.Pt_to_LogPt(pt_min),
+            tr.M2_to_LogM2(),
+            tr.IndividualNormal([1] + fixed_dims, scaling),
+        ]
+
+
 class JetScaledPtPhiEtaM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, m^2)
     def __init__(self):
@@ -256,36 +271,32 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
 
 class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
-    def __init__(
-        self, pt_min, fixed_dims=[3], scaling=torch.tensor([[1.0, 2.0, 2.0, 1.0]])
-    ):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.PtPhiEtaM2_to_JetScale(),
             tr.M2_to_LogM2(),
             tr.Pt_to_LogPt(pt_min),
+            tr.LogPtPhiEtaLogM2_to_JetScale(),
             tr.StandardNormal(fixed_dims, scaling),
         ]
 
 
 class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
-    def __init__(
-        self, pt_min, fixed_dims=[3], scaling=torch.tensor([[1.0, 2.0, 2.0, 1.0]])
-    ):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.PtPhiEtaM2_to_JetScale(),
             tr.M2_to_LogM2(),
             tr.Pt_to_LogPt(pt_min),
+            tr.LogPtPhiEtaLogM2_to_JetScale(),
             tr.IndividualNormal(fixed_dims, scaling),
         ]
 

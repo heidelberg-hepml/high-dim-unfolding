@@ -69,6 +69,7 @@ class ConditionalTransformerCFM(EventCFM):
             )
         else:
             input = torch.cat([xt, batch.scalars_gen, self.t_embedding(t)], dim=-1)
+        LOGGER.info(f"Input shape: {input.shape}, condition shape: {condition.shape}, ")
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,

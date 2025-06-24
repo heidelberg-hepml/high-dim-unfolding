@@ -27,6 +27,7 @@ from experiments.kinematics.observables import (
     compute_zg,
     jet_mass,
 )
+from experiments.kinematics.plots import plot_kinematics
 
 
 class KinematicsExperiment(BaseExperiment):
@@ -34,6 +35,12 @@ class KinematicsExperiment(BaseExperiment):
 
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
+            self.cfg.cfm.run_dir = self.cfg.run_dir
+
+            if self.cfg.evaluation.load_samples:
+                self.cfg.train = False
+                self.cfg.evaluation.sample = False
+                self.cfg.evaluation.save_samples = False
 
             max_num_particles, _, pt_min, masked_dims, load_fn = load_dataset(
                 self.cfg.data.dataset
@@ -102,9 +109,6 @@ class KinematicsExperiment(BaseExperiment):
         self.define_process_specifics()
 
     def init_data(self):
-        if self.cfg.evaluation.load_samples:
-            LOGGER.info("Not loading data, using saved samples")
-            return
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
@@ -231,11 +235,11 @@ class KinematicsExperiment(BaseExperiment):
         )
 
     def _init_dataloader(self):
-        if self.cfg.evaluation.load_samples:
-            self.train_loader = None
-            self.val_loader = None
-            self.test_loader = None
-            return
+        # if self.cfg.evaluation.load_samples:
+        #     self.train_loader = None
+        #     self.val_loader = None
+        #     self.test_loader = None
+        #     return
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
             num_replicas=self.world_size,
@@ -331,6 +335,14 @@ class KinematicsExperiment(BaseExperiment):
                 sample_batch.jet_det, sample_batch.x_det_ptr.diff(), dim=0
             )
 
+            plot_kinematics(
+                self.cfg.run_dir,
+                sample_batch.x_det.cpu().detach(),
+                batch.x_gen.cpu().detach(),
+                sample_batch.x_gen.cpu().detach(),
+                "post_kinematics.pdf",
+            )
+
             sample_batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
                     sample_batch.x_det, jet=det_jets, ptr=sample_batch.x_det_ptr
@@ -354,6 +366,14 @@ class KinematicsExperiment(BaseExperiment):
                     batch.x_gen, jet=gen_jets, ptr=batch.x_gen_ptr
                 )
                 * self.cfg.data.units
+            )
+
+            plot_kinematics(
+                self.cfg.run_dir,
+                sample_batch.x_det.cpu().detach(),
+                batch.x_gen.cpu().detach(),
+                sample_batch.x_gen.cpu().detach(),
+                "post_fourmomenta.pdf",
             )
 
             samples.extend(sample_batch.detach().to_data_list())
@@ -462,6 +482,11 @@ class KinematicsExperiment(BaseExperiment):
                 plotter.plot_preprocessed(
                     filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
                 )
+            if self.cfg.plotting.jetscaled:
+                filename = os.path.join(path, "jetscaled.pdf")
+                plotter.plot_jetscaled(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
             if len(self.obs.keys()) > 0:
                 filename = os.path.join(path, "observables.pdf")
                 plotter.plot_observables(
@@ -501,23 +526,7 @@ class KinematicsExperiment(BaseExperiment):
 
         if "jet" in self.cfg.plotting.observables:
 
-            self.obs_coords[r"\text{ jet 10 to 20\%}"] = create_partial_jet(0.1, 0.2)
-            self.obs_coords[r"\text{ jet 10 to 30\%}"] = create_partial_jet(0.1, 0.3)
-            self.obs_coords[r"\text{ jet 10 to 40\%}"] = create_partial_jet(0.1, 0.4)
-            self.obs_coords[r"\text{ jet 10 to 50\%}"] = create_partial_jet(0.1, 0.5)
-            self.obs_coords[r"\text{ jet 20 to 30\%}"] = create_partial_jet(0.2, 0.3)
-            self.obs_coords[r"\text{ jet 20 to 40\%}"] = create_partial_jet(0.2, 0.4)
-            self.obs_coords[r"\text{ jet 20 to 50\%}"] = create_partial_jet(0.2, 0.5)
-            self.obs_coords[r"\text{ jet 30 to 50\%}"] = create_partial_jet(0.3, 0.5)
-            # self.obs_coords[r"\text{ jet 11 to 20}"] = create_partial_jet(
-            #     10, 20, filter=(190, 220)
-            # )
-            # self.obs_coords[r"\text{ jet 21 to 30}"] = create_partial_jet(
-            #     20, 30, filter=(190, 220)
-            # )
-            # self.obs_coords[r"\text{ jet 31 to 40}"] = create_partial_jet(
-            #     30, 40, filter=(190, 220)
-            # )
+            self.obs_coords[r"\text{jet}"] = create_partial_jet(0.0, 1.0)
 
         if self.cfg.plotting.n_pt > 0:
             if self.cfg.data.max_constituents == -1:
@@ -528,57 +537,8 @@ class KinematicsExperiment(BaseExperiment):
             for i in range(n_pt):
 
                 self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = (
-                    create_partial_jet(
-                        start=i, end=i + 1, filter=None, units=self.cfg.data.units
-                    )
+                    create_partial_jet(start=i, end=i + 1)
                 )
-
-        self.corr = {}
-
-        if "subjet_corr" in self.cfg.plotting.observables:
-            extract_pt = lambda f: (
-                lambda constituents, batch_idx, other_batch_idx: fourmomenta_to_jetmomenta(
-                    f(constituents, batch_idx, other_batch_idx)
-                )[
-                    ..., 0
-                ]
-            )
-            self.corr[r"p_{T \text{ Jet}} 1-5 vs p_{T \text{ Jet}} 6-10"] = (
-                extract_pt(create_partial_jet(0, 5)),
-                extract_pt(create_partial_jet(5, 10)),
-            )
-            self.corr[r"p_{T \text{ Jet}} 1-10 vs p_{T \text{ Jet}} 11-20"] = (
-                extract_pt(create_partial_jet(0, 10)),
-                extract_pt(create_partial_jet(11, 15)),
-            )
-            self.corr[r"p_{T,1} vs p_{T,2}"] = (
-                extract_pt(select_pt(1, 2)),
-                extract_pt(select_pt(2)),
-            )
-            self.corr[r"p_{T,1} vs p_{T,3}"] = (
-                extract_pt(select_pt(1, 3)),
-                extract_pt(select_pt(3)),
-            )
-            self.corr[r"p_{T,1} vs p_{T,4}"] = (
-                extract_pt(select_pt(1, 4)),
-                extract_pt(select_pt(4)),
-            )
-            self.corr[r"p_{T,1} vs p_{T,10}"] = (
-                extract_pt(select_pt(1, 10)),
-                extract_pt(select_pt(10)),
-            )
-            self.corr[r"p_{T,2} vs p_{T,3}"] = (
-                extract_pt(select_pt(2, 3)),
-                extract_pt(select_pt(3)),
-            )
-            self.corr[r"p_{T,2} vs p_{T,4}"] = (
-                extract_pt(select_pt(2, 4)),
-                extract_pt(select_pt(4)),
-            )
-            self.corr[r"p_{T,2} vs p_{T,10}"] = (
-                extract_pt(select_pt(2, 10)),
-                extract_pt(select_pt(10)),
-            )
 
         self.obs = {}
 
@@ -586,12 +546,12 @@ class KinematicsExperiment(BaseExperiment):
             self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
             self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
             self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
-            self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
-            self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
-            self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
-            self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
+            # self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
+            # self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
+            # self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
+            # self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
+            # self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
+            # self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
 
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)

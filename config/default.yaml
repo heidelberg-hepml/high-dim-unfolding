@@ -22,7 +22,6 @@ ga_settings:
 train: true
 training:
  iterations : 20
- train_val_test: [.4, .5, .1]
  subsample: null
  es_patience: 100
  es_load_best_model: true

@@ -1,6 +1,6 @@
+import torch
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
-
 
 from experiments.base_plots import plot_loss, plot_metric
 from experiments.kinematics.plots import (
@@ -12,10 +12,9 @@ from experiments.kinematics.plots import (
 )
 from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta
-from experiments.kinematics.observables import create_partial_jet
 from experiments.logger import LOGGER
 
-N_SAMPLES = 100000
+N_SAMPLES = 10000
 
 
 def plot_losses(exp, filename, model_label):
@@ -141,7 +140,7 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     exp.data_raw["samples"].x_det,
                     exp.data_raw["samples"].x_det_batch,
                     exp.data_raw["samples"].x_gen_batch,
-                )
+                )[0]
                 .cpu()
                 .detach()
             )
@@ -150,7 +149,7 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     exp.data_raw["truth"].x_gen,
                     exp.data_raw["truth"].x_gen_batch,
                     exp.data_raw["truth"].x_det_batch,
-                )[: len(det_lvl)]
+                )[0][: len(det_lvl)]
                 .cpu()
                 .detach()
             )
@@ -159,18 +158,11 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     exp.data_raw["samples"].x_gen,
                     exp.data_raw["samples"].x_gen_batch,
                     exp.data_raw["samples"].x_det_batch,
-                )
+                )[0][: len(det_lvl)]
                 .cpu()
                 .detach()
             )
-            # mask = (
-            #     torch.isnan(part_lvl).any(dim=-1)
-            #     | torch.isnan(det_lvl).any(dim=-1)
-            #     | torch.isnan(model).any(dim=-1)
-            # )
-            # part_lvl = part_lvl[~mask]
-            # det_lvl = det_lvl[~mask]
-            # model = model[~mask]
+
             obs_names = [
                 "E_{" + name + "}",
                 "p_{x," + name + "}",
@@ -229,36 +221,32 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["samples"].x_det[:det_max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-            )
+            )[0]
             part_lvl = extract(
                 exp.data_raw["truth"].x_gen[:max_n_ptr],
                 exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
-            )[: len(det_lvl)]
+            )[0][: len(det_lvl)]
             model = extract(
                 exp.data_raw["samples"].x_gen[:max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-            )
-            # mask = (
-            #     torch.isnan(part_lvl).any(dim=-1)
-            #     | torch.isnan(det_lvl).any(dim=-1)
-            #     | torch.isnan(model).any(dim=-1)
-            # )
-            # part_lvl = part_lvl[~mask]
-            # det_lvl = det_lvl[~mask]
-            # model = model[~mask]
+            )[0]
+
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
             det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()
             model = fourmomenta_to_jetmomenta(model).cpu().detach()
+            part_lvl[..., 3] = torch.sqrt(part_lvl[..., 3])
+            det_lvl[..., 3] = torch.sqrt(det_lvl[..., 3])
+            model[..., 3] = torch.sqrt(model[..., 3])
+
             obs_names = [
                 r"p_{T," + name + "}",
                 "\phi_{" + name + "}",
                 "\eta_{" + name + "}",
                 "m_{" + name + "}",
             ]
-            # for channel in range(4):
-            for channel in range(1):
+            for channel in range(4):
                 xlabel = obs_names[channel]
                 xrange = np.array(
                     get_range(
@@ -312,25 +300,18 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["samples"].x_det,
                 exp.data_raw["samples"].x_det_batch,
                 exp.data_raw["samples"].x_gen_batch,
-            )
+            )[0]
             part_lvl = extract(
                 exp.data_raw["truth"].x_gen,
                 exp.data_raw["truth"].x_gen_batch,
                 exp.data_raw["truth"].x_det_batch,
-            )[: len(det_lvl)]
+            )[0][: len(det_lvl)]
             model = extract(
                 exp.data_raw["samples"].x_gen,
                 exp.data_raw["samples"].x_gen_batch,
                 exp.data_raw["samples"].x_det_batch,
-            )
-            # mask = (
-            #     torch.isnan(part_lvl).any(dim=-1)
-            #     | torch.isnan(det_lvl).any(dim=-1)
-            #     | torch.isnan(model).any(dim=-1)
-            # )
-            # part_lvl = part_lvl[~mask]
-            # det_lvl = det_lvl[~mask]
-            # model = model[~mask]
+            )[0][: len(det_lvl)]
+
             part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
             det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl).cpu().detach()
             model = coords.fourmomenta_to_x(model).cpu().detach()
@@ -386,82 +367,77 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
 
 def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
 
+    coords = exp.model.coordinates
+    condition_coords = exp.model.condition_coordinates
+
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
-            extract_jet = create_partial_jet(
-                start=0,
-                end=-1,
-                filter=None,
-                units=exp.cfg.data.units,
-            )
             max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            det_lvl = extract(
+            det_lvl, det_lvl_jet, det_lvl_ptr = extract(
                 exp.data_raw["samples"].x_det[:det_max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
             )
-            det_lvl_jet = extract_jet(
-                exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-            )
-            part_lvl = extract(
+            part_lvl, part_lvl_jet, part_lvl_ptr = extract(
                 exp.data_raw["truth"].x_gen[:max_n_ptr],
                 exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
             )
-            part_lvl_jet = extract_jet(
-                exp.data_raw["truth"].x_gen[:max_n_ptr],
-                exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
-            )
-            model = extract(
+            model, model_jet, model_ptr = extract(
                 exp.data_raw["samples"].x_gen[:max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
             )
-            model_jet = extract_jet(
-                exp.data_raw["samples"].x_gen[:max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-            )
-            # mask = (
-            #     torch.isnan(part_lvl).any(dim=-1)
-            #     | torch.isnan(det_lvl).any(dim=-1)
-            #     | torch.isnan(model).any(dim=-1)
-            #     | torch.isnan(part_lvl_jet).any(dim=-1)
-            #     | torch.isnan(det_lvl_jet).any(dim=-1)
-            #     | torch.isnan(model_jet).any(dim=-1)
-            # )
-            # part_lvl = part_lvl[~mask]
-            # part_lvl_jet = part_lvl_jet[~mask]
-            # det_lvl = det_lvl[~mask]
-            # det_lvl_jet = det_lvl_jet[~mask]
-            # model = model[~mask]
-            # model_jet = model_jet[~mask]
-
-            part_lvl = fourmomenta_to_jetmomenta(part_lvl)
-            det_lvl = fourmomenta_to_jetmomenta(det_lvl)
-            model = fourmomenta_to_jetmomenta(model)
 
             part_lvl_jet = fourmomenta_to_jetmomenta(part_lvl_jet)
             det_lvl_jet = fourmomenta_to_jetmomenta(det_lvl_jet)
             model_jet = fourmomenta_to_jetmomenta(model_jet)
+            part_lvl_jet = torch.repeat_interleave(
+                part_lvl_jet,
+                part_lvl_ptr.diff(),
+                dim=0,
+            )
+            det_lvl_jet = torch.repeat_interleave(
+                det_lvl_jet,
+                det_lvl_ptr.diff(),
+                dim=0,
+            )
+            model_jet = torch.repeat_interleave(
+                model_jet,
+                model_ptr.diff(),
+                dim=0,
+            )
 
-            part_lvl[..., 0] /= part_lvl_jet[..., 0]
-            det_lvl[..., 0] /= det_lvl_jet[..., 0]
-            model[..., 0] /= model_jet[..., 0]
-
-            part_lvl[..., 1:3] -= part_lvl_jet[..., 1:3]
-            det_lvl[..., 1:3] -= det_lvl_jet[..., 1:3]
-            model[..., 1:3] -= model_jet[..., 1:3]
-
-            part_lvl = part_lvl.cpu().detach()
-            det_lvl = det_lvl.cpu().detach()
-            model = model.cpu().detach()
+            part_lvl = (
+                coords.fourmomenta_to_x(
+                    part_lvl,
+                    jet=part_lvl_jet,
+                    ptr=part_lvl_ptr,
+                )
+                .cpu()
+                .detach()
+            )
+            det_lvl = (
+                condition_coords.fourmomenta_to_x(
+                    det_lvl,
+                    jet=det_lvl_jet,
+                    ptr=det_lvl_ptr,
+                )
+                .cpu()
+                .detach()
+            )
+            model = (
+                coords.fourmomenta_to_x(
+                    model,
+                    jet=model_jet,
+                    ptr=model_ptr,
+                )
+                .cpu()
+                .detach()
+            )
 
             obs_names = [
                 r"\frac{p_{T," + name + r"}}{p_{T,\text{ jet}}}",
@@ -615,20 +591,6 @@ def plot_observables(
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
             )
-            # LOGGER.info(
-            #     f"shape part_lvl: {part_lvl.shape}, det_lvl: {det_lvl.shape}, model: {model.shape}"
-            # )
-            # mask = (
-            #     torch.isnan(part_lvl).any(dim=-1)
-            #     | torch.isnan(det_lvl).any(dim=-1)
-            #     | torch.isnan(model).any(dim=-1)
-            # )
-            # LOGGER.info(
-            #     f"removed {mask.sum()} NaN values for observable {name}, mask shape: {mask.shape}"
-            # )
-            # part_lvl = part_lvl[~mask]
-            # det_lvl = det_lvl[~mask]
-            # model = model[~mask]
 
             xrange = np.array(
                 get_range(
