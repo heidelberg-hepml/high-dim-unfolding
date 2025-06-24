@@ -69,7 +69,6 @@ class ConditionalTransformerCFM(EventCFM):
             )
         else:
             input = torch.cat([xt, batch.scalars_gen, self.t_embedding(t)], dim=-1)
-        LOGGER.info(f"Input shape: {input.shape}, condition shape: {condition.shape}, ")
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
@@ -80,7 +79,7 @@ class ConditionalTransformerCFM(EventCFM):
                 "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
             },
         ).squeeze(0)
-        return self.geometry._handle_periodic(vp)
+        return vp
 
 
 class ConditionalLGATrCFM(EventCFM):

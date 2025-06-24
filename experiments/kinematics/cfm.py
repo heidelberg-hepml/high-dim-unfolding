@@ -99,7 +99,7 @@ class CFM(nn.Module):
         if self.cfm.add_jet:
             new_batch, mask = add_jet_to_sequence(batch)
         else:
-            new_batch = batch
+            new_batch = batch.clone()
             mask = torch.ones(
                 new_batch.x_gen.shape[0],
                 device=new_batch.x_gen.device,
@@ -114,27 +114,21 @@ class CFM(nn.Module):
             device=x0.device,
         )
         t = torch.repeat_interleave(t, new_batch.x_gen_batch.bincount(), dim=0)
-        # t[1:] = t[0].item()
 
         x1 = self.sample_base(x0, mask)
 
         if self.cfm.add_jet:
             x1[~mask] = new_batch.jet_gen
 
-        vt = x1 - x0
-        xt = self.geometry._handle_periodic(x0 + vt * t)
+        xt, vt = self.geometry.get_trajectory(
+            x_target=x0,
+            x_base=x1,
+            t=t,
+        )
 
         attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
             new_batch
         )
-
-        # plot_kinematics(
-        #     self.cfm.run_dir,
-        #     x0.cpu().detach(),
-        #     x1.cpu().detach(),
-        #     xt.cpu().detach(),
-        #     f"kinematics_{t[0].item():.2f}.pdf",
-        # )
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
@@ -169,12 +163,11 @@ class CFM(nn.Module):
                 attention_mask=attention_mask,
                 crossattention_mask=crossattention_mask,
             )
-
         vp = self.handle_velocity(vp[mask])
         vt = self.handle_velocity(vt[mask])
 
         # evaluate conditional flow matching objective
-        distance = ((vp - vt) ** 2).mean()
+        distance = self.geometry.get_metric(vp, vt, xt[mask])
 
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (

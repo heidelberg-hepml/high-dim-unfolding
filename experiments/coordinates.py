@@ -270,7 +270,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
 
 
 class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
-    # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
+    # (log(pt)-log(pt_jet), phi-phi_jet, eta-eta_jet, log(m^2) - log(m^2_jet)
     def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
         super().__init__()
         self.contains_phi = False
