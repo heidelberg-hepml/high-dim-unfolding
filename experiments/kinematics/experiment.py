@@ -335,13 +335,14 @@ class KinematicsExperiment(BaseExperiment):
                 sample_batch.jet_det, sample_batch.x_det_ptr.diff(), dim=0
             )
 
-            plot_kinematics(
-                self.cfg.run_dir,
-                sample_batch.x_det.cpu().detach(),
-                batch.x_gen.cpu().detach(),
-                sample_batch.x_gen.cpu().detach(),
-                "post_kinematics.pdf",
-            )
+            if i == 0:
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    sample_batch.x_det.cpu().detach(),
+                    batch.x_gen.cpu().detach(),
+                    sample_batch.x_gen.cpu().detach(),
+                    "post_kinematics.pdf",
+                )
 
             sample_batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
@@ -366,14 +367,6 @@ class KinematicsExperiment(BaseExperiment):
                     batch.x_gen, jet=gen_jets, ptr=batch.x_gen_ptr
                 )
                 * self.cfg.data.units
-            )
-
-            plot_kinematics(
-                self.cfg.run_dir,
-                sample_batch.x_det.cpu().detach(),
-                batch.x_gen.cpu().detach(),
-                sample_batch.x_gen.cpu().detach(),
-                "post_fourmomenta.pdf",
             )
 
             samples.extend(sample_batch.detach().to_data_list())

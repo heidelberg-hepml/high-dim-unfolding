@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torchdiffeq import odeint
+from scipy.optimize import linear_sum_assignment
 
 from experiments.utils import GaussianFourierProjection
 import experiments.coordinates as c
@@ -67,6 +68,7 @@ class CFM(nn.Module):
             )
         if 3 in self.cfm.masked_dims:
             sample[..., 3] = torch.mean(x0[mask][..., 3])
+        sample[~mask] = x0[~mask]  # keep jets fixed
         return sample
 
     def get_velocity(self, x, t):
@@ -97,10 +99,10 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, mask = add_jet_to_sequence(batch)
+            new_batch, jet_mask = add_jet_to_sequence(batch)
         else:
-            new_batch = batch.clone()
-            mask = torch.ones(
+            new_batch = batch
+            jet_mask = torch.ones(
                 new_batch.x_gen.shape[0],
                 device=new_batch.x_gen.device,
                 dtype=torch.bool,
@@ -113,18 +115,28 @@ class CFM(nn.Module):
             dtype=x0.dtype,
             device=x0.device,
         )
-        t = torch.repeat_interleave(t, new_batch.x_gen_batch.bincount(), dim=0)
+        t = torch.repeat_interleave(t, new_batch.x_gen_ptr.diff(), dim=0)
 
-        x1 = self.sample_base(x0, mask)
+        x1 = self.sample_base(x0, jet_mask)
 
-        if self.cfm.add_jet:
-            x1[~mask] = new_batch.jet_gen
+        if self.cfm.ot:
+            x0_norm = (x0**2).sum(dim=-1, keepdim=True)
+            x1_norm = (x1**2).sum(dim=-1, keepdim=True)
+            cost_matrix = x0_norm + x1_norm.T - 2 * x0 @ x1.T
+            cost_matrix = cost_matrix.clamp(min=1e-6)
+            x0_idx, x1_idx = linear_sum_assignment(cost_matrix.cpu().numpy())
+            x1_idx = torch.tensor(x1_idx, device=x1.device, dtype=torch.long).unsqueeze(
+                -1
+            )
+            x1 = torch.take_along_dim(x1, x1_idx, dim=0)
 
-        xt, vt = self.geometry.get_trajectory(
-            x_target=x0,
-            x_base=x1,
-            t=t,
-        )
+        # xt, vt = self.geometry.get_trajectory(
+        #     x_target=x0,
+        #     x_base=x1,
+        #     t=t,
+        # )
+        vt = x1 - x0
+        xt = self.geometry._handle_periodic(x0 + vt * t)
 
         attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
             new_batch
@@ -163,11 +175,11 @@ class CFM(nn.Module):
                 attention_mask=attention_mask,
                 crossattention_mask=crossattention_mask,
             )
-        vp = self.handle_velocity(vp[mask])
-        vt = self.handle_velocity(vt[mask])
+        vp = self.handle_velocity(vp[jet_mask])
+        vt = self.handle_velocity(vt[jet_mask])
 
         # evaluate conditional flow matching objective
-        distance = self.geometry.get_metric(vp, vt, xt[mask])
+        distance = self.geometry.get_metric(vp, vt, xt[jet_mask])
 
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (
@@ -217,7 +229,7 @@ class CFM(nn.Module):
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
-        def velocity(t, xt, self_condition=None):
+        def velocity(t, xt):  # , self_condition=None):
             xt = self.geometry._handle_periodic(xt)
             t = t * torch.ones(shape[0], 1, dtype=xt.dtype, device=xt.device)
             vt = self.get_velocity(
@@ -227,9 +239,12 @@ class CFM(nn.Module):
                 condition=condition,
                 attention_mask=attention_mask,
                 crossattention_mask=crossattention_mask,
-                self_condition=self_condition,
+                # self_condition=self_condition,
             )
-            vt = self.handle_velocity(vt)  # manually set mass velocity to zero
+            vt[jet_mask] = self.handle_velocity(
+                vt[jet_mask]
+            )  # manually set mass velocity to zero
+            vt[~jet_mask] = 0.0
             return vt
 
         # sample fourmomenta from base distribution
@@ -254,6 +269,10 @@ class CFM(nn.Module):
             )[-1]
 
         sample_batch.x_gen = self.geometry._handle_periodic(x0[jet_mask])
+
+        LOGGER.info(
+            f"std: {sample_batch.x_gen.std(dim=0)}, {batch.x_gen.std(dim=0)}, {x1.std(dim=0)}, {batch.x_det.std(dim=0)}"
+        )
 
         # sort generated events by pT
         # pt = x0[..., 0].unsqueeze(-1)

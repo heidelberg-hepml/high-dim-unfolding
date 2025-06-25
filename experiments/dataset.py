@@ -161,12 +161,8 @@ def load_cms(data_path, cfg, dtype):
         .to(dtype)
         .reshape(-1, 3, 4)
     )[: cfg.length]
-    gen_mults = (
-        torch.zeros(gen_particles.shape[0], dtype=torch.int) + cfg.max_constituents
-    )
-    det_mults = (
-        torch.zeros(det_particles.shape[0], dtype=torch.int) + cfg.max_constituents
-    )
+    gen_mults = torch.zeros(gen_particles.shape[0], dtype=torch.int) + 3
+    det_mults = torch.zeros(det_particles.shape[0], dtype=torch.int) + 3
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
 

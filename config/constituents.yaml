@@ -31,6 +31,7 @@ cfm:
  self_condition_prob: 0.0
  add_jet: false
  scaling: [1.0, 1.0, 1.0, 1.0]
+ ot: false
 
 odeint:
  method: rk4
@@ -64,7 +65,7 @@ plotting:
  jetmomenta: true
  preprocessed: false
  jetscaled: false
- observables: ["jet"]
+ observables: []
  n_pt: 3
  correlations: false
 

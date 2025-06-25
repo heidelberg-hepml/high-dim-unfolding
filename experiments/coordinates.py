@@ -27,7 +27,7 @@ class BaseCoordinates(torch.nn.Module):
             ).all(), (
                 f"Transform {transform.__class__.__name__} produced non-finite values."
             )
-        self.transforms[-1].init_fit(x, mask, **kwargs)
+        self.transforms[-1].init_fit(x, mask=mask, **kwargs)
 
     def fourmomenta_to_x(self, a_in, **kwargs):
         assert torch.isfinite(a_in).all()
@@ -91,13 +91,13 @@ class Fourmomenta(BaseCoordinates):
     # (E, px, py, pz)
     # this class effectively does nothing,
     # because fourmomenta are already the baseline representation
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.transforms = [tr.EmptyTransform()]
 
 
 class PPPM2(BaseCoordinates):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_mass = True
         self.transforms = [tr.EPPP_to_PPPM2()]
@@ -105,7 +105,7 @@ class PPPM2(BaseCoordinates):
 
 class StandardPPPM2(BaseCoordinates):
     # fitted (px, py, pz, m^2)
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_mass = True
         self.transforms = [
@@ -116,7 +116,7 @@ class StandardPPPM2(BaseCoordinates):
 
 class EPhiPtPz(BaseCoordinates):
     # (E, phi, pt, pz)
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.transforms = [tr.EPPP_to_EPhiPtPz()]
@@ -124,14 +124,14 @@ class EPhiPtPz(BaseCoordinates):
 
 class PtPhiEtaE(BaseCoordinates):
     # (pt, phi, eta, E)
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.transforms = [tr.EPPP_to_PtPhiEtaE()]
 
 
 class PtPhiEtaM2(BaseCoordinates):
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -143,7 +143,7 @@ class PtPhiEtaM2(BaseCoordinates):
 
 class PPPLogM2(BaseCoordinates):
     # (px, py, pz, log(m^2))
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_mass = True
         self.transforms = [
@@ -154,7 +154,7 @@ class PPPLogM2(BaseCoordinates):
 
 class StandardPPPLogM2(BaseCoordinates):
     # fitted (px, py, pz, log(m^2))
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_mass = True
         self.transforms = [
@@ -166,7 +166,7 @@ class StandardPPPLogM2(BaseCoordinates):
 
 class LogPtPhiEtaE(BaseCoordinates):
     # (log(pt), phi, eta, E)
-    def __init__(self, pt_min):
+    def __init__(self, pt_min, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.transforms = [tr.EPPP_to_PtPhiEtaE(), tr.Pt_to_LogPt(pt_min)]
@@ -174,7 +174,7 @@ class LogPtPhiEtaE(BaseCoordinates):
 
 class PtPhiEtaLogM2(BaseCoordinates):
     # (pt, phi, eta, log(m^2))
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -187,7 +187,7 @@ class PtPhiEtaLogM2(BaseCoordinates):
 
 class StandardPtPhiEtaLogM2(BaseCoordinates):
     # (pt, phi, eta, log(m^2))
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -201,7 +201,7 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
 
 class LogPtPhiEtaM2(BaseCoordinates):
     # (log(pt), phi, eta, m^2)
-    def __init__(self, pt_min):
+    def __init__(self, pt_min, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -214,7 +214,7 @@ class LogPtPhiEtaM2(BaseCoordinates):
 
 class LogPtPhiEtaLogM2(BaseCoordinates):
     # (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min):
+    def __init__(self, pt_min, **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -228,22 +228,22 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
-            tr.Pt_to_LogPt(pt_min),
-            tr.M2_to_LogM2(),
+            # tr.Pt_to_LogPt(pt_min),
+            # tr.M2_to_LogM2(),
             tr.StandardNormal([1] + fixed_dims, scaling),
         ]
 
 
 class IndividualStandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Position fitted (log(pt), phi, eta, log(m^2)
-    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -258,7 +258,7 @@ class IndividualStandardLogPtPhiEtaLogM2(BaseCoordinates):
 
 class JetScaledPtPhiEtaM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, m^2)
-    def __init__(self):
+    def __init__(self, **kwargs):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = True
@@ -271,7 +271,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
 
 class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (log(pt)-log(pt_jet), phi-phi_jet, eta-eta_jet, log(m^2) - log(m^2_jet)
-    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = True
@@ -287,7 +287,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
 
 class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
-    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4)):
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
         self.contains_phi = False
         self.contains_mass = True
