@@ -182,7 +182,7 @@ def load_ttbar(data_path, cfg, dtype):
     data = ak.concatenate([part1, part2], axis=0)[: cfg.length]
 
     size = cfg.length if cfg.length > 0 else len(data)
-    shape = (size, cfg.max_num_particles, 4)
+    shape = (size, 238, 4)
 
     det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
     det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)

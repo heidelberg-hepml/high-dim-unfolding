@@ -516,7 +516,7 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
-    def _jac_reverse(self, ptphietam2, y, jet, **kwargs):
+    def _jac_inverse(self, ptphietam2, y, jet, **kwargs):
 
         jet_pt = jet[:, 0]
 
@@ -573,7 +573,7 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
-    def _jac_reverse(self, logptphietalogm2, y, jet, **kwargs):
+    def _jac_inverse(self, logptphietalogm2, y, jet, **kwargs):
         zero, one = torch.zeros_like(logptphietalogm2[..., 0]), torch.ones_like(
             logptphietalogm2[..., 0]
         )
@@ -637,6 +637,6 @@ class IndividualNormal(BaseTransform):
             x.shape[0], device=ptr.device, dtype=torch.int64
         ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
-        std = self.std.to(x.device, dtype=x.dtype)[ptr].unsqueeze(0)
+        std = self.std.to(x.device, dtype=x.dtype)[idx].unsqueeze(0)
         jac[..., torch.arange(4), torch.arange(4)] = std
         return jac

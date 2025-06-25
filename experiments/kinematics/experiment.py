@@ -42,7 +42,7 @@ class KinematicsExperiment(BaseExperiment):
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
-            max_num_particles, _, pt_min, masked_dims, load_fn = load_dataset(
+            max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
                 self.cfg.data.dataset
             )
 
