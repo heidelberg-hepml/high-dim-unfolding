@@ -8,7 +8,6 @@ import experiments.coordinates as c
 from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.baselines import custom_rk4
 from experiments.embedding import add_jet_to_sequence
-from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 
 

@@ -1,7 +1,6 @@
 import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
-from torch_geometric.utils import scatter
 from torch_geometric.data import Batch
 
 import os, time
@@ -18,7 +17,6 @@ import experiments.kinematics.observables as obs
 from experiments.kinematics.observables import (
     create_partial_jet,
     compute_angles,
-    select_pt,
     tau1,
     tau2,
     dimass,

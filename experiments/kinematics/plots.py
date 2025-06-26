@@ -3,7 +3,6 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.backends.backend_pdf import PdfPages
 
-from experiments.coordinates import LogPtPhiEtaLogM2, fourmomenta_to_jetmomenta
 from experiments.utils import get_range
 
 # load fonts

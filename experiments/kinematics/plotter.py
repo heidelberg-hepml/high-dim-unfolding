@@ -12,7 +12,6 @@ from experiments.kinematics.plots import (
 )
 from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta
-from experiments.logger import LOGGER
 
 N_SAMPLES = 10000
 

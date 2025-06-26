@@ -590,7 +590,6 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
 
 
 class IndividualNormal(BaseTransform):
-
     def __init__(self, dims_fixed=[], scaling=torch.ones(1, 4)):
         super().__init__()
         self.dims_fixed = dims_fixed

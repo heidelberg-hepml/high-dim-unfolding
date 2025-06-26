@@ -1,13 +1,10 @@
 import hydra
 import torch
-import fastjet_contribs
 import torch.multiprocessing as mp
 import torch.distributed as dist
 
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
-
-import torch
 
 
 @hydra.main(config_path="config", config_name="constituents", version_base=None)
