@@ -6,6 +6,7 @@
 .pytest_cache/
 .vscode/
 
+notebooks/
 venv/
 data/
 runs/
