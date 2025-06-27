@@ -199,7 +199,7 @@ class ConditionalLGATrCFM(EventCFM):
             fourmomenta,
             scalars,
             batch.x_gen_ptr,
-            # self.ga_cfg,
+            self.ga_cfg,
         )
 
         mv_outputs, s_outputs = self.net(

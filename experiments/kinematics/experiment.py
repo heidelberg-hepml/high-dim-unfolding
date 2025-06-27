@@ -326,11 +326,20 @@ class KinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            gen_jets = torch.repeat_interleave(
+            # Compute jets for sample_batch
+            sample_gen_jets = torch.repeat_interleave(
                 sample_batch.jet_gen, sample_batch.x_gen_ptr.diff(), dim=0
             )
-            det_jets = torch.repeat_interleave(
+            sample_det_jets = torch.repeat_interleave(
                 sample_batch.jet_det, sample_batch.x_det_ptr.diff(), dim=0
+            )
+            
+            # Compute jets for original batch
+            batch_gen_jets = torch.repeat_interleave(
+                batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
+            )
+            batch_det_jets = torch.repeat_interleave(
+                batch.jet_det, batch.x_det_ptr.diff(), dim=0
             )
 
             if i == 0:
@@ -344,25 +353,25 @@ class KinematicsExperiment(BaseExperiment):
 
             sample_batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
-                    sample_batch.x_det, jet=det_jets, ptr=sample_batch.x_det_ptr
+                    sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
                 )
                 * self.cfg.data.units
             )
             sample_batch.x_gen = (
                 self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen, jet=gen_jets, ptr=sample_batch.x_gen_ptr
+                    sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
                 )
                 * self.cfg.data.units
             )
             batch.x_det = (
                 self.model.condition_coordinates.x_to_fourmomenta(
-                    batch.x_det, jet=det_jets, ptr=batch.x_det_ptr
+                    batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
                 )
                 * self.cfg.data.units
             )
             batch.x_gen = (
                 self.model.coordinates.x_to_fourmomenta(
-                    batch.x_gen, jet=gen_jets, ptr=batch.x_gen_ptr
+                    batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
                 )
                 * self.cfg.data.units
             )

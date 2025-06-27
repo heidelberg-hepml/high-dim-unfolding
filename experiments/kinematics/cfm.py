@@ -230,7 +230,8 @@ class CFM(nn.Module):
 
         def velocity(t, xt):  # , self_condition=None):
             xt = self.geometry._handle_periodic(xt)
-            t = t * torch.ones(shape[0], 1, dtype=xt.dtype, device=xt.device)
+            t = t * torch.ones(xt.shape[0], 1, dtype=xt.dtype, device=xt.device)
+
             vt = self.get_velocity(
                 xt=xt,
                 t=t,
@@ -240,10 +241,10 @@ class CFM(nn.Module):
                 crossattention_mask=crossattention_mask,
                 # self_condition=self_condition,
             )
-            vt[jet_mask] = self.handle_velocity(
-                vt[jet_mask]
-            )  # manually set mass velocity to zero
+
+            vt[jet_mask] = self.handle_velocity(vt[jet_mask])
             vt[~jet_mask] = 0.0
+
             return vt
 
         # sample fourmomenta from base distribution
