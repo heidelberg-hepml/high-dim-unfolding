@@ -1,9 +1,20 @@
+from experiments.logger import LOGGER
+
+try:
+    from fastjet_contribs import (
+        compute_nsubjettiness,
+        apply_soft_drop,
+    )
+
+    FASTJET_AVAIL = True
+except ImportError:
+    LOGGER.info(
+        "fastjet_contribs is not available. Some observables cannot be computed."
+    )
+    FASTJET_AVAIL = False
+
 import torch
 import numpy as np
-from fastjet_contribs import (
-    compute_nsubjettiness,
-    apply_soft_drop,
-)
 
 from experiments.utils import get_ptr_from_batch, ensure_angle
 from experiments.coordinates import fourmomenta_to_jetmomenta

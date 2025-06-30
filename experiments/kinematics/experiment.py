@@ -15,6 +15,7 @@ import experiments.kinematics.plotter as plotter
 from experiments.logger import LOGGER
 import experiments.kinematics.observables as obs
 from experiments.kinematics.observables import (
+    FASTJET_AVAIL,
     create_partial_jet,
     compute_angles,
     tau1,
@@ -577,11 +578,11 @@ class KinematicsExperiment(BaseExperiment):
             obs.R0 = 1.2
             obs.R0SoftDrop = 1.2
 
-        if "tau1" in self.cfg.plotting.observables:
+        if "tau1" in self.cfg.plotting.observables and FASTJET_AVAIL:
             self.obs[r"\tau_1"] = tau1
-        if "tau2" in self.cfg.plotting.observables:
+        if "tau2" in self.cfg.plotting.observables and FASTJET_AVAIL:
             self.obs[r"\tau_2"] = tau2
-        if "tau21" in self.cfg.plotting.observables:
+        if "tau21" in self.cfg.plotting.observables and FASTJET_AVAIL:
             self.obs[r"\tau_{21}"] = (
                 lambda constituents, batch_idx, other_batch_idx: torch.where(
                     tau1(constituents, batch_idx, other_batch_idx) != 0,
@@ -590,11 +591,11 @@ class KinematicsExperiment(BaseExperiment):
                     torch.tensor(0.0),
                 )
             )
-        if "sd_mass" in self.cfg.plotting.observables:
+        if "sd_mass" in self.cfg.plotting.observables and FASTJET_AVAIL:
 
             self.obs[r"\log \rho"] = sd_mass
 
-        if "momentum_fraction" in self.cfg.plotting.observables:
+        if "momentum_fraction" in self.cfg.plotting.observables and FASTJET_AVAIL:
 
             self.obs[r"z_g"] = compute_zg
 
