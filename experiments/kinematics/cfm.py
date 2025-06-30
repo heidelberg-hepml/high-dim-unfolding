@@ -98,10 +98,10 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, jet_mask = add_jet_to_sequence(batch)
+            new_batch, constituents_mask = add_jet_to_sequence(batch)
         else:
             new_batch = batch
-            jet_mask = torch.ones(
+            constituents_mask = torch.ones(
                 new_batch.x_gen.shape[0],
                 device=new_batch.x_gen.device,
                 dtype=torch.bool,
@@ -116,7 +116,7 @@ class CFM(nn.Module):
         )
         t = torch.repeat_interleave(t, new_batch.x_gen_ptr.diff(), dim=0)
 
-        x1 = self.sample_base(x0, jet_mask)
+        x1 = self.sample_base(x0, constituents_mask)
 
         if self.cfm.ot:
             x0_norm = (x0**2).sum(dim=-1, keepdim=True)
@@ -129,13 +129,11 @@ class CFM(nn.Module):
             )
             x1 = torch.take_along_dim(x1, x1_idx, dim=0)
 
-        # xt, vt = self.geometry.get_trajectory(
-        #     x_target=x0,
-        #     x_base=x1,
-        #     t=t,
-        # )
-        vt = x1 - x0
-        xt = self.geometry._handle_periodic(x0 + vt * t)
+        xt, vt = self.geometry.get_trajectory(
+            x_target=x0,
+            x_base=x1,
+            t=t,
+        )
 
         attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
             new_batch
@@ -174,11 +172,11 @@ class CFM(nn.Module):
                 attention_mask=attention_mask,
                 crossattention_mask=crossattention_mask,
             )
-        vp = self.handle_velocity(vp[jet_mask])
-        vt = self.handle_velocity(vt[jet_mask])
+        vp = self.handle_velocity(vp[constituents_mask])
+        vt = self.handle_velocity(vt[constituents_mask])
 
         # evaluate conditional flow matching objective
-        distance = self.geometry.get_metric(vp, vt, xt[jet_mask])
+        distance = self.geometry.get_metric(vp, vt, xt[constituents_mask])
 
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (
@@ -190,7 +188,7 @@ class CFM(nn.Module):
         else:
             loss = distance
 
-        distance_particlewise = ((vp - vt) ** 2).mean(dim=0)
+        distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
         return loss, distance_particlewise
 
     def sample(self, batch, device, dtype):
@@ -211,10 +209,10 @@ class CFM(nn.Module):
         """
 
         if self.cfm.add_jet:
-            new_batch, jet_mask = add_jet_to_sequence(batch)
+            new_batch, constituents_mask = add_jet_to_sequence(batch)
         else:
             new_batch = batch
-            jet_mask = torch.ones(
+            constituents_mask = torch.ones(
                 new_batch.x_gen.shape[0],
                 device=new_batch.x_gen.device,
                 dtype=torch.bool,
@@ -242,14 +240,13 @@ class CFM(nn.Module):
                 # self_condition=self_condition,
             )
 
-            vt[jet_mask] = self.handle_velocity(vt[jet_mask])
-            vt[~jet_mask] = 0.0
+            vt[constituents_mask] = self.handle_velocity(vt[constituents_mask])
+            vt[~constituents_mask] = 0.0
 
             return vt
 
-        # sample fourmomenta from base distribution
-        shape = new_batch.x_gen.shape
-        x1 = self.sample_base(new_batch.x_gen, jet_mask)
+        # sample from base distribution
+        x1 = self.sample_base(new_batch.x_gen, constituents_mask)
 
         if self.cfm.self_condition_prob > 0.0:
             v1 = torch.zeros_like(x1, device=x1.device, dtype=x1.dtype)
@@ -268,7 +265,7 @@ class CFM(nn.Module):
                 **self.odeint,
             )[-1]
 
-        sample_batch.x_gen = self.geometry._handle_periodic(x0[jet_mask])
+        sample_batch.x_gen = self.geometry._handle_periodic(x0[constituents_mask])
 
         LOGGER.info(
             f"std: {sample_batch.x_gen.std(dim=0)}, {batch.x_gen.std(dim=0)}, {x1.std(dim=0)}, {batch.x_det.std(dim=0)}"

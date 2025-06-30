@@ -19,7 +19,6 @@ data:
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
- hutchinson: true
  coordinates: StandardLogPtPhiEtaLogM2
  condition_coordinates: StandardLogPtPhiEtaLogM2
  geometry:
@@ -38,7 +37,7 @@ odeint:
  rtol: 1e-5
  atol: 1e-5
  options:
-  step_size: 0.05
+  step_size: 0.02
 
 train: true
 training:
