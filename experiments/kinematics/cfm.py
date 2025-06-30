@@ -52,7 +52,7 @@ class CFM(nn.Module):
     def init_geometry(self):
         raise NotImplementedError
 
-    def sample_base(self, x0, mask, generator=None):
+    def sample_base(self, x0, constituents_mask, generator=None):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
@@ -66,8 +66,8 @@ class CFM(nn.Module):
                 - torch.pi
             )
         if 3 in self.cfm.masked_dims:
-            sample[..., 3] = torch.mean(x0[mask][..., 3])
-        sample[~mask] = x0[~mask]  # keep jets fixed
+            sample[..., 3] = torch.mean(x0[constituents_mask][..., 3])
+        sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
         return sample
 
     def get_velocity(self, x, t):
@@ -307,9 +307,7 @@ class EventCFM(CFM):
 
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
-        self.condition_coordinates = self._init_coordinates(
-            self.cfm.condition_coordinates
-        )
+        self.condition_coordinates = self._init_coordinates(self.cfm.coordinates)
         if self.cfm.transforms_float64:
             self.coordinates.to(torch.float64)
             self.condition_coordinates.to(torch.float64)

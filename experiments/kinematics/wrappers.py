@@ -124,6 +124,13 @@ class ConditionalLGATrCFM(EventCFM):
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
 
+    def init_coordinates(self):
+        self.coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.condition_coordinates = self._init_coordinates("Fourmomenta")
+        if self.cfm.transforms_float64:
+            self.coordinates.to(torch.float64)
+            self.condition_coordinates.to(torch.float64)
+
     def get_masks(self, batch):
         _, _, gen_batch_idx, _ = embed_data_into_ga(
             batch.x_gen,

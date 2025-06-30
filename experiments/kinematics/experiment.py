@@ -72,7 +72,6 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += 4
 
             elif self.cfg.modelname == "ConditionalLGATr":
-                self.cfg.cfm.condition_coordinates = "Fourmomenta"
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
@@ -333,7 +332,7 @@ class KinematicsExperiment(BaseExperiment):
             sample_det_jets = torch.repeat_interleave(
                 sample_batch.jet_det, sample_batch.x_det_ptr.diff(), dim=0
             )
-            
+
             # Compute jets for original batch
             batch_gen_jets = torch.repeat_interleave(
                 batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
