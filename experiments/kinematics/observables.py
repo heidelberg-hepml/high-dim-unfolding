@@ -26,11 +26,12 @@ R0SoftDrop = None
 def create_partial_jet(start, end):
     assert end > start or end == -1, "End index must be greater than start index"
 
-    def form_partial_jet(constituents, batch_idx, other_batch_idx):
+    def form_partial_jet(constituents, batch_idx, other_batch_idx, true_jet, **kwargs):
 
         batch_ptr = get_ptr_from_batch(batch_idx)
         jets = []
         true_jets = []
+        pos = []
         for n in range(len(batch_ptr) - 1):
             event_size = batch_ptr[n + 1] - batch_ptr[n]
             if isinstance(start, float):
@@ -53,9 +54,13 @@ def create_partial_jet(start, end):
                         batch_ptr[n] + start_idx : batch_ptr[n] + end_idx
                     ].sum(dim=0)
                 jets.append(jet)
-                true_jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
-                true_jets.append(true_jet)
-        return torch.stack(jets), torch.stack(true_jets)
+                true_jets.append(true_jet[n])
+                pos.append(start_idx)
+        ptr = torch.arange(len(jets) + 1, device=constituents.device, dtype=torch.int64)
+        pos = torch.tensor(pos, device=constituents.device, dtype=torch.int64)
+        jets = torch.stack(jets).to(constituents.device)
+        true_jets = torch.stack(true_jets).to(constituents.device)
+        return jets, true_jets, ptr, pos
 
     return form_partial_jet
 
@@ -65,7 +70,7 @@ def compute_angles(start1, end1, start2, end2, angle_type="R", filter=None):
     assert start2 < end2, "start2 must be less than end2"
     assert end1 <= start2, "end1 must be less than or equal to start2"
 
-    def compute_angle(constituents, batch_idx, other_batch_idx):
+    def compute_angle(constituents, batch_idx, other_batch_idx, **kwargs):
 
         batch_ptr = get_ptr_from_batch(batch_idx)
         angles = []
@@ -114,7 +119,7 @@ def select_pt(i, bound=None, filter=None):
 
     # create a function that returns the i-th highest pt constituent
     # if the jet has less than bound constituents, it is not selected
-    def ith_pt(constituents, batch_idx, other_batch_idx):
+    def ith_pt(constituents, batch_idx, other_batch_idx, **kwargs):
         idx = []
         batch_ptr = get_ptr_from_batch(batch_idx)
         other_batch_ptr = get_ptr_from_batch(other_batch_idx)
@@ -136,7 +141,7 @@ def select_pt(i, bound=None, filter=None):
 
 
 def dimass(i, j):
-    def dimass_ij(constituents, batch_idx, other_batch_idx):
+    def dimass_ij(constituents, batch_idx, other_batch_idx, **kwargs):
         batch_ptr = get_ptr_from_batch(batch_idx)
         other_batch_ptr = get_ptr_from_batch(other_batch_idx)
         dimass = []
@@ -150,7 +155,7 @@ def dimass(i, j):
 
 
 def deltaR(i, j):
-    def deltaR_ij(constituents, batch_idx, other_batch_idx):
+    def deltaR_ij(constituents, batch_idx, other_batch_idx, **kwargs):
         batch_ptr = get_ptr_from_batch(batch_idx)
         other_batch_ptr = get_ptr_from_batch(other_batch_idx)
         deltaR = []
@@ -168,7 +173,7 @@ def deltaR(i, j):
     return deltaR_ij
 
 
-def tau1(constituents, batch_idx, other_batch_idx):
+def tau1(constituents, batch_idx, other_batch_idx, **kwargs):
     constituents = np.array(constituents.detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     taus = []
@@ -181,7 +186,7 @@ def tau1(constituents, batch_idx, other_batch_idx):
     return torch.tensor(taus)
 
 
-def tau2(constituents, batch_idx, other_batch_idx):
+def tau2(constituents, batch_idx, other_batch_idx, **kwargs):
     constituents = np.array(constituents.detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     taus = []
@@ -194,7 +199,7 @@ def tau2(constituents, batch_idx, other_batch_idx):
     return torch.tensor(taus)
 
 
-def sd_mass(constituents, batch_idx, other_batch_idx):
+def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
     constituents = np.array(constituents.detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     log_rhos = []
@@ -210,7 +215,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx):
     return torch.tensor(log_rhos)
 
 
-def compute_zg(constituents, batch_idx, other_batch_idx):
+def compute_zg(constituents, batch_idx, other_batch_idx, **kwargs):
     constituents = np.array(constituents.detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     zgs = []
@@ -223,7 +228,7 @@ def compute_zg(constituents, batch_idx, other_batch_idx):
     return torch.tensor(zgs)
 
 
-def jet_mass(constituents, batch_idx, other_batch_idx):
+def jet_mass(constituents, batch_idx, other_batch_idx, **kwargs):
     batch_ptr = get_ptr_from_batch(batch_idx)
     other_batch_ptr = get_ptr_from_batch(other_batch_idx)
     jet_masses = []

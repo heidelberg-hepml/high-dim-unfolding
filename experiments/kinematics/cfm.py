@@ -66,7 +66,7 @@ class CFM(nn.Module):
                 - torch.pi
             )
         if 3 in self.cfm.masked_dims:
-            sample[..., 3] = torch.mean(x0[constituents_mask][..., 3])
+            sample[..., 3] = x0[..., 3]
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
         return sample
 
@@ -226,7 +226,7 @@ class CFM(nn.Module):
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
-        def velocity(t, xt):  # , self_condition=None):
+        def velocity(t, xt, self_condition=None):
             xt = self.geometry._handle_periodic(xt)
             t = t * torch.ones(xt.shape[0], 1, dtype=xt.dtype, device=xt.device)
 
@@ -237,7 +237,7 @@ class CFM(nn.Module):
                 condition=condition,
                 attention_mask=attention_mask,
                 crossattention_mask=crossattention_mask,
-                # self_condition=self_condition,
+                self_condition=self_condition,
             )
 
             vt[constituents_mask] = self.handle_velocity(vt[constituents_mask])
@@ -266,10 +266,6 @@ class CFM(nn.Module):
             )[-1]
 
         sample_batch.x_gen = self.geometry._handle_periodic(x0[constituents_mask])
-
-        LOGGER.info(
-            f"std: {sample_batch.x_gen.std(dim=0)}, {batch.x_gen.std(dim=0)}, {x1.std(dim=0)}, {batch.x_det.std(dim=0)}"
-        )
 
         # sort generated events by pT
         # pt = x0[..., 0].unsqueeze(-1)
@@ -345,6 +341,8 @@ class EventCFM(CFM):
             )
         elif coordinates_label == "JetScaledPtPhiEtaM2":
             coordinates = c.JetScaledPtPhiEtaM2()
+        elif coordinates_label == "JetScaledLogPtPhiEtaLogM2":
+            coordinates = c.JetScaledLogPtPhiEtaLogM2(self.pt_min)
         elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
                 self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])

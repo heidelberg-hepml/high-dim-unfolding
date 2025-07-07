@@ -11,6 +11,7 @@ from experiments.utils import (
     get_eta,
     ensure_angle,
 )
+from experiments.logger import LOGGER
 
 
 class BaseTransform(nn.Module):
@@ -598,43 +599,66 @@ class IndividualNormal(BaseTransform):
     def init_fit(self, x, mask, **kwargs):
         mask = mask.unsqueeze(-1)
         self.mean = (x * mask).sum(dim=0) / mask.sum(dim=0)
-        self.mean[-20:] = torch.mean(
-            self.mean[-20:][~torch.isnan(self.mean[-20:]).any(dim=-1)], dim=0
+        first_nan = (
+            torch.isnan(self.mean).any(dim=1).nonzero(as_tuple=True)[0][0].item()
+        )
+        start_idx = max(first_nan - 10, 0)
+        self.mean[start_idx:] = torch.mean(
+            self.mean[start_idx:][~torch.isnan(self.mean[start_idx:]).any(dim=-1)],
+            dim=0,
         )
         self.std = torch.sqrt(
             ((x * mask - self.mean * mask) ** 2).sum(dim=0) / mask.sum(dim=0)
         ) / self.scaling.to(x.device, dtype=x.dtype)
-        self.std[-20:] = torch.mean(
-            self.std[-20:][~torch.isnan(self.std[-20:]).any(dim=-1)], dim=0
+        first_nan = torch.isnan(self.std).any(dim=1).nonzero(as_tuple=True)[0][0].item()
+        start_idx = max(first_nan - 10, 0)
+        self.std[first_nan:] = torch.mean(
+            self.std[start_idx:][~torch.isnan(self.std[start_idx:]).any(dim=-1)], dim=0
         )
         self.std[..., self.dims_fixed] = 1.0
         self.std[torch.abs(self.std) <= 1e-3] = 1.0
 
-    def _forward(self, x, ptr, **kwargs):
-        idx = torch.arange(
-            x.shape[0], device=ptr.device, dtype=torch.int64
-        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+    def _forward(self, x, ptr, pos=None, **kwargs):
+        if pos is not None:
+            assert pos.shape[0] == x.shape[0]
+            idx = pos
+        else:
+            idx = torch.arange(
+                x.shape[0], device=ptr.device, dtype=torch.int64
+            ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
         return (x - self.mean.to(x.device)[idx]) / self.std.to(x.device)[idx]
 
-    def _inverse(self, xunit, ptr, **kwargs):
-        idx = torch.arange(
-            xunit.shape[0], device=ptr.device, dtype=torch.int64
-        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+    def _inverse(self, xunit, ptr, pos=None, **kwargs):
+        if pos is not None:
+            assert pos.shape[0] == xunit.shape[0]
+            idx = pos
+        else:
+            idx = torch.arange(
+                xunit.shape[0], device=ptr.device, dtype=torch.int64
+            ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
         return xunit * self.std.to(xunit.device)[idx] + self.mean.to(xunit.device)[idx]
 
-    def _jac_forward(self, x, xunit, ptr, **kwargs):
-        idx = torch.arange(
-            x.shape[0], device=ptr.device, dtype=torch.int64
-        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+    def _jac_forward(self, x, xunit, ptr, pos, **kwargs):
+        if pos is not None:
+            assert pos.shape[0] == x.shape[0]
+            idx = pos
+        else:
+            idx = torch.arange(
+                x.shape[0], device=ptr.device, dtype=torch.int64
+            ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
         std = self.std.to(x.device, dtype=x.dtype)[idx].unsqueeze(0)
         jac[..., torch.arange(4), torch.arange(4)] = 1 / std
         return jac
 
-    def _jac_inverse(self, xunit, x, ptr, **kwargs):
-        idx = torch.arange(
-            x.shape[0], device=ptr.device, dtype=torch.int64
-        ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
+    def _jac_inverse(self, xunit, x, ptr, pos=None, **kwargs):
+        if pos is not None:
+            assert pos.shape[0] == xunit.shape[0]
+            idx = pos
+        else:
+            idx = torch.arange(
+                x.shape[0], device=ptr.device, dtype=torch.int64
+            ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
         jac = torch.zeros(*x.shape, 4, device=x.device, dtype=x.dtype)
         std = self.std.to(x.device, dtype=x.dtype)[idx].unsqueeze(0)
         jac[..., torch.arange(4), torch.arange(4)] = std

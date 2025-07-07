@@ -13,7 +13,7 @@ data:
  add_pid: false
  pt_min: null
  units: 1.0
- mass: 0.001
+ mass: 1.0
  pos_encoding_dim: 8
 
 cfm:
@@ -36,7 +36,7 @@ odeint:
  rtol: 1e-5
  atol: 1e-5
  options:
-  step_size: 0.02
+  step_size: 0.01
 
 train: true
 training:
@@ -56,13 +56,14 @@ evaluation:
  eval_loss: []
  save_samples: false
  load_samples: false
+ overfit: false
 
 plot: true
 plotting:
  fourmomenta: false
  jetmomenta: true
- preprocessed: false
  jetscaled: false
+ preprocessed: false
  observables: []
  n_pt: 3
  correlations: false

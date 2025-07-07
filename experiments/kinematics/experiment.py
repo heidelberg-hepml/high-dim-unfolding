@@ -41,6 +41,17 @@ class KinematicsExperiment(BaseExperiment):
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
+            if self.cfg.evaluation.overfit:
+                self.cfg.evaluation.sample = False
+                self.cfg.evaluation.load_samples = False
+                self.cfg.training.validate_every_n_steps = (
+                    self.cfg.training.iterations + 1
+                )
+                self.cfg.data.length = 10000
+                self.cfg.training.iterations = 1000
+                self.cfg.data.max_constituents = -1
+                self.cfg.plotting.jetscaled = True
+
             max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
                 self.cfg.data.dataset
             )
@@ -191,6 +202,13 @@ class KinematicsExperiment(BaseExperiment):
             ),
         )
 
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_particles[det_mask].cpu().detach(),
+            gen_particles[gen_mask].cpu().detach(),
+            filename="pre_kinematics.pdf",
+        )
+
         self.train_data = Dataset(
             self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
@@ -299,6 +317,12 @@ class KinematicsExperiment(BaseExperiment):
         elif self.cfg.evaluation.load_samples:
             self._load_samples()
             loaders["gen"] = self.sample_loader
+        elif self.cfg.evaluation.overfit:
+            t0 = time.time()
+            self._sample_events(loaders["train"])
+            loaders["gen"] = self.sample_loader
+            dt = time.time() - t0
+            LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
         else:
             LOGGER.info("Skip sampling")
 
@@ -341,6 +365,9 @@ class KinematicsExperiment(BaseExperiment):
             batch_det_jets = torch.repeat_interleave(
                 batch.jet_det, batch.x_det_ptr.diff(), dim=0
             )
+
+            assert torch.max(torch.abs(sample_gen_jets - batch_gen_jets)) < 1e-5
+            assert torch.max(torch.abs(sample_det_jets - batch_det_jets)) < 1e-5
 
             if i == 0:
                 plot_kinematics(
@@ -464,7 +491,11 @@ class KinematicsExperiment(BaseExperiment):
 
         weights, mask_dict = None, None
 
-        if self.cfg.evaluation.sample or self.cfg.evaluation.load_samples:
+        if (
+            self.cfg.evaluation.sample
+            or self.cfg.evaluation.load_samples
+            or self.cfg.evaluation.overfit
+        ):
             if self.cfg.plotting.fourmomenta:
                 filename = os.path.join(path, "fourmomenta.pdf")
                 plotter.plot_fourmomenta(

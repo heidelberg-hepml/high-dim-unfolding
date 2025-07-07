@@ -11,7 +11,7 @@ from experiments.kinematics.plots import (
     plot_2d_histogram,
 )
 from experiments.utils import get_range
-from experiments.coordinates import fourmomenta_to_jetmomenta
+from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
 
 N_SAMPLES = 10000
 
@@ -134,29 +134,35 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
+            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+            max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
+            det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
             det_lvl = (
                 extract(
-                    exp.data_raw["samples"].x_det,
-                    exp.data_raw["samples"].x_det_batch,
-                    exp.data_raw["samples"].x_gen_batch,
+                    exp.data_raw["samples"].x_det[:det_max_n_ptr],
+                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["samples"].jet_det[:max_n],
                 )[0]
                 .cpu()
                 .detach()
             )
             part_lvl = (
                 extract(
-                    exp.data_raw["truth"].x_gen,
-                    exp.data_raw["truth"].x_gen_batch,
-                    exp.data_raw["truth"].x_det_batch,
+                    exp.data_raw["truth"].x_gen[:max_n_ptr],
+                    exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["truth"].jet_gen[:max_n],
                 )[0][: len(det_lvl)]
                 .cpu()
                 .detach()
             )
             model = (
                 extract(
-                    exp.data_raw["samples"].x_gen,
-                    exp.data_raw["samples"].x_gen_batch,
-                    exp.data_raw["samples"].x_det_batch,
+                    exp.data_raw["samples"].x_gen[:max_n_ptr],
+                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["samples"].jet_gen[:max_n],
                 )[0][: len(det_lvl)]
                 .cpu()
                 .detach()
@@ -220,16 +226,19 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                 exp.data_raw["samples"].x_det[:det_max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                true_jet=exp.data_raw["samples"].jet_det[:max_n],
             )[0]
             part_lvl = extract(
                 exp.data_raw["truth"].x_gen[:max_n_ptr],
                 exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                true_jet=exp.data_raw["truth"].jet_gen[:max_n],
             )[0][: len(det_lvl)]
             model = extract(
                 exp.data_raw["samples"].x_gen[:max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                true_jet=exp.data_raw["samples"].jet_gen[:max_n],
             )[0]
 
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
@@ -366,8 +375,8 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
 
 def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
 
-    coords = exp.model.coordinates
-    condition_coords = exp.model.condition_coordinates
+    coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
+    condition_coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
@@ -375,39 +384,23 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
             max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            det_lvl, det_lvl_jet, det_lvl_ptr = extract(
+            det_lvl, det_lvl_jet, det_lvl_ptr, det_lvl_pos = extract(
                 exp.data_raw["samples"].x_det[:det_max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                true_jet=exp.data_raw["samples"].jet_det[:max_n],
             )
-            part_lvl, part_lvl_jet, part_lvl_ptr = extract(
+            part_lvl, part_lvl_jet, part_lvl_ptr, part_lvl_pos = extract(
                 exp.data_raw["truth"].x_gen[:max_n_ptr],
                 exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                true_jet=exp.data_raw["truth"].jet_gen[:max_n],
             )
-            model, model_jet, model_ptr = extract(
+            model, model_jet, model_ptr, model_pos = extract(
                 exp.data_raw["samples"].x_gen[:max_n_ptr],
                 exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
                 exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-            )
-
-            part_lvl_jet = fourmomenta_to_jetmomenta(part_lvl_jet)
-            det_lvl_jet = fourmomenta_to_jetmomenta(det_lvl_jet)
-            model_jet = fourmomenta_to_jetmomenta(model_jet)
-            part_lvl_jet = torch.repeat_interleave(
-                part_lvl_jet,
-                part_lvl_ptr.diff(),
-                dim=0,
-            )
-            det_lvl_jet = torch.repeat_interleave(
-                det_lvl_jet,
-                det_lvl_ptr.diff(),
-                dim=0,
-            )
-            model_jet = torch.repeat_interleave(
-                model_jet,
-                model_ptr.diff(),
-                dim=0,
+                true_jet=exp.data_raw["samples"].jet_gen[:max_n],
             )
 
             part_lvl = (
@@ -415,6 +408,7 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
                     part_lvl,
                     jet=part_lvl_jet,
                     ptr=part_lvl_ptr,
+                    pos=part_lvl_pos,
                 )
                 .cpu()
                 .detach()
@@ -424,6 +418,7 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
                     det_lvl,
                     jet=det_lvl_jet,
                     ptr=det_lvl_ptr,
+                    pos=det_lvl_pos,
                 )
                 .cpu()
                 .detach()
@@ -433,6 +428,7 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
                     model,
                     jet=model_jet,
                     ptr=model_ptr,
+                    pos=model_pos,
                 )
                 .cpu()
                 .detach()
