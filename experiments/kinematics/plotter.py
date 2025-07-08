@@ -13,7 +13,7 @@ from experiments.kinematics.plots import (
 from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
 
-N_SAMPLES = 10000
+N_SAMPLES = 100000
 
 
 def plot_losses(exp, filename, model_label):

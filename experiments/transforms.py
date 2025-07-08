@@ -599,22 +599,31 @@ class IndividualNormal(BaseTransform):
     def init_fit(self, x, mask, **kwargs):
         mask = mask.unsqueeze(-1)
         self.mean = (x * mask).sum(dim=0) / mask.sum(dim=0)
-        first_nan = (
-            torch.isnan(self.mean).any(dim=1).nonzero(as_tuple=True)[0][0].item()
-        )
-        start_idx = max(first_nan - 10, 0)
-        self.mean[start_idx:] = torch.mean(
-            self.mean[start_idx:][~torch.isnan(self.mean[start_idx:]).any(dim=-1)],
-            dim=0,
-        )
+        try:
+            first_nan = (
+                torch.isnan(self.mean).any(dim=1).nonzero(as_tuple=True)[0][0].item()
+            )
+            start_idx = max(first_nan - 10, 0)
+            self.mean[first_nan:] = torch.mean(
+                self.mean[start_idx:][~torch.isnan(self.mean[start_idx:]).any(dim=-1)],
+                dim=0,
+            )
+        except IndexError:
+            pass
         self.std = torch.sqrt(
             ((x * mask - self.mean * mask) ** 2).sum(dim=0) / mask.sum(dim=0)
         ) / self.scaling.to(x.device, dtype=x.dtype)
-        first_nan = torch.isnan(self.std).any(dim=1).nonzero(as_tuple=True)[0][0].item()
-        start_idx = max(first_nan - 10, 0)
-        self.std[first_nan:] = torch.mean(
-            self.std[start_idx:][~torch.isnan(self.std[start_idx:]).any(dim=-1)], dim=0
-        )
+        try:
+            first_nan = (
+                torch.isnan(self.std).any(dim=1).nonzero(as_tuple=True)[0][0].item()
+            )
+            start_idx = max(first_nan - 10, 0)
+            self.std[first_nan:] = torch.mean(
+                self.std[start_idx:][~torch.isnan(self.std[start_idx:]).any(dim=-1)],
+                dim=0,
+            )
+        except IndexError:
+            pass
         self.std[..., self.dims_fixed] = 1.0
         self.std[torch.abs(self.std) <= 1e-3] = 1.0
 

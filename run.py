@@ -1,3 +1,4 @@
+import fastjet_contribs  # needed here to import fastjet contribs in the other files
 import hydra
 import torch
 import torch.multiprocessing as mp
