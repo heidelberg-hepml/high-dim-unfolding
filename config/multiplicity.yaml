@@ -5,64 +5,46 @@ use_mlflow: false
 
 data:
  data_dir: data/
- dataset: zplusjets
+ dataset: zplusjet
  length: -1
- split: [0.8, 0.1, 0.1]
+ train_val_test: [0.8, 0.1, 0.1]
+ max_num_particles: null
+ diff: null
+ max_constituents: -1
+ add_pid: false
+ pt_min: null
  units: 1.
- mass: 0.1
- standardize: true
- max_num_particles: 152
- diff: [-53, 78]
- pid_encoding: false
- beam_reference: xyplane
- two_beams: true
- beam_token: true
- add_time_reference: true
- add_xzplane: false
- add_yzplane: false
- add_scalar_features: false
- scalar_features_preprocessing: # following weaver defaults
- - [1.7, 0.7] # log_pt
- - [2.0, 0.7] # log_energy
- - [-4.7, 0.7] # log_pt_rel
- - [-4.7, 0.7] # log_energy_rel
- - [0, 1] # dphi
- - [0, 1] # deta
- - [0.2, 4] # dr
- reinsert_channels: false
+ mass: 0.001
+ pos_encoding_dim: 8
 
 dist: 
  type: GaussianMixture
  n_components: 5
  diff: true
 
-loss:
- type: cross_entropy
- smoothness: 3
-
 train: true
 training:
  iterations: 10000
- batchsize: 128
+ batchsize: 1024
  lr: 1e-3
  validate_every_n_steps: 100000
- force_xformers: false # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
  scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
- batchsize: 128
- save: 10
+ batchsize: 4096
+ save: 0
 
 plot: true
 plotting:
  loss: true
  histogram: true
- distributions: true
- n_distributions: 30
+ distributions: false
+ n_distributions: 0
  diff: true
- corr: true
- components: true
+ corr: false
+ components: false
 
 defaults:
  - model: tr_multiplicity

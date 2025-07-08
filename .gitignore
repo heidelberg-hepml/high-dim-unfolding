@@ -6,6 +6,7 @@
 .pytest_cache/
 .vscode/
 
+notebooks/
 venv/
 data/
 runs/
@@ -13,8 +14,10 @@ mlruns/
 outputs/
 scripts/
 logs/
-notebooks/
 *~
+
+.claude/
+CLAUDE.md
 
 *.png
 *.pdf

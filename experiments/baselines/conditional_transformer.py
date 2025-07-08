@@ -1,19 +1,16 @@
-from functools import partial
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 from einops import rearrange
 from torch import nn
 from torch.utils.checkpoint import checkpoint
+from lgatr.primitives.attention import scaled_dot_product_attention
 
-from gatr.layers import ApplyRotaryPositionalEncoding, ApplyAbsolutePositionalEncoding
-from gatr.primitives.attention import scaled_dot_product_attention
-from experiments.misc import to_nd
+from experiments.utils import to_nd
 
 from experiments.baselines.transformer import (
     BaselineSelfAttention,
     BaselineLayerNorm,
-    BaselineTransformerBlock,
 )
 
 
@@ -25,9 +22,6 @@ class CrossAttention(nn.Module):
         hidden_channels: int,
         out_channels: int,
         num_heads: int,
-        pos_encoding: bool = False,
-        pos_encoding_type: str = "absolute",
-        pos_encoding_base: int = 256,
         multi_query: bool = True,
         dropout_prob: Optional[float] = None,
     ):
@@ -43,30 +37,13 @@ class CrossAttention(nn.Module):
         )
         self.out_linear = nn.Linear(hidden_channels * num_heads, out_channels)
 
-        if pos_encoding:
-            if pos_encoding_type == "absolute":
-                max_seq_len = pos_encoding_base
-                self.q_pos_encoding = ApplyAbsolutePositionalEncoding(
-                    hidden_channels, max_seq_len, seq="q"
-                )
-                self.k_pos_encoding = ApplyAbsolutePositionalEncoding(
-                    hidden_channels, max_seq_len, seq="k"
-                )
-            elif pos_encoding_type == "rotary":
-                pos_encoding_base = pos_encoding_base
-                self.pos_encoding = ApplyRotaryPositionalEncoding(
-                    hidden_channels, item_dim=-2, base=pos_encoding_base
-                )
-        else:
-            self.q_pos_encoding = None
-
         self.dropout = nn.Dropout(dropout_prob) if dropout_prob is not None else None
 
     def forward(
         self,
         q: torch.Tensor,
         kv: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
+        **kwargs: Optional[dict],
     ):
         q = self.q_linear(q)
         k, v = torch.tensor_split(self.kv_linear(kv), 2, dim=-1)
@@ -91,13 +68,8 @@ class CrossAttention(nn.Module):
                 num_heads=self.num_heads,
             )
 
-        # Positional encoding
-        if self.q_pos_encoding is not None:
-            q = self.q_pos_encoding(q, attention_mask)
-            k = self.k_pos_encoding(k, attention_mask)
-
         # Attention layer
-        h = self._attend(q, k, v, attention_mask)
+        h = self._attend(q, k, v, **kwargs)
 
         # Concatenate heads and transform linearly
         h = rearrange(
@@ -112,7 +84,7 @@ class CrossAttention(nn.Module):
         return outputs
 
     @staticmethod
-    def _attend(q, k, v, attention_mask=None, is_causal=False):
+    def _attend(q, k, v, **kwargs):
         """Scaled dot-product attention."""
 
         # Add batch dimension if needed
@@ -126,8 +98,7 @@ class CrossAttention(nn.Module):
             q.contiguous(),
             k.contiguous(),
             v.contiguous(),
-            attn_mask=attention_mask,
-            is_causal=is_causal,
+            **kwargs,
         )
 
         # Return batch dimensions to inputs
@@ -142,9 +113,6 @@ class ConditionalTransformerBlock(nn.Module):
         channels: int,
         condition_channels: int,
         num_heads: int,
-        pos_encoding: bool = False,
-        pos_encoding_type: str = "absolute",
-        pos_encoding_base: int = 4096,
         increase_hidden_channels=1,
         multi_query: bool = True,
         dropout_prob: Optional[float] = None,
@@ -154,17 +122,12 @@ class ConditionalTransformerBlock(nn.Module):
         self.norm = BaselineLayerNorm()
 
         hidden_channels = channels // num_heads * increase_hidden_channels
-        if pos_encoding:
-            hidden_channels = (hidden_channels + 1) // 2 * 2
-            hidden_channels = max(hidden_channels, 16)
 
         self.self_attention = BaselineSelfAttention(
             in_channels=channels,
             out_channels=channels,
             hidden_channels=hidden_channels,
             num_heads=num_heads,
-            pos_encoding=pos_encoding,
-            pos_encoding_base=pos_encoding_base,
             multi_query=multi_query,
             dropout_prob=dropout_prob,
         )
@@ -175,8 +138,6 @@ class ConditionalTransformerBlock(nn.Module):
             hidden_channels=channels,
             out_channels=channels,
             num_heads=num_heads,
-            pos_encoding=pos_encoding,
-            pos_encoding_base=pos_encoding_base,
             multi_query=multi_query,
             dropout_prob=dropout_prob,
         )
@@ -189,18 +150,15 @@ class ConditionalTransformerBlock(nn.Module):
             nn.Dropout(dropout_prob) if dropout_prob is not None else nn.Identity(),
         )
 
-    def forward(self, inputs, condition, attention_mask=None, crossattention_mask=None):
+    def forward(self, inputs, condition, attn_kwargs, crossattn_kwargs):
         # self-attention
         h = self.norm(inputs)
-        inputs = self.self_attention(h, attention_mask=attention_mask) + inputs
+        inputs = self.self_attention(h, **attn_kwargs) + inputs
 
         # cross-attention
         h = self.norm(inputs)
         condition = self.norm(condition)
-        h = (
-            self.cross_attention(h, condition, attention_mask=crossattention_mask)
-            + inputs
-        )
+        h = self.cross_attention(h, condition, **crossattn_kwargs) + inputs
 
         # mlp
         x = self.norm(h)
@@ -216,9 +174,6 @@ class ConditionalTransformer(nn.Module):
         hidden_channels: int,
         num_blocks: int = 4,
         num_heads: int = 8,
-        pos_encoding: bool = False,
-        pos_encoding_type: str = "absolute",
-        pos_encoding_base: int = 4096,
         checkpoint_blocks: bool = False,
         increase_hidden_channels=1,
         multi_query: bool = False,
@@ -234,8 +189,6 @@ class ConditionalTransformer(nn.Module):
                     channels=hidden_channels,
                     condition_channels=hidden_channels,
                     num_heads=num_heads,
-                    pos_encoding=pos_encoding,
-                    pos_encoding_base=pos_encoding_base,
                     increase_hidden_channels=increase_hidden_channels,
                     multi_query=multi_query,
                     dropout_prob=dropout_prob,
@@ -249,8 +202,8 @@ class ConditionalTransformer(nn.Module):
         self,
         x: torch.Tensor,
         processed_condition: torch.Tensor,
-        attention_mask: Optional[torch.Tensor] = None,
-        crossattention_mask: Optional[torch.Tensor] = None,
+        attn_kwargs: Optional[dict] = None,
+        crossattn_kwargs: Optional[dict] = None,
     ) -> torch.Tensor:
 
         x = self.linear_in(x)
@@ -260,15 +213,15 @@ class ConditionalTransformer(nn.Module):
                     block,
                     inputs=x,
                     condition=processed_condition,
-                    attention_mask=attention_mask,
-                    crossattention_mask=crossattention_mask,
+                    attn_kwargs=attn_kwargs,
+                    crossattn_kwargs=crossattn_kwargs,
                 )
             else:
                 x = block(
                     x,
                     processed_condition,
-                    attention_mask=attention_mask,
-                    crossattention_mask=crossattention_mask,
+                    attn_kwargs=attn_kwargs,
+                    crossattn_kwargs=crossattn_kwargs,
                 )
 
         return self.linear_out(x)

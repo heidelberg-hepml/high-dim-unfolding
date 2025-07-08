@@ -2,26 +2,32 @@ import torch
 from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
 
-from gatr.interface import extract_scalar
-from experiments.multiplicity.utils import xformers_sa_mask
-from experiments.logger import LOGGER
+from lgatr.interface import extract_scalar
+from experiments.utils import xformers_mask
+from experiments.embedding import embed_data_into_ga
 
 
 class MultiplicityTransformerWrapper(nn.Module):
-    def __init__(self, net, force_xformers=False):
+    def __init__(self, net):
         super().__init__()
         self.net = net
-        self.force_xformers = force_xformers
+        self.use_xformers = torch.cuda.is_available()
         self.aggregation = MeanAggregation()
 
-    def forward(self, batch, ptr):
-        mask = xformers_sa_mask(ptr, materialize=not self.force_xformers)
-        outputs = self.net(batch.unsqueeze(0), attention_mask=mask)
-        outputs = self.aggregation(outputs, ptr).squeeze(0)
+    def forward(self, batch):
+        input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
+
+        mask = xformers_mask(batch.x_det_batch, materialize=not self.use_xformers)
+
+        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": mask}
+
+        outputs = self.net(input.unsqueeze(0), **attn_kwargs)
+        outputs = self.aggregation(outputs, batch.x_det_batch).squeeze(0)
+
         return outputs
 
 
-class MultiplicityGATrWrapper(nn.Module):
+class MultiplicityLGATrWrapper(nn.Module):
     """
     L-GATr for multiplicity
     """
@@ -29,111 +35,28 @@ class MultiplicityGATrWrapper(nn.Module):
     def __init__(
         self,
         net,
-        mean_aggregation=True,
-        force_xformers=True,
+        GA_config,
     ):
         super().__init__()
         self.net = net
-        self.aggregation = MeanAggregation() if mean_aggregation else None
-        self.force_xformers = force_xformers
+        self.aggregation = MeanAggregation()
+        self.use_xformers = torch.cuda.is_available()
+        self.ga_cfg = GA_config
 
-    def forward(self, embedding):
-        multivector = embedding["mv"].unsqueeze(0)
-        scalars = embedding["s"].unsqueeze(0)
-
-        mask = xformers_sa_mask(embedding["batch"], materialize=not self.force_xformers)
-        multivector_outputs, scalar_outputs = self.net(
-            multivector, scalars=scalars, attention_mask=mask
+    def forward(self, batch):
+        mv, s, batch_idx, _ = embed_data_into_ga(
+            batch.x_det,
+            batch.scalars_det,
+            batch.x_det_ptr,
+            self.ga_cfg,
         )
-        params = self.extract_from_ga(
-            multivector_outputs,
-            scalar_outputs,
-            embedding["batch"],
-        )
+        multivector = mv.unsqueeze(0)
+        scalars = s.unsqueeze(0)
 
-        return params
-
-    def extract_from_ga(self, multivector, scalars, batch_idx):
-        outputs = extract_scalar(multivector)[0, :, :, 0]
+        mask = xformers_mask(batch_idx, materialize=not self.use_xformers)
+        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": mask}
+        multivector_outputs, _ = self.net(multivector, scalars=scalars, **attn_kwargs)
+        outputs = extract_scalar(multivector_outputs)[0, :, :, 0]
         params = self.aggregation(outputs, index=batch_idx)
-        return params
 
-
-#############################
-# For testing purposes only #
-#############################
-
-
-class MultiplicityConditionalTransformerWrapper(nn.Module):
-    def __init__(self, net, force_xformers=False):
-        super().__init__()
-        self.net = net
-        self.force_xformers = force_xformers
-        self.aggregation = MeanAggregation()
-
-    def forward(self, batch, ptr):
-        mask = xformers_sa_mask(ptr, materialize=not self.force_xformers)
-        outputs = self.net(
-            x=batch.unsqueeze(0),
-            condition=batch.unsqueeze(0),
-            attention_mask=mask,
-            attention_mask_condition=mask,
-            crossattention_mask=mask,
-        )
-        outputs = self.aggregation(outputs, ptr).squeeze(0)
-        return outputs
-
-
-class MultiplicityConditionalGATrWrapper(nn.Module):
-    """
-    L-GATr for multiplicity
-    """
-
-    def __init__(
-        self,
-        net,
-        mean_aggregation=True,
-        force_xformers=True,
-    ):
-        super().__init__()
-        self.net = net
-        self.aggregation = MeanAggregation() if mean_aggregation else None
-        self.force_xformers = force_xformers
-
-    def forward(self, embedding):
-        input_multivector = embedding["mv"].unsqueeze(0)
-        input_scalars = embedding["s"].unsqueeze(0)
-        multivectors_condition = embedding["mv"].unsqueeze(0)
-        scalars_condition = embedding["s"].unsqueeze(0)
-
-        LOGGER.info(f"input_multivector : {input_multivector.shape}")
-        LOGGER.info(f"input_scalars : {input_scalars.shape}")
-        LOGGER.info(f"condition_multivector : {multivectors_condition.shape}")
-        LOGGER.info(f"condition_scalars : {scalars_condition.shape}")
-
-        mask = xformers_sa_mask(embedding["batch"], materialize=not self.force_xformers)
-        multivector_outputs, scalar_outputs = self.net(
-            multivectors=input_multivector,
-            multivectors_condition=multivectors_condition,
-            scalars=input_scalars,
-            scalars_condition=scalars_condition,
-            attention_mask=mask,
-            attention_mask_condition=mask,
-            crossattention_mask=mask,
-        )
-        params = self.extract_from_ga(
-            multivector_outputs,
-            scalar_outputs,
-            embedding["batch"],
-            embedding["is_global"],
-        )
-
-        return params
-
-    def extract_from_ga(self, multivector, scalars, batch_idx, is_global):
-        outputs = extract_scalar(multivector)[0, :, :, 0]
-        if self.aggregation is not None:
-            params = self.aggregation(outputs, index=batch_idx)
-        else:
-            raise NotImplementedError
         return params

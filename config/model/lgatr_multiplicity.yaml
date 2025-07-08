@@ -1,0 +1,30 @@
+_target_: experiments.multiplicity.wrappers.MultiplicityLGATrWrapper
+
+GA_config:
+ beam_spurion: xyplane
+ beam_mirror: true
+ add_time_spurion: true
+
+net:
+ _target_: lgatr.nets.LGATr
+
+ in_mv_channels: null
+ out_mv_channels: null
+ hidden_mv_channels: 8
+
+ in_s_channels: null
+ out_s_channels: null
+ hidden_s_channels: 8
+
+ num_blocks: 2
+ dropout_prob: null
+
+ attention:
+  num_heads: 4
+  multi_query: false
+  increase_hidden_channels: 2
+  head_scale: false
+
+defaults:
+ - /base_attention@net.attention
+ - /base_mlp@net.mlp

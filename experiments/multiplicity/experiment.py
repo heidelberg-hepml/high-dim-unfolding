@@ -1,65 +1,50 @@
 import torch
 from torch_geometric.loader import DataLoader
-import energyflow
+from torch.distributions import Categorical
+import numpy as np
 
 import os, time
 from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
-from experiments.multiplicity.dataset import (
-    MultiplicityDataset,
-    load_zplusjet,
-    load_ttbar,
-)
+from experiments.dataset import Dataset, load_dataset
 from experiments.multiplicity.distributions import (
     GammaMixture,
-    CategoricalDistribution,
     GaussianMixture,
     cross_entropy,
-    smooth_cross_entropy,
+    process_params,
 )
 from experiments.multiplicity.plots import plot_mixer
-from experiments.multiplicity.utils import (
-    ensure_angle,
-    jetmomenta_to_fourmomenta,
-    pid_encoding,
-)
-from experiments.multiplicity.embedding import (
-    embed_data_into_ga,
-    compute_scalar_features_from_jetmomenta,
-)
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-from gatr.interface import get_num_spurions
 
-MODEL_TITLE_DICT = {"GATr": "GATr", "Transformer": "Tr"}
+MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
-        if self.cfg.loss.type == "cross_entropy":
-            self.loss = lambda dist, target: cross_entropy(dist, target).mean()
-        elif self.cfg.loss.type == "smooth_cross_entropy":
-            self.loss = lambda dist, target: smooth_cross_entropy(
-                dist, target, self.cfg.data.max_num_particles, self.cfg.loss.smoothness
-            ).mean()
+        self.loss = lambda dist, target: cross_entropy(dist, target).mean()
 
     def init_physics(self):
 
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
 
-            if self.cfg.data.dataset == "zplusjet":
-                self.cfg.data.max_num_particles = 152
-            elif self.cfg.data.dataset == "ttbar":
-                self.cfg.data.max_num_particles = 238
+            max_num_particles, diff, pt_min, _, load_fn = load_dataset(
+                self.cfg.data.dataset
+            )
+
+            self.cfg.data.max_num_particles = max_num_particles
+            self.cfg.data.diff = diff
+            self.cfg.data.pt_min = pt_min
+            self.load_fn = load_fn
 
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
-                if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net.in_channels += 7
+                if self.cfg.data.pos_encoding_dim > 0:
+                    self.cfg.model.net.in_channels += self.cfg.data.pos_encoding_dim
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -67,7 +52,7 @@ class MultiplicityExperiment(BaseExperiment):
                     self.distribution = GaussianMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "Categorical":
-                    self.distribution = CategoricalDistribution
+                    self.distribution = Categorical
                     if self.cfg.dist.diff:
                         self.cfg.model.net.out_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
@@ -76,7 +61,7 @@ class MultiplicityExperiment(BaseExperiment):
                         self.cfg.model.net.out_channels = (
                             self.cfg.data.max_num_particles + 1
                         )
-            elif self.cfg.modelname == "GATr":
+            elif self.cfg.modelname == "LGATr":
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
@@ -84,7 +69,7 @@ class MultiplicityExperiment(BaseExperiment):
                     self.distribution = GaussianMixture
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "Categorical":
-                    self.distribution = CategoricalDistribution
+                    self.distribution = Categorical
                     if self.cfg.dist.diff:
                         self.cfg.model.net.out_mv_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
@@ -96,30 +81,13 @@ class MultiplicityExperiment(BaseExperiment):
 
                 # scalar channels
                 self.cfg.model.net.in_s_channels = 0
-                if self.cfg.data.pid_encoding:
+                if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6
-                if self.cfg.data.add_scalar_features:
-                    self.cfg.model.net.in_s_channels += 7
+                if self.cfg.data.pos_encoding_dim > 0:
+                    self.cfg.model.net.in_s_channels += self.cfg.data.pos_encoding_dim
 
                 # mv channels for beam_reference and time_reference
                 self.cfg.model.net.in_mv_channels = 1
-                if not self.cfg.data.beam_token:
-                    self.cfg.model.net.in_mv_channels += get_num_spurions(
-                        self.cfg.data.beam_reference,
-                        self.cfg.data.add_time_reference,
-                        self.cfg.data.two_beams,
-                        self.cfg.data.add_xzplane,
-                        self.cfg.data.add_yzplane,
-                    )
-
-                # reinsert channels
-                if self.cfg.data.reinsert_channels:
-                    self.cfg.model.net.reinsert_mv_channels = list(
-                        range(self.cfg.model.net.in_mv_channels)
-                    )
-                    self.cfg.model.net.reinsert_s_channels = list(
-                        range(self.cfg.model.net.in_s_channels)
-                    )
 
             else:
                 raise ValueError(f"Model not implemented: {self.cfg.modelname}")
@@ -133,102 +101,101 @@ class MultiplicityExperiment(BaseExperiment):
 
     def _init_data(self, data_path):
 
-        if self.cfg.data.dataset == "zplusjet":
-            data = load_zplusjet(self.cfg.data, self.dtype, data_path)
-        elif self.cfg.data.dataset == "ttbar":
-            data = load_ttbar(self.cfg.data, self.dtype, data_path)
-        else:
-            raise ValueError(f"Dataset not implemented: {self.cfg.data.dataset}")
+        data = self.load_fn(data_path, self.cfg.data, self.dtype)
 
         det_particles = data["det_particles"]
         det_pids = data["det_pids"]
         det_mults = data["det_mults"]
+        gen_particles = data["gen_particles"]
+        gen_pids = data["gen_pids"]
         gen_mults = data["gen_mults"]
 
-        split = self.cfg.data.split
-        size = len(det_mults)
-        train_idx = int(split[0] * size)
-        val_idx = int(split[1] * size)
+        gen_particles /= self.cfg.data.units
+        det_particles /= self.cfg.data.units
 
-        if self.cfg.modelname == "GATr":
-            det_particles = jetmomenta_to_fourmomenta(det_particles)
+        det_jets = det_particles.sum(dim=1, keepdim=True)
+        gen_jets = gen_particles.sum(dim=1, keepdim=True)
 
-        if self.cfg.data.standardize:
-            mask = (
-                torch.arange(det_particles.shape[1])[None, :]
-                < det_mults[:train_idx, None]
-            )
-            flattened_particles = det_particles[:train_idx][mask]
+        size = len(det_particles)
+        split = self.cfg.data.train_val_test
+        train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
-            if self.cfg.modelname == "GATr":
-                # For GATr, same standardization for all components
-                # mean = flattened_particles.mean().unsqueeze(0).expand(1, 4)
-                mean = torch.zeros(1, 4, dtype=self.dtype)
-                std = flattened_particles.std().unsqueeze(0).expand(1, 4)
-            elif self.cfg.modelname == "Transformer":
-                # Otherwise, standardization done separately for each component
-                mean = flattened_particles.mean(dim=0, keepdim=True)
-                mean[..., -1] = 0
-                std = flattened_particles.std(dim=0, keepdim=True)
-                std[..., -1] = 1
-            det_particles = (det_particles - mean) / std
-
-        self.data_train = MultiplicityDataset(self.dtype)
-        self.data_val = MultiplicityDataset(self.dtype)
-        self.data_test = MultiplicityDataset(self.dtype)
-
-        self.data_train.create_data_list(
-            det_particles[:train_idx],
-            det_pids[:train_idx],
-            det_mults[:train_idx],
-            gen_mults[:train_idx],
+        self.train_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
-        self.data_val.create_data_list(
-            det_particles[train_idx : train_idx + val_idx],
-            det_pids[train_idx : train_idx + val_idx],
-            det_mults[train_idx : train_idx + val_idx],
-            gen_mults[train_idx : train_idx + val_idx],
+        self.val_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
-        self.data_test.create_data_list(
-            det_particles[train_idx + val_idx :],
-            det_pids[train_idx + val_idx :],
-            det_mults[train_idx + val_idx :],
-            gen_mults[train_idx + val_idx :],
+        self.test_data = Dataset(
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+        )
+        self.train_data.create_data_list(
+            det_particles=det_particles[:train_idx],
+            det_pids=det_pids[:train_idx],
+            det_mults=det_mults[:train_idx],
+            det_jets=det_jets[:train_idx],
+            gen_particles=gen_particles[:train_idx],
+            gen_pids=gen_pids[:train_idx],
+            gen_mults=gen_mults[:train_idx],
+            gen_jets=gen_jets[:train_idx],
+        )
+        self.val_data.create_data_list(
+            det_particles=det_particles[train_idx:val_idx],
+            det_pids=det_pids[train_idx:val_idx],
+            det_mults=det_mults[train_idx:val_idx],
+            det_jets=det_jets[train_idx:val_idx],
+            gen_particles=gen_particles[train_idx:val_idx],
+            gen_pids=gen_pids[train_idx:val_idx],
+            gen_mults=gen_mults[train_idx:val_idx],
+            gen_jets=gen_jets[train_idx:val_idx],
+        )
+        self.test_data.create_data_list(
+            det_particles=det_particles[val_idx:test_idx],
+            det_pids=det_pids[val_idx:test_idx],
+            det_mults=det_mults[val_idx:test_idx],
+            det_jets=det_jets[val_idx:test_idx],
+            gen_particles=gen_particles[val_idx:test_idx],
+            gen_pids=gen_pids[val_idx:test_idx],
+            gen_mults=gen_mults[val_idx:test_idx],
+            gen_jets=gen_jets[val_idx:test_idx],
         )
 
     def _init_dataloader(self):
         train_sampler = torch.utils.data.DistributedSampler(
-            self.data_train,
+            self.train_data,
             num_replicas=self.world_size,
             rank=self.rank,
             shuffle=True,
         )
         self.train_loader = DataLoader(
-            dataset=self.data_train,
-            batch_size=self.cfg.training.batchsize,
+            dataset=self.train_data,
+            batch_size=self.cfg.training.batchsize // self.world_size,
             sampler=train_sampler,
-        )
-        val_sampler = torch.utils.data.DistributedSampler(
-            self.data_val,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=False,
-        )
-        self.val_loader = DataLoader(
-            dataset=self.data_val,
-            batch_size=self.cfg.evaluation.batchsize,
-            sampler=val_sampler,
+            follow_batch=["x_gen", "x_det"],
         )
         test_sampler = torch.utils.data.DistributedSampler(
-            self.data_test,
+            self.test_data,
             num_replicas=self.world_size,
             rank=self.rank,
             shuffle=False,
         )
         self.test_loader = DataLoader(
-            dataset=self.data_test,
-            batch_size=self.cfg.evaluation.batchsize,
+            dataset=self.test_data,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=test_sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+        val_sampler = torch.utils.data.DistributedSampler(
+            self.val_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+        self.val_loader = DataLoader(
+            dataset=self.val_data,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=val_sampler,
+            follow_batch=["x_gen", "x_det"],
         )
 
         LOGGER.info(
@@ -237,38 +204,34 @@ class MultiplicityExperiment(BaseExperiment):
             f"batch_size={self.cfg.training.batchsize} (training), {self.cfg.evaluation.batchsize} (evaluation)"
         )
 
+    @torch.no_grad()
     def evaluate(self):
-        with torch.no_grad():
-            if self.ema is not None:
-                with self.ema.average_parameters():
-                    self.results_train = self._evaluate_single(
-                        self.train_loader, "train"
-                    )
-                    self.results_val = self._evaluate_single(self.val_loader, "val")
-                    self.results_test = self._evaluate_single(self.test_loader, "test")
-
-                # also evaluate without ema to see the effect
-                self._evaluate_single(self.train_loader, "train_noema")
-                self._evaluate_single(self.val_loader, "val_noema")
-                self._evaluate_single(self.test_loader, "test_noema")
-
-            else:
+        if self.ema is not None:
+            with self.ema.average_parameters():
                 self.results_train = self._evaluate_single(self.train_loader, "train")
                 self.results_val = self._evaluate_single(self.val_loader, "val")
                 self.results_test = self._evaluate_single(self.test_loader, "test")
-            if self.cfg.evaluation.save != 0:
-                tensor_path = os.path.join(
-                    self.cfg.run_dir, f"tensors_{self.cfg.run_idx}"
-                )
-                os.makedirs(tensor_path, exist_ok=True)
-                torch.save(
-                    self.results_test["samples"][: self.cfg.evaluation.save],
-                    f"{tensor_path}/samples.pt",
-                )
-                torch.save(
-                    self.results_test["params"][: self.cfg.evaluation.save],
-                    f"{tensor_path}/params.pt",
-                )
+
+            # also evaluate without ema to see the effect
+            self._evaluate_single(self.train_loader, "train_noema")
+            self._evaluate_single(self.val_loader, "val_noema")
+            self._evaluate_single(self.test_loader, "test_noema")
+
+        else:
+            self.results_train = self._evaluate_single(self.train_loader, "train")
+            self.results_val = self._evaluate_single(self.val_loader, "val")
+            self.results_test = self._evaluate_single(self.test_loader, "test")
+        if self.cfg.evaluation.save != 0:
+            tensor_path = os.path.join(self.cfg.run_dir, f"tensors_{self.cfg.run_idx}")
+            os.makedirs(tensor_path, exist_ok=True)
+            torch.save(
+                self.results_test["samples"][: self.cfg.evaluation.save],
+                f"{tensor_path}/samples.pt",
+            )
+            torch.save(
+                self.results_test["params"][: self.cfg.evaluation.save],
+                f"{tensor_path}/params.pt",
+            )
 
     def _evaluate_single(self, loader, title, step=None):
         LOGGER.info(
@@ -315,66 +278,46 @@ class MultiplicityExperiment(BaseExperiment):
         plot_mixer(self.cfg, plot_path, plot_dict)
 
     def _batch_loss(self, batch):
-        predicted_dist, label = self._get_predicted_dist_and_label(batch)
-        params = predicted_dist.params.cpu().detach()
+        batch = batch.to(self.device)
+
+        output = self.model(batch)
+        params = process_params(output)
+        predicted_dist = self.distribution(params)  # batch of mixtures
+
+        label = batch.x_gen_ptr.diff()
+
         if self.cfg.dist.diff:
             if self.cfg.dist.type == "Categorical":
                 # Rescale to have only positive indices
                 loss = self.loss(
-                    predicted_dist, label - batch.det_mult - self.cfg.data.diff[0]
+                    predicted_dist,
+                    label - batch.x_det_ptr.diff() - self.cfg.data.diff[0],
                 )
                 # Rescale back to original range
                 sample = (
-                    (batch.det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
+                    (
+                        batch.x_det_ptr.diff()
+                        + predicted_dist.sample()
+                        + self.cfg.data.diff[0]
+                    )
                     .cpu()
                     .detach()
                 )
             else:
-                loss = self.loss(predicted_dist, label - batch.det_mult)
-                sample = (batch.det_mult + predicted_dist.sample()).cpu().detach()
+                loss = self.loss(predicted_dist, label - batch.x_det_ptr.diff())
+                sample = (
+                    (batch.x_det_ptr.diff() + predicted_dist.sample()).cpu().detach()
+                )
         else:
             loss = self.loss(predicted_dist, label)
             sample = predicted_dist.sample().cpu().detach()
         assert torch.isfinite(loss).all()
-        det_mult = batch.det_mult.cpu()
+        det_mult = batch.x_det_ptr.diff().cpu()
         metrics = {
-            "params": params,
+            "params": params.cpu().detach(),
             "samples": torch.stack([sample, label.cpu(), det_mult], dim=-1),
         }
         return loss, metrics
-
-    def _get_predicted_dist_and_label(self, batch, min_arg=-10.0, max_arg=5.0):
-        batch = batch.to(self.device)
-        if self.cfg.modelname == "Transformer":
-            if self.cfg.data.add_scalar_features:
-                scalar_features = compute_scalar_features_from_jetmomenta(
-                    batch.x, batch.ptr, self.cfg.data
-                )
-                scalars = torch.cat(
-                    (batch.scalars, *scalar_features),
-                    dim=-1,
-                )
-            else:
-                scalars = batch.scalars
-            input = torch.cat([batch.x, scalars], dim=-1)
-            output = self.model(input, batch.batch)
-        elif self.cfg.modelname == "GATr":
-            embedding = embed_data_into_ga(
-                batch.x,
-                batch.scalars,
-                batch.ptr,
-                self.cfg.data,
-            )
-            output = self.model(embedding)
-
-        params = torch.clamp(output, min=min_arg, max=max_arg)  # avoid inf and 0
-        params = torch.exp(params)  # ensure positive params
-        if self.distribution == "Categorical":
-            params = torch.nn.functional.softmax(params, dim=-1)
-
-        predicted_dist = self.distribution(params)  # batch of mixtures
-
-        return predicted_dist, batch.label
 
     def _init_metrics(self):
         return {"params": [], "samples": []}

@@ -1,24 +1,14 @@
+import fastjet_contribs  # needed here to import fastjet contribs in the other files
 import hydra
 import torch
-import fastjet_contribs
 import torch.multiprocessing as mp
 import torch.distributed as dist
-from experiments.amplitudes.experiment import AmplitudeExperiment
-from experiments.tagging.experiment import TopTaggingExperiment, QGTaggingExperiment
-from experiments.eventgen.processes import (
-    ttbarExperiment,
-    zmumuExperiment,
-    ttbarOnshellExperiment,
-)
-from experiments.tagging.jetclassexperiment import JetClassTaggingExperiment
-from experiments.tagging.finetuneexperiment import TopTaggingFineTuneExperiment
+
 from experiments.multiplicity.experiment import MultiplicityExperiment
-from experiments.unfolding.experiment import UnfoldingExperiment
-
-import torch
+from experiments.kinematics.experiment import KinematicsExperiment
 
 
-@hydra.main(config_path="config", config_name="unfolding", version_base=None)
+@hydra.main(config_path="config", config_name="constituents", version_base=None)
 def main(cfg):
     world_size = torch.cuda.device_count() if torch.cuda.is_available() else 1
 
@@ -42,26 +32,10 @@ def ddp_worker(rank, cfg, world_size):
         )
         torch.cuda.set_device(rank)
 
-    if cfg.exp_type == "amplitudes":
-        constructor = AmplitudeExperiment
-    elif cfg.exp_type == "toptagging":
-        constructor = TopTaggingExperiment
-    elif cfg.exp_type == "qgtagging":
-        constructor = QGTaggingExperiment
-    elif cfg.exp_type == "jctagging":
-        constructor = JetClassTaggingExperiment
-    elif cfg.exp_type == "toptaggingft":
-        constructor = TopTaggingFineTuneExperiment
-    elif cfg.exp_type == "ttbar":
-        constructor = ttbarExperiment
-    elif cfg.exp_type == "ttbar-onshell":
-        constructor = ttbarOnshellExperiment
-    elif cfg.exp_type == "zmumu":
-        constructor = zmumuExperiment
-    elif cfg.exp_type == "multiplicity":
+    if cfg.exp_type == "multiplicity":
         constructor = MultiplicityExperiment
-    elif cfg.exp_type == "unfolding":
-        constructor = UnfoldingExperiment
+    elif cfg.exp_type == "constituents" or cfg.exp_type == "jets":
+        constructor = KinematicsExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 
