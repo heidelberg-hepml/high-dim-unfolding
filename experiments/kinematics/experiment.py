@@ -118,6 +118,12 @@ class KinematicsExperiment(BaseExperiment):
         self.define_process_specifics()
 
     def init_data(self):
+        if self.cfg.evaluation.load_samples:
+            # if we load samples, we do not need to initialize the data
+            self.train_data = None
+            self.val_data = None
+            self.test_data = None
+            return
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
@@ -251,11 +257,11 @@ class KinematicsExperiment(BaseExperiment):
         )
 
     def _init_dataloader(self):
-        # if self.cfg.evaluation.load_samples:
-        #     self.train_loader = None
-        #     self.val_loader = None
-        #     self.test_loader = None
-        #     return
+        if self.cfg.evaluation.load_samples:
+            self.train_loader = None
+            self.val_loader = None
+            self.test_loader = None
+            return
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
             num_replicas=self.world_size,

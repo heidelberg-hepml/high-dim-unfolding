@@ -571,20 +571,32 @@ def plot_observables(
             max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            det_lvl = extract(
-                exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+            det_lvl = (
+                extract(
+                    exp.data_raw["samples"].x_det[:det_max_n_ptr],
+                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                )
+                .cpu()
+                .detach()
             )
-            part_lvl = extract(
-                exp.data_raw["truth"].x_gen[:max_n_ptr],
-                exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
-            )[: len(det_lvl)]
-            model = extract(
-                exp.data_raw["samples"].x_gen[:max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+            part_lvl = (
+                extract(
+                    exp.data_raw["truth"].x_gen[:max_n_ptr],
+                    exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                )
+                .cpu()
+                .detach()
+            )
+            model = (
+                extract(
+                    exp.data_raw["samples"].x_gen[:max_n_ptr],
+                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                )
+                .cpu()
+                .detach()
             )
 
             xrange = np.array(
