@@ -48,8 +48,8 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.training.iterations + 1
                 )
                 self.cfg.data.length = 10000
-                self.cfg.training.iterations = 1000
-                self.cfg.data.max_constituents = -1
+                self.cfg.training.iterations = 100
+                self.cfg.data.max_constituents = 5
                 self.cfg.plotting.jetscaled = True
 
             max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
@@ -449,10 +449,12 @@ class KinematicsExperiment(BaseExperiment):
         t0 = time.time()
         self.data_raw = {}
         self.data_raw["samples"] = torch.load(
-            os.path.join(path, "samples.pt"), weights_only=False
+            os.path.join(path, "samples.pt"),
+            weights_only=False,
+            map_location=self.device,
         )
         self.data_raw["truth"] = torch.load(
-            os.path.join(path, "truth.pt"), weights_only=False
+            os.path.join(path, "truth.pt"), weights_only=False, map_location=self.device
         )
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
 

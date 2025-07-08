@@ -182,17 +182,25 @@ class ConditionalLGATrCFM(EventCFM):
     ):
         assert self.coordinates is not None
 
-        jet_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
+        constituents_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
         if self.cfm.add_jet:
-            jet_mask[batch.x_gen_ptr[:-1]] = False
+            constituents_mask[batch.x_gen_ptr[:-1]] = False
+            ptr = batch.x_gen_ptr - torch.arange(
+                batch.x_gen_ptr.shape[0], device=batch.x_gen_ptr.device
+            )
+        else:
+            ptr = batch.x_gen_ptr
         gen_jets = torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0)
 
         fourmomenta = torch.zeros_like(xt)
-        fourmomenta[jet_mask] = self.coordinates.x_to_fourmomenta(
-            xt[jet_mask],
-            jet=gen_jets[jet_mask],
+        fourmomenta[constituents_mask] = self.coordinates.x_to_fourmomenta(
+            xt[constituents_mask],
+            jet=gen_jets[constituents_mask],
+            ptr=ptr,
         )
-        fourmomenta[~jet_mask] = jetmomenta_to_fourmomenta(xt[~jet_mask])
+        fourmomenta[~constituents_mask] = jetmomenta_to_fourmomenta(
+            xt[~constituents_mask]
+        )
 
         condition_mv, condition_s = condition
         if self_condition is not None:
@@ -227,15 +235,12 @@ class ConditionalLGATrCFM(EventCFM):
         v_fourmomenta = extract_vector(mv_outputs[spurions_mask]).squeeze(dim=-2)
         v_s = s[spurions_mask]
 
-        LOGGER.info(
-            f"Velocity output shape: {v_fourmomenta.shape}, {v_fourmomenta[jet_mask].shape}"
-        )
-
         v_straight = torch.zeros_like(v_fourmomenta)
-        v_straight[jet_mask] = self.coordinates.velocity_fourmomenta_to_x(
-            v_fourmomenta[jet_mask],
-            fourmomenta[jet_mask],
-            jet=gen_jets[jet_mask],
+        v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(
+            v_fourmomenta[constituents_mask],
+            fourmomenta[constituents_mask],
+            jet=gen_jets[constituents_mask],
+            ptr=ptr,
         )[0]
 
         # Overwrite transformed velocities with scalar outputs

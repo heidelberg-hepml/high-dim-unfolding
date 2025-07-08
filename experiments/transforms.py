@@ -647,7 +647,7 @@ class IndividualNormal(BaseTransform):
             ) - torch.repeat_interleave(ptr[:-1], ptr.diff(), dim=0)
         return xunit * self.std.to(xunit.device)[idx] + self.mean.to(xunit.device)[idx]
 
-    def _jac_forward(self, x, xunit, ptr, pos, **kwargs):
+    def _jac_forward(self, x, xunit, ptr, pos=None, **kwargs):
         if pos is not None:
             assert pos.shape[0] == x.shape[0]
             idx = pos
