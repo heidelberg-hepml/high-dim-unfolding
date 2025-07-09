@@ -1,4 +1,8 @@
-import fastjet_contribs  # needed here to import fastjet contribs in the other files
+try:
+    import fastjet_contribs  # needed here to import fastjet contribs in the other files
+except ImportError:
+    print("fastjet_contribs not found, skipping import")
+    fastjet_contribs = None
 import hydra
 import torch
 import torch.multiprocessing as mp

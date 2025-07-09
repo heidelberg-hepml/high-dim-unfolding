@@ -141,9 +141,11 @@ def load_zplusjet(data_path, cfg, dtype):
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
     return {
+        "det_jets": det_jets,
         "det_particles": det_particles,
         "det_mults": det_mults,
         "det_pids": det_pids,
+        "gen_jets": gen_jets,
         "gen_particles": gen_particles,
         "gen_mults": gen_mults,
         "gen_pids": gen_pids,
