@@ -27,7 +27,6 @@ from experiments.kinematics.observables import (
     compute_zg,
     jet_mass,
 )
-from experiments.kinematics.plots import plot_kinematics
 
 
 class KinematicsExperiment(BaseExperiment):
@@ -205,21 +204,6 @@ class KinematicsExperiment(BaseExperiment):
             ),
         )
 
-        plot_kinematics(
-            self.cfg.run_dir,
-            det_jets.cpu().detach(),
-            gen_jets.cpu().detach(),
-            filename="pre_jets.pdf",
-            sqrt=True,
-        )
-
-        plot_kinematics(
-            self.cfg.run_dir,
-            det_particles[det_mask].cpu().detach(),
-            gen_particles[gen_mask].cpu().detach(),
-            filename="pre_kinematics.pdf",
-        )
-
         self.train_data = Dataset(
             self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
@@ -380,23 +364,6 @@ class KinematicsExperiment(BaseExperiment):
             assert torch.max(torch.abs(sample_gen_jets - batch_gen_jets)) < 1e-5
             assert torch.max(torch.abs(sample_det_jets - batch_det_jets)) < 1e-5
 
-            if i == 0:
-                plot_kinematics(
-                    self.cfg.run_dir,
-                    sample_batch.x_det.cpu().detach(),
-                    batch.x_gen.cpu().detach(),
-                    sample_batch.x_gen.cpu().detach(),
-                    "post_kinematics.pdf",
-                )
-                plot_kinematics(
-                    self.cfg.run_dir,
-                    sample_batch.jet_det.cpu().detach(),
-                    batch.jet_gen.cpu().detach(),
-                    sample_batch.jet_gen.cpu().detach(),
-                    "post_true_jets.pdf",
-                    sqrt=True,
-                )
-
             sample_batch.x_det = fix_mass(
                 self.model.condition_coordinates.x_to_fourmomenta(
                     sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
@@ -417,43 +384,6 @@ class KinematicsExperiment(BaseExperiment):
                     batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
                 )
             )
-
-            if i == 0:
-                plot_kinematics(
-                    self.cfg.run_dir,
-                    fourmomenta_to_jetmomenta(
-                        scatter(
-                            sample_batch.x_det,
-                            dim=0,
-                            index=sample_batch.x_det_batch,
-                            reduce="sum",
-                        )
-                    )
-                    .cpu()
-                    .detach(),
-                    fourmomenta_to_jetmomenta(
-                        scatter(
-                            batch.x_gen,
-                            dim=0,
-                            index=batch.x_gen_batch,
-                            reduce="sum",
-                        )
-                    )
-                    .cpu()
-                    .detach(),
-                    fourmomenta_to_jetmomenta(
-                        scatter(
-                            sample_batch.x_gen,
-                            dim=0,
-                            index=sample_batch.x_gen_batch,
-                            reduce="sum",
-                        )
-                    )
-                    .cpu()
-                    .detach(),
-                    "post_jets.pdf",
-                    sqrt=True,
-                )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

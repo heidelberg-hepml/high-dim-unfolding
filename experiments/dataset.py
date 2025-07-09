@@ -137,6 +137,9 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., 3] = cfg.mass**2
     gen_particles[..., 3] = cfg.mass**2
 
+    det_jets[..., 3] = det_jets[..., 3] ** 2
+    gen_jets[..., 3] = gen_jets[..., 3] ** 2
+
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
@@ -211,6 +214,9 @@ def load_ttbar(data_path, cfg, dtype):
 
     det_particles[..., 3] = cfg.mass**2
     gen_particles[..., 3] = cfg.mass**2
+
+    det_jets[..., 3] = det_jets[..., 3] ** 2
+    gen_jets[..., 3] = gen_jets[..., 3] ** 2
 
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
