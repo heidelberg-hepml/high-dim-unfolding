@@ -2,6 +2,7 @@ import numpy as np
 import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
+from torch_geometric.utils import scatter
 
 import os, time
 from omegaconf import open_dict
@@ -9,7 +10,7 @@ from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import Dataset, load_dataset
-
+from experiments.utils import fix_mass
 from experiments.coordinates import fourmomenta_to_jetmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.logger import LOGGER
@@ -49,7 +50,7 @@ class KinematicsExperiment(BaseExperiment):
                 )
                 self.cfg.data.length = 10000
                 self.cfg.training.iterations = 100
-                self.cfg.data.max_constituents = 5
+                self.cfg.data.max_constituents = -1
                 self.cfg.plotting.jetscaled = True
 
             max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
@@ -145,11 +146,11 @@ class KinematicsExperiment(BaseExperiment):
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
-        gen_particles /= self.cfg.data.units
-        det_particles /= self.cfg.data.units
+        # gen_particles /= self.cfg.data.units
+        # det_particles /= self.cfg.data.units
 
-        det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
-        gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
+        det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
+        gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
 
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
@@ -206,6 +207,20 @@ class KinematicsExperiment(BaseExperiment):
             ptr=torch.cumsum(
                 torch.cat([torch.zeros(1, dtype=torch.int64), gen_mults], dim=0), dim=0
             ),
+        )
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            data["det_jets"].cpu().detach(),
+            data["gen_jets"].cpu().detach(),
+            filename="true_jets.pdf",
+        )
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_jets.cpu().detach(),
+            gen_jets.cpu().detach(),
+            filename="pre_jets.pdf",
         )
 
         plot_kinematics(
@@ -383,31 +398,79 @@ class KinematicsExperiment(BaseExperiment):
                     sample_batch.x_gen.cpu().detach(),
                     "post_kinematics.pdf",
                 )
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    sample_batch.jet_det.cpu().detach(),
+                    batch.jet_gen.cpu().detach(),
+                    sample_batch.jet_gen.cpu().detach(),
+                    "post_true_jets.pdf",
+                    sqrt=True,
+                )
 
-            sample_batch.x_det = (
+            sample_batch.x_det = fix_mass(
                 self.model.condition_coordinates.x_to_fourmomenta(
                     sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
                 )
                 * self.cfg.data.units
             )
-            sample_batch.x_gen = (
+            sample_batch.x_gen = fix_mass(
                 self.model.coordinates.x_to_fourmomenta(
                     sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
                 )
                 * self.cfg.data.units
             )
-            batch.x_det = (
+            batch.x_det = fix_mass(
                 self.model.condition_coordinates.x_to_fourmomenta(
                     batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
                 )
                 * self.cfg.data.units
             )
-            batch.x_gen = (
+            batch.x_gen = fix_mass(
                 self.model.coordinates.x_to_fourmomenta(
                     batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
                 )
                 * self.cfg.data.units
             )
+
+            if i == 0:
+                LOGGER.info(
+                    f"sample batch: {sample_batch.x_gen.shape}, {sample_batch.x_gen_batch.shape}"
+                )
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    fourmomenta_to_jetmomenta(
+                        scatter(
+                            sample_batch.x_det,
+                            dim=0,
+                            index=sample_batch.x_det_batch,
+                            reduce="sum",
+                        )
+                    )
+                    .cpu()
+                    .detach(),
+                    fourmomenta_to_jetmomenta(
+                        scatter(
+                            batch.x_gen,
+                            dim=0,
+                            index=batch.x_gen_batch,
+                            reduce="sum",
+                        )
+                    )
+                    .cpu()
+                    .detach(),
+                    fourmomenta_to_jetmomenta(
+                        scatter(
+                            sample_batch.x_gen,
+                            dim=0,
+                            index=sample_batch.x_gen_batch,
+                            reduce="sum",
+                        )
+                    )
+                    .cpu()
+                    .detach(),
+                    "post_jets.pdf",
+                    sqrt=True,
+                )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

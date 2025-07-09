@@ -221,9 +221,9 @@ def flatten_dict(d, parent_key="", sep="."):
     return dict(items)
 
 
-def remove_mass(constituents):
+def fix_mass(constituents, mass=0.1):
     new_constituents = constituents.clone()
     new_constituents[..., 0] = torch.sqrt(
-        torch.sum(new_constituents[..., 1:] ** 2, dim=-1)
+        torch.sum(new_constituents[..., 1:] ** 2 + mass**2, dim=-1)
     )
     return new_constituents

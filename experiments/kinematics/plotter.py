@@ -10,7 +10,7 @@ from experiments.kinematics.plots import (
     plot_roc,
     plot_2d_histogram,
 )
-from experiments.utils import get_range, remove_mass
+from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
 
 N_SAMPLES = 100000
@@ -570,9 +570,9 @@ def plot_observables(
     det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
     part_batch_idx = exp.data_raw["truth"].x_gen_batch[:max_n_ptr]
     det_batch_idx = exp.data_raw["samples"].x_det_batch[:det_max_n_ptr]
-    det_consts = remove_mass(exp.data_raw["samples"].x_det[:det_max_n_ptr])
-    part_consts = remove_mass(exp.data_raw["truth"].x_gen[:max_n_ptr])
-    model_consts = remove_mass(exp.data_raw["samples"].x_gen[:max_n_ptr])
+    det_consts = exp.data_raw["samples"].x_det[:det_max_n_ptr]
+    part_consts = exp.data_raw["truth"].x_gen[:max_n_ptr]
+    model_consts = exp.data_raw["samples"].x_gen[:max_n_ptr]
 
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
@@ -617,6 +617,12 @@ def plot_observables(
 
             if name == "z_g":
                 xrange[0] = 0.0
+            if "phi" in name or "eta" in name:
+                xrange[0] = -0.1
+                xrange[1] = 0.1
+            if "Delta R" in name:
+                xrange[0] = 0.0
+                xrange[1] = 0.15
             xlabel = name
             logy = False
 

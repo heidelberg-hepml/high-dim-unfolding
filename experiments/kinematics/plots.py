@@ -394,7 +394,17 @@ def simple_histogram(
     plt.close()
 
 
-def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
+def plot_kinematics(
+    path, true_reco, true_gen, true_model=None, filename="kinematics.pdf", sqrt=False
+):
+    reco = true_reco.clone().detach()
+    gen = true_gen.clone().detach()
+    model = true_model.clone().detach() if true_model is not None else None
+    if sqrt:
+        reco[..., 3] = np.sqrt(reco[..., 3])
+        gen[..., 3] = np.sqrt(gen[..., 3])
+        if model is not None:
+            model[..., 3] = np.sqrt(model[..., 3])
     with PdfPages(path + "/" + filename) as pdf:
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
         for i, ax in enumerate(axs.flatten()):
