@@ -110,9 +110,6 @@ class MultiplicityExperiment(BaseExperiment):
         gen_pids = data["gen_pids"]
         gen_mults = data["gen_mults"]
 
-        gen_particles /= self.cfg.data.units
-        det_particles /= self.cfg.data.units
-
         det_jets = det_particles.sum(dim=1, keepdim=True)
         gen_jets = gen_particles.sum(dim=1, keepdim=True)
 

@@ -153,10 +153,6 @@ def _init_data(self, data_path):
 **Location**: `experiments/kinematics/experiment.py:131-135`
 
 ```python
-# Scale by units (typically units=1.0, so no change)
-gen_particles /= self.cfg.data.units  # [GeV] scaling
-det_particles /= self.cfg.data.units
-
 # Compute jet momenta from particle sums
 det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))  # [N_events, 4]
 gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
@@ -486,12 +482,12 @@ def _sample_events(self, loader):
         sample_batch.x_gen = (
             self.model.coordinates.x_to_fourmomenta(
                 sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
-            ) * self.cfg.data.units
+            )
         )
         batch.x_gen = (
             self.model.coordinates.x_to_fourmomenta(
                 batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr  # FIXED: Use correct jets
-            ) * self.cfg.data.units
+            )
         )
         
         samples.extend(sample_batch.detach().to_data_list())

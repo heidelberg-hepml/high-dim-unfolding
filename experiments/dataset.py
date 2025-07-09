@@ -220,9 +220,6 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
-    det_jets = jetmomenta_to_fourmomenta(det_jets)
-    gen_jets = jetmomenta_to_fourmomenta(gen_jets)
-
     return {
         "det_particles": det_particles,
         "det_jets": det_jets,
