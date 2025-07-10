@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-from lgatr.interface import extract_vector
+from lgatr.interface import extract_vector, embed_vector
 
 from experiments.utils import xformers_mask
 from experiments.kinematics.cfm import EventCFM
@@ -210,12 +210,16 @@ class ConditionalLGATrCFM(EventCFM):
         else:
             scalars = torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1)
 
-        mv, s, _, spurions_mask = embed_data_into_ga(
-            fourmomenta,
-            scalars,
-            batch.x_gen_ptr,
-            self.ga_cfg,
-        )
+        # mv, s, _, spurions_mask = embed_data_into_ga(
+        #     fourmomenta,
+        #     scalars,
+        #     batch.x_gen_ptr,
+        #     self.ga_cfg,
+        # )
+
+        mv = embed_vector(fourmomenta).unsqueeze(-2)
+        s = scalars
+        spurions_mask = torch.ones(mv.shape[0], dtype=torch.bool, device=mv.device)
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),

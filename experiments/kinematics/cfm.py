@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 from torchdiffeq import odeint
+from torch_geometric.utils import scatter
 from scipy.optimize import linear_sum_assignment
 
 from experiments.utils import GaussianFourierProjection
@@ -187,6 +188,31 @@ class CFM(nn.Module):
             ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
         else:
             loss = distance
+
+        if self.cfm.add_mass:
+            gen_jets = torch.repeat_interleave(
+                batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
+            )
+
+            def get_mass(x, ptr):
+                y = self.coordinates.x_to_fourmomenta(x, ptr=ptr, jet=gen_jets)
+                new_jets = scatter(y, batch.x_gen_batch, dim=0, reduce="sum")
+                jet_mass = new_jets[..., 0] ** 2 - new_jets[..., 1:].sum(dim=-1)
+                jet_mass = torch.clamp(jet_mass, min=0.0).sqrt()
+                return jet_mass
+
+            true_v_mass = get_mass(x1[constituents_mask], batch.x_gen_ptr) - get_mass(
+                x0[constituents_mask], batch.x_gen_ptr
+            )
+            xt.requires_grad_(True)
+            deriv = torch.autograd.grad(
+                outputs=get_mass(xt, batch.x_gen_ptr).sum(),
+                inputs=xt,
+                retain_graph=True,
+            )[0]
+            pred_v_mass = torch.einsum("ij,ij->i", deriv, vp)
+            pred_v_mass = scatter(pred_v_mass, batch.x_gen_batch, dim=0, reduce="sum")
+            loss += 0.05 * ((pred_v_mass - true_v_mass) ** 2).mean()
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
         return loss, distance_particlewise

@@ -44,13 +44,14 @@ class KinematicsExperiment(BaseExperiment):
             if self.cfg.evaluation.overfit:
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.load_samples = False
+                self.cfg.training.iterations = 1000
                 self.cfg.training.validate_every_n_steps = (
                     self.cfg.training.iterations + 1
                 )
                 self.cfg.data.length = 10000
-                self.cfg.training.iterations = 100
                 self.cfg.data.max_constituents = -1
                 self.cfg.plotting.jetscaled = True
+                self.cfg.evaluation.n_batches = 1
 
             max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
                 self.cfg.data.dataset

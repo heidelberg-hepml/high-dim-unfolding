@@ -11,7 +11,6 @@ from experiments.utils import (
     get_eta,
     ensure_angle,
 )
-from experiments.logger import LOGGER
 
 
 class BaseTransform(nn.Module):
@@ -506,7 +505,7 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _jac_forward(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = jet[:, 0]
+        jet_pt = jet[:, 0].to(dtype=ptphietam2.dtype, device=ptphietam2.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
@@ -519,7 +518,7 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
     def _jac_inverse(self, ptphietam2, y, jet, **kwargs):
 
-        jet_pt = jet[:, 0]
+        jet_pt = jet[:, 0].to(dtype=ptphietam2.dtype, device=ptphietam2.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
@@ -531,7 +530,7 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
     def _detjac_forward(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = jet[:, 0]
+        jet_pt = jet[:, 0].to(dtype=ptphietam2.dtype, device=ptphietam2.device)
         return 1 / jet_pt
 
 

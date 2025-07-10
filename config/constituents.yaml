@@ -18,7 +18,7 @@ data:
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
- coordinates: StandardLogPtPhiEtaLogM2
+ coordinates: StandardJetScaledLogPtPhiEtaLogM2
  geometry:
   type: simple
   periodic: true
@@ -26,7 +26,8 @@ cfm:
  masked_dims: []
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
- add_jet: false
+ add_jet: true
+ add_mass: false
  scaling: [1.0, 1.0, 1.0, 1.0]
  ot: false
 
