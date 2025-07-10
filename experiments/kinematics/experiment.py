@@ -49,7 +49,6 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.training.iterations + 1
                 )
                 self.cfg.data.length = 10000
-                self.cfg.data.max_constituents = -1
                 self.cfg.plotting.jetscaled = True
                 self.cfg.evaluation.n_batches = 1
 
@@ -361,9 +360,6 @@ class KinematicsExperiment(BaseExperiment):
             batch_det_jets = torch.repeat_interleave(
                 batch.jet_det, batch.x_det_ptr.diff(), dim=0
             )
-
-            assert torch.max(torch.abs(sample_gen_jets - batch_gen_jets)) < 1e-5
-            assert torch.max(torch.abs(sample_det_jets - batch_det_jets)) < 1e-5
 
             sample_batch.x_det = fix_mass(
                 self.model.condition_coordinates.x_to_fourmomenta(

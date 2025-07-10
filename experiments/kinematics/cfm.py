@@ -4,7 +4,7 @@ from torchdiffeq import odeint
 from torch_geometric.utils import scatter
 from scipy.optimize import linear_sum_assignment
 
-from experiments.utils import GaussianFourierProjection
+from experiments.utils import GaussianFourierProjection, fix_mass
 import experiments.coordinates as c
 from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.baselines import custom_rk4
@@ -197,22 +197,36 @@ class CFM(nn.Module):
             def get_mass(x, ptr):
                 y = self.coordinates.x_to_fourmomenta(x, ptr=ptr, jet=gen_jets)
                 new_jets = scatter(y, batch.x_gen_batch, dim=0, reduce="sum")
-                jet_mass = new_jets[..., 0] ** 2 - new_jets[..., 1:].sum(dim=-1)
+                jet_mass = new_jets[..., 0] ** 2 - (new_jets[..., 1:] ** 2).sum(dim=-1)
                 jet_mass = torch.clamp(jet_mass, min=0.0).sqrt()
                 return jet_mass
 
             true_v_mass = get_mass(x1[constituents_mask], batch.x_gen_ptr) - get_mass(
                 x0[constituents_mask], batch.x_gen_ptr
             )
-            xt.requires_grad_(True)
+            x = fix_mass(xt[constituents_mask])
+            x.requires_grad_(True)
             deriv = torch.autograd.grad(
-                outputs=get_mass(xt, batch.x_gen_ptr).sum(),
-                inputs=xt,
+                outputs=get_mass(x, batch.x_gen_ptr).sum(),
+                inputs=x,
                 retain_graph=True,
             )[0]
             pred_v_mass = torch.einsum("ij,ij->i", deriv, vp)
             pred_v_mass = scatter(pred_v_mass, batch.x_gen_batch, dim=0, reduce="sum")
-            loss += 0.05 * ((pred_v_mass - true_v_mass) ** 2).mean()
+            extra_loss = ((pred_v_mass - true_v_mass) ** 2).mean()
+            LOGGER.info(f"Mass loss: {extra_loss.item():.4f}, loss: {loss.item():.4f}")
+            LOGGER.info(
+                f"mass velocity: {pred_v_mass.mean().item():.4f}, "
+                f"true mass velocity: {true_v_mass.mean().item():.4f}"
+            )
+            LOGGER.info(
+                f"True mass: {get_mass(x1[constituents_mask], batch.x_gen_ptr).mean().item():.4f}"
+            )
+            LOGGER.info(
+                f"Base mass: {get_mass(x0[constituents_mask], batch.x_gen_ptr).mean().item():.4f}"
+            )
+            LOGGER.info(f"xt mass: {get_mass(x, batch.x_gen_ptr).mean().item():.4f}")
+            loss = loss + 1e-6 * extra_loss
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
         return loss, distance_particlewise
