@@ -201,9 +201,9 @@ class CFM(nn.Module):
                 jet_mass = torch.clamp(jet_mass, min=0.0).sqrt()
                 return jet_mass
 
-            true_v_mass = get_mass(x1[constituents_mask], batch.x_gen_ptr) - get_mass(
-                x0[constituents_mask], batch.x_gen_ptr
-            )
+            true_v_mass = get_mass(
+                fix_mass(x1[constituents_mask]), batch.x_gen_ptr
+            ) - get_mass(fix_mass(x0[constituents_mask]), batch.x_gen_ptr)
             x = fix_mass(xt[constituents_mask])
             x.requires_grad_(True)
             deriv = torch.autograd.grad(
@@ -220,10 +220,10 @@ class CFM(nn.Module):
                 f"true mass velocity: {true_v_mass.mean().item():.4f}"
             )
             LOGGER.info(
-                f"True mass: {get_mass(x1[constituents_mask], batch.x_gen_ptr).mean().item():.4f}"
+                f"True mass: {get_mass(fix_mass(x1[constituents_mask]), batch.x_gen_ptr).mean().item():.4f}"
             )
             LOGGER.info(
-                f"Base mass: {get_mass(x0[constituents_mask], batch.x_gen_ptr).mean().item():.4f}"
+                f"Base mass: {get_mass(fix_mass(x0[constituents_mask]), batch.x_gen_ptr).mean().item():.4f}"
             )
             LOGGER.info(f"xt mass: {get_mass(x, batch.x_gen_ptr).mean().item():.4f}")
             loss = loss + 1e-6 * extra_loss

@@ -10,6 +10,7 @@ import torch.distributed as dist
 
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
+from experiments.kinematics.jet_experiment import JetKinematicsExperiment
 
 
 @hydra.main(config_path="config", config_name="constituents", version_base=None)
@@ -38,8 +39,10 @@ def ddp_worker(rank, cfg, world_size):
 
     if cfg.exp_type == "multiplicity":
         constructor = MultiplicityExperiment
-    elif cfg.exp_type == "constituents" or cfg.exp_type == "jets":
+    elif cfg.exp_type == "constituents":
         constructor = KinematicsExperiment
+    elif cfg.exp_type == "jet":
+        constructor = JetKinematicsExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 
