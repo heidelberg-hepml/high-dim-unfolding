@@ -1,4 +1,4 @@
-exp_type: constituents
+exp_type: jets
 exp_name: simplecondtest
 
 use_mlflow: false

@@ -41,7 +41,7 @@ def ddp_worker(rank, cfg, world_size):
         constructor = MultiplicityExperiment
     elif cfg.exp_type == "constituents":
         constructor = KinematicsExperiment
-    elif cfg.exp_type == "jet":
+    elif cfg.exp_type == "jets":
         constructor = JetKinematicsExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")

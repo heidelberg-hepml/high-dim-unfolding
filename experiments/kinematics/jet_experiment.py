@@ -13,6 +13,7 @@ import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 from experiments.kinematics.observables import create_partial_jet
+from experiments.coordinates import jetmomenta_to_fourmomenta
 
 
 class JetKinematicsExperiment(BaseExperiment):
@@ -30,12 +31,12 @@ class JetKinematicsExperiment(BaseExperiment):
             if self.cfg.evaluation.overfit:
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.load_samples = False
-                self.cfg.training.iterations = 1000
+                self.cfg.training.iterations = 100
                 self.cfg.training.validate_every_n_steps = (
                     self.cfg.training.iterations + 1
                 )
                 self.cfg.data.length = 10000
-                self.cfg.evaluation.n_batches = -1
+                self.cfg.evaluation.n_batches = 1
 
             if self.cfg.data.dataset == "zplusjet":
                 pt_min = 0.0
@@ -119,9 +120,20 @@ class JetKinematicsExperiment(BaseExperiment):
         gen_mults = data["gen_mults"]
         gen_pids = data["gen_pids"]
         gen_jets = data["gen_jets"]
-        size = len(gen_particles)
+        size = len(gen_jets)
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_jets,
+            gen_jets,
+            filename="pre_jetmomenta.pdf",
+            sqrt=True,
+        )
+
+        det_jets = jetmomenta_to_fourmomenta(det_jets)
+        gen_jets = jetmomenta_to_fourmomenta(gen_jets)
 
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
@@ -176,9 +188,6 @@ class JetKinematicsExperiment(BaseExperiment):
         self.test_data = Dataset(
             self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
-
-        # Create data lists - use same format as original but with jets as single-element sequences
-        # For jet-level learning, we treat each jet as a single particle with mult=1
 
         self.train_data.create_data_list(
             det_particles=det_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
@@ -311,13 +320,14 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            # Compute jets for original batch
-            batch_gen_jets = torch.repeat_interleave(
-                batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
-            )
-            batch_det_jets = torch.repeat_interleave(
-                batch.jet_det, batch.x_det_ptr.diff(), dim=0
-            )
+            if i == 0:
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    batch.x_det.detach().cpu(),
+                    batch.x_gen.detach().cpu(),
+                    sample_batch.x_gen.detach().cpu(),
+                    f"post_kinematics.pdf",
+                )
 
             sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
                 sample_batch.x_det

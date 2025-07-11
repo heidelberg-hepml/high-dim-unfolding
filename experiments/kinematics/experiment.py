@@ -44,7 +44,7 @@ class KinematicsExperiment(BaseExperiment):
             if self.cfg.evaluation.overfit:
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.load_samples = False
-                self.cfg.training.iterations = 1000
+                self.cfg.training.iterations = 100
                 self.cfg.training.validate_every_n_steps = (
                     self.cfg.training.iterations + 1
                 )

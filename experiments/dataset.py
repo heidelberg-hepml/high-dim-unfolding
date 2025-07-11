@@ -137,6 +137,8 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., 3] = cfg.mass**2
     gen_particles[..., 3] = cfg.mass**2
 
+    det_jets[..., [1, 2]] = det_jets[..., [2, 1]]
+    gen_jets[..., [1, 2]] = gen_jets[..., [2, 1]]
     det_jets[..., 3] = det_jets[..., 3] ** 2
     gen_jets[..., 3] = gen_jets[..., 3] ** 2
 

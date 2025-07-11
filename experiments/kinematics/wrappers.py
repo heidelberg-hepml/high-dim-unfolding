@@ -136,13 +136,15 @@ class ConditionalLGATrCFM(EventCFM):
             batch.x_gen,
             batch.scalars_gen,
             batch.x_gen_ptr,
-            self.ga_cfg,
+            # self.ga_cfg,
+            None,
         )
         _, _, det_batch_idx, _ = embed_data_into_ga(
             batch.x_det,
             batch.scalars_det,
             batch.x_det_ptr,
-            self.ga_cfg,
+            # self.ga_cfg,
+            None,
         )
         attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
         condition_attention_mask = xformers_mask(
@@ -160,7 +162,8 @@ class ConditionalLGATrCFM(EventCFM):
             batch.x_det,
             batch.scalars_det,
             batch.x_det_ptr,
-            self.ga_cfg,
+            # self.ga_cfg,
+            None,
         )
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
@@ -210,16 +213,13 @@ class ConditionalLGATrCFM(EventCFM):
         else:
             scalars = torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1)
 
-        # mv, s, _, spurions_mask = embed_data_into_ga(
-        #     fourmomenta,
-        #     scalars,
-        #     batch.x_gen_ptr,
-        #     self.ga_cfg,
-        # )
-
-        mv = embed_vector(fourmomenta).unsqueeze(-2)
-        s = scalars
-        spurions_mask = torch.ones(mv.shape[0], dtype=torch.bool, device=mv.device)
+        mv, s, _, spurions_mask = embed_data_into_ga(
+            fourmomenta,
+            scalars,
+            batch.x_gen_ptr,
+            # self.ga_cfg,
+            None,
+        )
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),

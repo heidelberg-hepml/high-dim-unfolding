@@ -307,7 +307,7 @@ class CFM(nn.Module):
 
         sample_batch.x_gen = self.geometry._handle_periodic(x0[constituents_mask])
 
-        # sort generated events by pT
+        ## sort generated events by pT
         # pt = x0[..., 0].unsqueeze(-1)
         # x_perm = torch.argsort(pt, dim=0, descending=True)
         # x0 = x0.take_along_dim(x_perm, dim=0)
