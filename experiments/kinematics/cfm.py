@@ -53,7 +53,9 @@ class CFM(nn.Module):
     def init_geometry(self):
         raise NotImplementedError
 
-    def sample_base(self, x0, constituents_mask, generator=None):
+    def sample_base(self, x0, constituents_mask=None, generator=None):
+        if constituents_mask is None:
+            constituents_mask = torch.ones(x0.size(0), dtype=torch.bool)
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
@@ -412,3 +414,114 @@ class EventCFM(CFM):
     def handle_velocity(self, v):
         v[..., self.cfm.masked_dims] = 0.0
         return v
+
+class JetCFM(EventCFM):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def init_coordinates(self):
+        self.coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.condition_coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.jet_condition_coordinates = self._init_coordinates(self.cfm.coordinates)
+        if self.cfm.transforms_float64:
+            self.coordinates.to(torch.float64)
+            self.condition_coordinates.to(torch.float64)
+            self.jet_condition_coordinates.to(torch.float64)
+
+    def batch_loss(self, batch):
+        """
+        Construct the conditional flow matching objective
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+            Target space particles in fourmomenta space
+
+        Returns
+        -------
+        loss : torch.tensor with shape (1)
+        """
+        new_batch, _ = add_jet_to_sequence(batch)
+
+        x0 = new_batch.jet_gen
+        t = torch.rand(
+            new_batch.num_graphs,
+            1,
+            dtype=x0.dtype,
+            device=x0.device,
+        )
+
+        x1 = self.sample_base(x0)
+
+        if self.cfm.ot:
+            x0_norm = (x0**2).sum(dim=-1, keepdim=True)
+            x1_norm = (x1**2).sum(dim=-1, keepdim=True)
+            cost_matrix = x0_norm + x1_norm.T - 2 * x0 @ x1.T
+            cost_matrix = cost_matrix.clamp(min=1e-6)
+            x0_idx, x1_idx = linear_sum_assignment(cost_matrix.cpu().numpy())
+            x1_idx = torch.tensor(x1_idx, device=x1.device, dtype=torch.long).unsqueeze(
+                -1
+            )
+            x1 = torch.take_along_dim(x1, x1_idx, dim=0)
+
+        xt, vt = self.geometry.get_trajectory(
+            x_target=x0,
+            x_base=x1,
+            t=t,
+        )
+
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
+            new_batch
+        )
+
+        condition = self.get_condition(new_batch, condition_attention_mask)
+
+        if self.cfm.self_condition_prob > 0.0:
+            self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
+            if torch.rand(1) < self.cfm.self_condition_prob:
+                self_condition = self.get_velocity(
+                    xt=xt,
+                    t=t,
+                    batch=new_batch,
+                    condition=condition,
+                    attention_mask=attention_mask,
+                    crossattention_mask=crossattention_mask,
+                    self_condition=self_condition,
+                ).detach()
+
+            vp = self.get_velocity(
+                xt=xt,
+                t=t,
+                batch=new_batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
+                self_condition=self_condition,
+            )
+        else:
+            vp = self.get_velocity(
+                xt=xt,
+                t=t,
+                batch=new_batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
+            )
+        vp = self.handle_velocity(vp)
+        vt = self.handle_velocity(vt)
+
+        # evaluate conditional flow matching objective
+        distance = self.geometry.get_metric(vp, vt, xt)
+
+        if self.cfm.cosine_similarity_factor > 0.0:
+            cosine_similarity = (
+                1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
+            ).mean()
+            loss = (
+                1 - self.cfm.cosine_similarity_factor
+            ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
+        else:
+            loss = distance
+
+        distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
+        return loss, distance_particlewise

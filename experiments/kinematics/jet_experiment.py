@@ -60,6 +60,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
+                self.cfg.model.net_condition.in_channels += 1
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_channels += 4
 
@@ -85,6 +86,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_s_channels += 6
                     self.cfg.model.net_condition.in_s_channels += 6
+                self.cfg.model.net_condition.in_s_channels += 1
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
 
@@ -161,15 +163,35 @@ class JetKinematicsExperiment(BaseExperiment):
             jet=gen_jets[:train_idx],
         )
 
-        train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
-        self.model.condition_coordinates.init_fit(
+        jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
+        self.model.jet_condition_coordinates.init_fit(
             det_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
-            mask=train_det_mask,
+            mask=jet_train_det_mask,
             jet=det_jets[:train_idx],
         )
 
+        train_det_mask = (
+            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
+        )
+        self.model.condition_coordinates.init_fit(
+            det_particles[:train_idx],
+            mask=train_det_mask,
+            jet=torch.repeat_interleave(
+                det_jets[:train_idx], det_mults[:train_idx], dim=0
+            ),
+        )
+
+        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+        det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
+            det_particles[det_mask],
+            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0), dim=0
+            ),
+        )
+
         # Transform jets to coordinate space, treating each jet as a single particle
-        det_jets = self.model.condition_coordinates.fourmomenta_to_x(det_jets)
+        det_jets = self.model.jet_condition_coordinates.fourmomenta_to_x(det_jets)
 
         gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
 
@@ -190,31 +212,31 @@ class JetKinematicsExperiment(BaseExperiment):
         )
 
         self.train_data.create_data_list(
-            det_particles=det_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
+            det_particles=det_particles[:train_idx],
             det_pids=det_pids[:train_idx],
             det_mults=det_mults[:train_idx],
             det_jets=det_jets[:train_idx],
-            gen_particles=gen_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
+            gen_particles=gen_particles[:train_idx],
             gen_pids=gen_pids[:train_idx],
             gen_mults=gen_mults[:train_idx],
             gen_jets=gen_jets[:train_idx],
         )
         self.val_data.create_data_list(
-            det_particles=det_jets[train_idx:val_idx].unsqueeze(1),
+            det_particles=det_particles[train_idx:val_idx],
             det_pids=det_pids[train_idx:val_idx],
             det_mults=det_mults[train_idx:val_idx],
             det_jets=det_jets[train_idx:val_idx],
-            gen_particles=gen_jets[train_idx:val_idx].unsqueeze(1),
+            gen_particles=gen_particles[train_idx:val_idx],
             gen_pids=gen_pids[train_idx:val_idx],
             gen_mults=gen_mults[train_idx:val_idx],
             gen_jets=gen_jets[train_idx:val_idx],
         )
         self.test_data.create_data_list(
-            det_particles=det_jets[val_idx:test_idx].unsqueeze(1),
+            det_particles=det_particles[val_idx:test_idx],
             det_pids=det_pids[val_idx:test_idx],
             det_mults=det_mults[val_idx:test_idx],
             det_jets=det_jets[val_idx:test_idx],
-            gen_particles=gen_jets[val_idx:test_idx].unsqueeze(1),
+            gen_particles=gen_particles[val_idx:test_idx],
             gen_pids=gen_pids[val_idx:test_idx],
             gen_mults=gen_mults[val_idx:test_idx],
             gen_jets=gen_jets[val_idx:test_idx],
@@ -314,7 +336,7 @@ class JetKinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
-            sample_batch, sample = self.model.sample(
+            sample_batch, base = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
@@ -332,11 +354,19 @@ class JetKinematicsExperiment(BaseExperiment):
             sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
                 sample_batch.x_det
             )
-            sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                sample_batch.x_gen
+
+            sample_batch.jet_det = self.model.jet_condition_coordinates.x_to_fourmomenta(
+                sample_batch.jet_det
+            )
+
+            sample_batch.jet_gen = self.model.coordinates.x_to_fourmomenta(
+                sample_batch.jet_gen
             )
             batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(batch.x_det)
-            batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
+
+            batch.jet_det = self.model.jet_condition_coordinates.x_to_fourmomenta(batch.jet_det)
+
+            batch.jet_gen = self.model.coordinates.x_to_fourmomenta(batch.jet_gen)
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

@@ -3,7 +3,7 @@ import numpy as np
 from lgatr.interface import extract_vector, embed_vector
 
 from experiments.utils import xformers_mask
-from experiments.kinematics.cfm import EventCFM
+from experiments.kinematics.cfm import EventCFM, JetCFM
 from experiments.embedding import embed_data_into_ga
 from experiments.coordinates import jetmomenta_to_fourmomenta
 from experiments.logger import LOGGER
@@ -252,3 +252,76 @@ class ConditionalLGATrCFM(EventCFM):
         v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
 
         return v_straight
+
+
+class JetConditionalTransformerCFM(JetCFM):
+    """
+    Base class for all CFM models
+    - event-generation-specific features are implemented in EventCFM
+    - get_velocity is implemented by architecture-specific subclasses
+    """
+
+    def __init__(
+        self,
+        net,
+        net_condition,
+        cfm,
+        odeint,
+    ):
+        # See GATrCFM.__init__ for documentation
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.net = net
+        self.net_condition = net_condition
+        self.use_xformers = torch.cuda.is_available()
+
+    def get_masks(self, batch):
+        attention_mask = xformers_mask(
+            torch.arange(batch.num_graphs), materialize=not self.use_xformers
+        )
+        condition_attention_mask = xformers_mask(
+            batch.x_det_batch, materialize=not self.use_xformers
+        )
+        cross_attention_mask = xformers_mask(
+            torch.arange(batch.num_graphs),
+            batch.x_det_batch,
+            materialize=not self.use_xformers,
+        )
+        return attention_mask, condition_attention_mask, cross_attention_mask
+
+    def get_condition(self, batch, attention_mask):
+        input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
+        attn_kwargs = {
+            "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+        }
+        return self.net_condition(input.unsqueeze(0), **attn_kwargs)
+
+    def get_velocity(
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
+    ):
+        if self_condition is not None:
+            input = torch.cat(
+                [xt, batch.jet_scalars_gen, self.t_embedding(t), self_condition], dim=-1
+            )
+        else:
+            input = torch.cat([xt, batch.jet_scalars_gen, self.t_embedding(t)], dim=-1)
+        vp = self.net(
+            x=input.unsqueeze(0),
+            processed_condition=condition,
+            attn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+            },
+            crossattn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
+            },
+        ).squeeze(0)
+        return vp

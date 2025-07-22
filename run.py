@@ -44,8 +44,6 @@ def ddp_worker(rank, cfg, world_size):
         constructor = KinematicsExperiment
     elif cfg.exp_type == "jets":
         constructor = JetKinematicsExperiment
-    elif cfg.exp_type == "jet_tokens":
-        constructor = JetTokensKinematicsExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 
