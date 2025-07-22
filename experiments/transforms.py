@@ -671,3 +671,4 @@ class IndividualNormal(BaseTransform):
         std = self.std.to(x.device, dtype=x.dtype)[idx].unsqueeze(0)
         jac[..., torch.arange(4), torch.arange(4)] = std
         return jac
+

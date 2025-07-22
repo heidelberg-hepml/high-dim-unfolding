@@ -1,0 +1,25 @@
+# Conditional Transformer model configuration for Jet Tokens
+# Each jet's 4 coordinates (E, px, py, pz) become 4 separate tokens of dimension 1
+
+_target_: experiments.kinematics.jet_tokens_wrappers.ConditionalTransformerJetTokensCFM
+
+net:
+  _target_: experiments.baselines.conditional_transformer.ConditionalTransformer
+  hidden_channels: 128
+  num_layers: 6
+  num_heads: 8
+  dropout: 0.1
+  activation: "gelu"
+  norm: "layer_norm"
+  in_channels: null  # Will be set dynamically in experiment (1 + embed_t_dim + pos_encoding_dim)
+
+net_condition:
+  _target_: experiments.baselines.transformer.Transformer  
+  hidden_channels: 128
+  num_layers: 4
+  num_heads: 8
+  dropout: 0.1
+  activation: "gelu"
+  norm: "layer_norm"
+  in_channels: null   # Will be set dynamically in experiment (1 + pos_encoding_dim)
+  out_channels: null  # Will be set dynamically in experiment
