@@ -49,27 +49,24 @@ class JetKinematicsExperiment(BaseExperiment):
 
             if self.cfg.modelname == "JetConditionalTransformer":
                 self.cfg.model.net.in_channels = (
-                    4 + self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                    4 + self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
                 )
                 self.cfg.model.net_condition.in_channels = (
-                    4 + self.cfg.data.pos_encoding_dim
+                    4 + self.cfg.data.pos_encoding_dim + 1
                 )
                 self.cfg.model.net_condition.out_channels = (
                     self.cfg.model.net.hidden_channels
                 )
-                if self.cfg.data.add_pid:
-                    self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net_condition.in_channels += 6
-                self.cfg.model.net_condition.in_channels += 1
+
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_channels += 4
 
             elif self.cfg.modelname == "JetConditionalLGATr":
                 self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
                 )
                 self.cfg.model.net_condition.in_s_channels = (
-                    self.cfg.data.pos_encoding_dim
+                    self.cfg.data.pos_encoding_dim + 1
                 )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
@@ -83,10 +80,6 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.model.net.condition_s_channels = (
                     self.cfg.model.net_condition.out_s_channels
                 )
-                if self.cfg.data.add_pid:
-                    self.cfg.model.net.in_s_channels += 6
-                    self.cfg.model.net_condition.in_s_channels += 6
-                self.cfg.model.net_condition.in_s_channels += 1
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
 
@@ -202,13 +195,19 @@ class JetKinematicsExperiment(BaseExperiment):
         )
 
         self.train_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
+            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
         )
         self.val_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
+            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
         )
         self.test_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
+            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
         )
 
         self.train_data.create_data_list(
@@ -355,8 +354,10 @@ class JetKinematicsExperiment(BaseExperiment):
                 sample_batch.x_det
             )
 
-            sample_batch.jet_det = self.model.jet_condition_coordinates.x_to_fourmomenta(
-                sample_batch.jet_det
+            sample_batch.jet_det = (
+                self.model.jet_condition_coordinates.x_to_fourmomenta(
+                    sample_batch.jet_det
+                )
             )
 
             sample_batch.jet_gen = self.model.coordinates.x_to_fourmomenta(
@@ -364,7 +365,9 @@ class JetKinematicsExperiment(BaseExperiment):
             )
             batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(batch.x_det)
 
-            batch.jet_det = self.model.jet_condition_coordinates.x_to_fourmomenta(batch.jet_det)
+            batch.jet_det = self.model.jet_condition_coordinates.x_to_fourmomenta(
+                batch.jet_det
+            )
 
             batch.jet_gen = self.model.coordinates.x_to_fourmomenta(batch.jet_gen)
 
@@ -466,13 +469,21 @@ class JetKinematicsExperiment(BaseExperiment):
             if self.cfg.plotting.fourmomenta:
                 filename = os.path.join(path, "fourmomenta.pdf")
                 plotter.plot_fourmomenta(
-                    filename=filename, **kwargs, jet=True, weights=weights, mask_dict=mask_dict
+                    filename=filename,
+                    **kwargs,
+                    jet=True,
+                    weights=weights,
+                    mask_dict=mask_dict,
                 )
 
             if self.cfg.plotting.jetmomenta:
                 filename = os.path.join(path, "jetmomenta.pdf")
                 plotter.plot_jetmomenta(
-                    filename=filename, **kwargs, jet=True, weights=weights, mask_dict=mask_dict
+                    filename=filename,
+                    **kwargs,
+                    jet=True,
+                    weights=weights,
+                    mask_dict=mask_dict,
                 )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 

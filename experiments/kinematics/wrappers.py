@@ -325,3 +325,161 @@ class JetConditionalTransformerCFM(JetCFM):
             },
         ).squeeze(0)
         return vp
+
+
+class JetConditionalLGATrCFM(JetCFM):
+    """
+    GATr velocity network
+    """
+
+    def __init__(
+        self,
+        net,
+        net_condition,
+        cfm,
+        scalar_dims,
+        odeint,
+        GA_config,
+    ):
+        """
+        Parameters
+        ----------
+        net : torch.nn.Module
+        net_condition : torch.nn.Module
+        cfm : Dict
+            Information about how to set up CFM (used in parent classes)
+        scalar_dims : List[int]
+            Components within the used parametrization
+            for which the equivariantly predicted velocity (using multivector channels)
+            is overwritten by a scalar network output (using scalar channels)
+            This is required when cfm.coordinates contains log-transforms
+        odeint : Dict
+            ODE solver settings to be passed to torchdiffeq.odeint
+        cfg_data : Dict
+            Data settings to be passed to the CFM
+        """
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.scalar_dims = scalar_dims
+        assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
+        self.ga_cfg = GA_config
+        self.net = net
+        self.net_condition = net_condition
+        self.use_xformers = torch.cuda.is_available()
+
+    def init_coordinates(self):
+        self.coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.condition_coordinates = self._init_coordinates("Fourmomenta")
+        self.jet_condition_coordinates = self._init_coordinates("Fourmomenta")
+        if self.cfm.transforms_float64:
+            self.coordinates.to(torch.float64)
+            self.condition_coordinates.to(torch.float64)
+            self.jet_condition_coordinates.to(torch.float64)
+
+    def get_masks(self, batch):
+        _, _, gen_batch_idx, _ = embed_data_into_ga(
+            batch.jet_gen,
+            batch.jet_scalars_gen,
+            torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+            # self.ga_cfg,
+            None,
+        )
+        _, _, det_batch_idx, _ = embed_data_into_ga(
+            batch.x_det,
+            batch.scalars_det,
+            batch.x_det_ptr,
+            # self.ga_cfg,
+            None,
+        )
+
+        attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
+        condition_attention_mask = xformers_mask(
+            det_batch_idx, materialize=not self.use_xformers
+        )
+        cross_attention_mask = xformers_mask(
+            gen_batch_idx,
+            det_batch_idx,
+            materialize=not self.use_xformers,
+        )
+        return attention_mask, condition_attention_mask, cross_attention_mask
+
+    def get_condition(self, batch, attention_mask):
+        mv, s, _, _ = embed_data_into_ga(
+            batch.x_det,
+            batch.scalars_det,
+            batch.x_det_ptr,
+            # self.ga_cfg,
+            None,
+        )
+        mv = mv.unsqueeze(0)
+        s = s.unsqueeze(0)
+        attn_kwargs = {
+            "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+        }
+        condition_mv, condition_s = self.net_condition(mv, s, **attn_kwargs)
+        return condition_mv, condition_s
+
+    def get_velocity(
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
+    ):
+        assert self.coordinates is not None
+
+        constituents_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
+
+        fourmomenta = self.coordinates.x_to_fourmomenta(
+            xt,
+        )
+
+        condition_mv, condition_s = condition
+        if self_condition is not None:
+            scalars = torch.cat(
+                [batch.jet_scalars_gen, self.t_embedding(t), self_condition], dim=-1
+            )
+        else:
+            scalars = torch.cat([batch.jet_scalars_gen, self.t_embedding(t)], dim=-1)
+
+        mv, s, _, spurions_mask = embed_data_into_ga(
+            fourmomenta,
+            scalars,
+            torch.arange(batch.num_graphs, device=xt.device),
+            # self.ga_cfg,
+            None,
+        )
+
+        mv_outputs, s_outputs = self.net(
+            multivectors=mv.unsqueeze(0),
+            multivectors_condition=condition_mv,
+            scalars=s.unsqueeze(0),
+            scalars_condition=condition_s,
+            attn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": attention_mask
+            },
+            crossattn_kwargs={
+                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
+            },
+        )
+        mv_outputs = mv_outputs.squeeze(0)
+        s_outputs = s_outputs.squeeze(0)
+
+        v_fourmomenta = extract_vector(mv_outputs[spurions_mask]).squeeze(dim=-2)
+        v_s = s[spurions_mask]
+
+        v_straight = torch.zeros_like(v_fourmomenta)
+        v_straight = self.coordinates.velocity_fourmomenta_to_x(
+            v_fourmomenta, fourmomenta
+        )[0]
+
+        # Overwrite transformed velocities with scalar outputs
+        # (this is specific to GATr to avoid large jacobians from from log-transforms)
+        v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
+
+        return v_straight

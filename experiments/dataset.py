@@ -22,9 +22,7 @@ class Dataset(torch.utils.data.Dataset):
         if pos_encoding_dim > 0:
             self.pos_encoding = positional_encoding(pe_dim=pos_encoding_dim)
         self.mult_embedding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=mult_encoding_dim, scale=30.0
-            ),
+            GaussianFourierProjection(embed_dim=mult_encoding_dim, scale=30.0),
             nn.Linear(mult_encoding_dim, mult_encoding_dim),
         ).to(dtype=dtype)
 
@@ -61,9 +59,13 @@ class Dataset(torch.utils.data.Dataset):
                 gen_event_scalars = torch.cat(
                     [gen_event_scalars, self.pos_encoding[: gen_mults[i]]], dim=-1
                 )
-            
-            jet_scalars_det = self.mult_embedding(torch.tensor([[det_mults[i]]], dtype=self.dtype)).detach()
-            jet_scalars_gen = self.mult_embedding(torch.tensor([[gen_mults[i]]], dtype=self.dtype)).detach()
+
+            jet_scalars_det = self.mult_embedding(
+                torch.tensor([[det_mults[i]]], dtype=self.dtype)
+            ).detach()
+            jet_scalars_gen = self.mult_embedding(
+                torch.tensor([[gen_mults[i]]], dtype=self.dtype)
+            ).detach()
 
             graph = Data(
                 x_det=det_event,
