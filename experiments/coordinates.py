@@ -187,7 +187,7 @@ class PtPhiEtaLogM2(BaseCoordinates):
 
 class StandardPtPhiEtaLogM2(BaseCoordinates):
     # (pt, phi, eta, log(m^2))
-    def __init__(self, **kwargs):
+    def __init__(self, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
         self.contains_phi = True
         self.contains_mass = True
@@ -195,7 +195,7 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.M2_to_LogM2(),
-            tr.StandardNormal([3]),
+            tr.StandardNormal(),
         ]
 
 
