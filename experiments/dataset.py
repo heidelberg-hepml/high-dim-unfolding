@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 from torch_geometric.data import Data
 import energyflow
 import numpy as np
@@ -8,6 +9,7 @@ import os
 from experiments.utils import (
     ensure_angle,
     pid_encoding,
+    GaussianFourierProjection,
 )
 from experiments.coordinates import (
     jetmomenta_to_fourmomenta,
@@ -15,10 +17,16 @@ from experiments.coordinates import (
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, pos_encoding_dim=0):
+    def __init__(self, dtype, pos_encoding_dim=0, mult_encoding_dim=8):
         self.dtype = dtype
         if pos_encoding_dim > 0:
             self.pos_encoding = positional_encoding(pe_dim=pos_encoding_dim)
+        self.mult_embedding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=mult_encoding_dim, scale=30.0
+            ),
+            nn.Linear(mult_encoding_dim, mult_encoding_dim),
+        ).to(dtype=dtype)
 
     def __len__(self):
         return len(self.data_list)
@@ -53,14 +61,19 @@ class Dataset(torch.utils.data.Dataset):
                 gen_event_scalars = torch.cat(
                     [gen_event_scalars, self.pos_encoding[: gen_mults[i]]], dim=-1
                 )
+            
+            jet_scalars_det = self.mult_embedding(torch.tensor([[det_mults[i]]], dtype=self.dtype)).detach()
+            jet_scalars_gen = self.mult_embedding(torch.tensor([[gen_mults[i]]], dtype=self.dtype)).detach()
 
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_event_scalars,
                 jet_det=det_jets[i : i + 1],
+                jet_scalars_det=jet_scalars_det,
                 x_gen=gen_event,
                 scalars_gen=gen_event_scalars,
                 jet_gen=gen_jets[i : i + 1],
+                jet_scalars_gen=jet_scalars_gen,
             )
 
             self.data_list.append(graph)

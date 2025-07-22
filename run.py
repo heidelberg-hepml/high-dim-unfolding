@@ -11,7 +11,6 @@ import torch.distributed as dist
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
-from experiments.kinematics.jet_tokens_experiment import JetTokensKinematicsExperiment
 
 
 @hydra.main(config_path="config", config_name="constituents", version_base=None)

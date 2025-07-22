@@ -69,6 +69,6 @@ plotting:
  correlations: false
 
 defaults:
- - model: cond_tr_constituents
+ - model: cond_tr_jets
  - default
  - _self_

@@ -47,7 +47,7 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.data.pt_min = pt_min
             self.load_fn = load_fn
 
-            if self.cfg.modelname == "ConditionalTransformer":
+            if self.cfg.modelname == "JetConditionalTransformer":
                 self.cfg.model.net.in_channels = (
                     4 + self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
@@ -64,7 +64,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_channels += 4
 
-            elif self.cfg.modelname == "ConditionalLGATr":
+            elif self.cfg.modelname == "JetConditionalLGATr":
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
@@ -440,10 +440,10 @@ class JetKinematicsExperiment(BaseExperiment):
         LOGGER.info(f"Creating plots in {path}")
         t0 = time.time()
 
-        if self.cfg.modelname == "ConditionalTransformer":
-            model_label = "CondTr"
-        elif self.cfg.modelname == "ConditionalLGATr":
-            model_label = "CondLGATr"
+        if self.cfg.modelname == "JetConditionalTransformer":
+            model_label = "JetCondTr"
+        elif self.cfg.modelname == "JetConditionalLGATr":
+            model_label = "JetCondLGATr"
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -466,29 +466,13 @@ class JetKinematicsExperiment(BaseExperiment):
             if self.cfg.plotting.fourmomenta:
                 filename = os.path.join(path, "fourmomenta.pdf")
                 plotter.plot_fourmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                    filename=filename, **kwargs, jet=True, weights=weights, mask_dict=mask_dict
                 )
 
             if self.cfg.plotting.jetmomenta:
                 filename = os.path.join(path, "jetmomenta.pdf")
                 plotter.plot_jetmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-
-            if self.cfg.plotting.preprocessed:
-                filename = os.path.join(path, "preprocessed.pdf")
-                plotter.plot_preprocessed(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-            if self.cfg.plotting.jetscaled:
-                filename = os.path.join(path, "jetscaled.pdf")
-                plotter.plot_jetscaled(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-            if len(self.obs.keys()) > 0:
-                filename = os.path.join(path, "observables.pdf")
-                plotter.plot_observables(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                    filename=filename, **kwargs, jet=True, weights=weights, mask_dict=mask_dict
                 )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 

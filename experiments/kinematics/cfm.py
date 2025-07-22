@@ -525,3 +525,81 @@ class JetCFM(EventCFM):
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
         return loss, distance_particlewise
+
+    def sample(self, batch, device, dtype):
+        """
+        Sample from CFM model
+        Solve an ODE using a NN-parametrized velocity field
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+        device : torch.device
+        dtype : torch.dtype
+
+        Returns
+        -------
+        x0 : torch.tensor with shape shape = (batchsize, 4)
+            Generated events
+        """
+
+        new_batch, _ = add_jet_to_sequence(batch)
+
+        sample_batch = batch.clone()
+
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
+            new_batch
+        )
+
+        condition = self.get_condition(new_batch, condition_attention_mask)
+
+        def velocity(t, xt, self_condition=None):
+            xt = self.geometry._handle_periodic(xt)
+            t = t * torch.ones(xt.shape[0], 1, dtype=xt.dtype, device=xt.device)
+
+            vt = self.get_velocity(
+                xt=xt,
+                t=t,
+                batch=new_batch,
+                condition=condition,
+                attention_mask=attention_mask,
+                crossattention_mask=crossattention_mask,
+                self_condition=self_condition,
+            )
+
+            vt = self.handle_velocity(vt)
+            vt = 0.0
+
+            return vt
+
+        # sample from base distribution
+        x1 = self.sample_base(new_batch.jet_gen)
+
+        if self.cfm.self_condition_prob > 0.0:
+            v1 = torch.zeros_like(x1, device=x1.device, dtype=x1.dtype)
+            x0 = custom_rk4(
+                velocity,
+                (x1, v1),
+                torch.tensor([1.0, 0.0], device=x1.device),
+                step_size=self.odeint.options["step_size"],
+            )[-1]
+
+        else:
+            x0 = odeint(
+                velocity,
+                x1,
+                torch.tensor([1.0, 0.0], device=x1.device),
+                **self.odeint,
+            )[-1]
+
+        sample_batch.jet_gen = self.geometry._handle_periodic(x0)
+
+        ## sort generated events by pT
+        # pt = x0[..., 0].unsqueeze(-1)
+        # x_perm = torch.argsort(pt, dim=0, descending=True)
+        # x0 = x0.take_along_dim(x_perm, dim=0)
+        # index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+        # index_perm = torch.argsort(index, dim=0, stable=True)
+        # x0 = x0.take_along_dim(index_perm, dim=0)
+
+        return sample_batch, x1
