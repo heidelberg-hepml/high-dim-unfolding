@@ -132,8 +132,10 @@ class JetKinematicsExperiment(BaseExperiment):
         det_jets = jetmomenta_to_fourmomenta(det_jets)
         gen_jets = jetmomenta_to_fourmomenta(gen_jets)
 
-        self.det_unit = det_jets.std()
-        self.gen_unit = gen_jets.std()
+        # self.det_unit = det_jets.std()
+        # self.gen_unit = gen_jets.std()
+        self.det_unit = 1.0
+        self.gen_unit = 1.0
         det_jets = det_jets / self.det_unit
         gen_jets = gen_jets / self.gen_unit
 
@@ -182,7 +184,8 @@ class JetKinematicsExperiment(BaseExperiment):
         gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
 
         if self.cfg.cfm.add_constituents:
-            self.const_det_unit = det_particles.std()
+            # self.const_det_unit = det_particles.std()
+            self.const_det_unit = 1.0
             det_particles = det_particles / self.const_det_unit
             train_det_mask = (
                 torch.arange(det_particles.shape[1])[None, :]

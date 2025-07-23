@@ -558,12 +558,12 @@ class KinematicsExperiment(BaseExperiment):
             self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
             self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
             self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
-            # self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            # self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
-            # self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
-            # self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            # self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
-            # self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
+            self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
+            self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
+            self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
+            self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
+            self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
+            self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
 
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)
