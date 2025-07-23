@@ -129,7 +129,9 @@ def plot_classifier(exp, filename, model_label):
         )
 
 
-def plot_fourmomenta(exp, filename, model_label, jet=False, weights=None, mask_dict=None):
+def plot_fourmomenta(
+    exp, filename, model_label, jet=False, weights=None, mask_dict=None
+):
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
@@ -246,7 +248,9 @@ def plot_fourmomenta(exp, filename, model_label, jet=False, weights=None, mask_d
                     )
 
 
-def plot_jetmomenta(exp, filename, model_label, jet=False, weights=None, mask_dict=None):
+def plot_jetmomenta(
+    exp, filename, model_label, jet=False, weights=None, mask_dict=None
+):
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
@@ -345,6 +349,8 @@ def plot_jetmomenta(exp, filename, model_label, jet=False, weights=None, mask_di
                     logy = True
                 else:
                     logy = False
+                if channel == 3 and exp.cfg.data.dataset == "ttbar":
+                    xrange = np.array([120.0, 210.0])
                 plot_histogram(
                     file=file,
                     train=part_lvl[..., channel],
@@ -694,11 +700,11 @@ def plot_observables(
             if name == "z_g":
                 xrange[0] = 0.0
             if "phi" in name or "eta" in name:
-                xrange[0] = -0.1
-                xrange[1] = 0.1
+                xrange[0] = -0.06
+                xrange[1] = 0.06
             if "Delta R" in name:
                 xrange[0] = 0.0
-                xrange[1] = 0.15
+                xrange[1] = 0.1
             xlabel = name
             logy = False
 
