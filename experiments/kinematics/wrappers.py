@@ -281,18 +281,31 @@ class JetConditionalTransformerCFM(JetCFM):
         attention_mask = xformers_mask(
             torch.arange(batch.num_graphs), materialize=not self.use_xformers
         )
-        condition_attention_mask = xformers_mask(
-            batch.x_det_batch, materialize=not self.use_xformers
-        )
-        cross_attention_mask = xformers_mask(
-            torch.arange(batch.num_graphs),
-            batch.x_det_batch,
-            materialize=not self.use_xformers,
-        )
+        if self.cfm.add_constituents:
+            condition_attention_mask = xformers_mask(
+                batch.x_det_batch, materialize=not self.use_xformers
+            )
+            cross_attention_mask = xformers_mask(
+                torch.arange(batch.num_graphs),
+                batch.x_det_batch,
+                materialize=not self.use_xformers,
+            )
+        else:
+            condition_attention_mask = xformers_mask(
+                torch.arange(batch.num_graphs), materialize=not self.use_xformers
+            )
+            cross_attention_mask = xformers_mask(
+                torch.arange(batch.num_graphs),
+                torch.arange(batch.num_graphs),
+                materialize=not self.use_xformers,
+            )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
-        input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
+        if self.cfm.add_constituents:
+            input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
+        else:
+            input = torch.cat([batch.jet_det, batch.jet_scalars_det], dim=-1)
         attn_kwargs = {
             "attn_bias" if self.use_xformers else "attn_mask": attention_mask
         }
@@ -372,11 +385,9 @@ class JetConditionalLGATrCFM(JetCFM):
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
         self.condition_coordinates = self._init_coordinates("Fourmomenta")
-        self.jet_condition_coordinates = self._init_coordinates("Fourmomenta")
         if self.cfm.transforms_float64:
             self.coordinates.to(torch.float64)
             self.condition_coordinates.to(torch.float64)
-            self.jet_condition_coordinates.to(torch.float64)
 
     def get_masks(self, batch):
         _, _, gen_batch_idx, _ = embed_data_into_ga(

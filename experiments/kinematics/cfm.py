@@ -415,6 +415,7 @@ class EventCFM(CFM):
         v[..., self.cfm.masked_dims] = 0.0
         return v
 
+
 class JetCFM(EventCFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -422,11 +423,15 @@ class JetCFM(EventCFM):
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
         self.condition_coordinates = self._init_coordinates(self.cfm.coordinates)
-        self.jet_condition_coordinates = self._init_coordinates(self.cfm.coordinates)
+        if self.cfm.add_constituents:
+            self.constituents_condition_coordinates = self._init_coordinates(
+                self.cfm.coordinates
+            )
         if self.cfm.transforms_float64:
             self.coordinates.to(torch.float64)
             self.condition_coordinates.to(torch.float64)
-            self.jet_condition_coordinates.to(torch.float64)
+            if self.cfm.add_constituents:
+                self.constituents_condition_coordinates.to(torch.float64)
 
     def batch_loss(self, batch):
         """
@@ -441,7 +446,10 @@ class JetCFM(EventCFM):
         -------
         loss : torch.tensor with shape (1)
         """
-        new_batch, _ = add_jet_to_sequence(batch)
+        if self.cfm.add_constituents:
+            new_batch, _ = add_jet_to_sequence(batch)
+        else:
+            new_batch = batch.clone()
 
         x0 = new_batch.jet_gen
         t = torch.rand(
@@ -543,7 +551,10 @@ class JetCFM(EventCFM):
             Generated events
         """
 
-        new_batch, _ = add_jet_to_sequence(batch)
+        if self.cfm.add_constituents:
+            new_batch, _ = add_jet_to_sequence(batch)
+        else:
+            new_batch = batch.clone()
 
         sample_batch = batch.clone()
 
@@ -568,7 +579,6 @@ class JetCFM(EventCFM):
             )
 
             vt = self.handle_velocity(vt)
-            vt = 0.0
 
             return vt
 
