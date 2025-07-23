@@ -436,20 +436,19 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, dims_fixed=[], scaling=torch.ones(1, 4)):
+    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4)):
         super().__init__()
-        self.dims_fixed = dims_fixed
+        self.fixed_dims = fixed_dims
         self.mean = torch.zeros(1, 4)
         self.std = torch.ones(1, 4)
         self.scaling = scaling
 
     def init_fit(self, x, mask, **kwargs):
         self.mean = torch.mean(x[mask], dim=0, keepdim=True)
-        self.std = torch.std(x[mask], dim=0, keepdim=True) / self.scaling.to(
-            x.device, dtype=x.dtype
-        )
-        # self.mean[:, self.dims_fixed] = 0
-        self.std[:, self.dims_fixed] = 1
+        self.std = torch.std(x[mask], dim=0, keepdim=True)
+        # self.mean[:, self.fixed_dims] = 0
+        self.std[:, self.fixed_dims] = 1
+        self.std = self.std / self.scaling.to(x.device, dtype=x.dtype)
 
     def _forward(self, x, **kwargs):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
@@ -590,9 +589,9 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
 
 
 class IndividualNormal(BaseTransform):
-    def __init__(self, dims_fixed=[], scaling=torch.ones(1, 4)):
+    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4)):
         super().__init__()
-        self.dims_fixed = dims_fixed
+        self.fixed_dims = fixed_dims
         self.scaling = scaling
 
     def init_fit(self, x, mask, **kwargs):
@@ -611,7 +610,7 @@ class IndividualNormal(BaseTransform):
             pass
         self.std = torch.sqrt(
             ((x * mask - self.mean * mask) ** 2).sum(dim=0) / mask.sum(dim=0)
-        ) / self.scaling.to(x.device, dtype=x.dtype)
+        )
         try:
             first_nan = (
                 torch.isnan(self.std).any(dim=1).nonzero(as_tuple=True)[0][0].item()
@@ -623,7 +622,8 @@ class IndividualNormal(BaseTransform):
             )
         except IndexError:
             pass
-        self.std[..., self.dims_fixed] = 1.0
+        self.std[..., self.fixed_dims] = 1.0
+        self.std = self.std / self.scaling.to(x.device, dtype=x.dtype)
         self.std[torch.abs(self.std) <= 1e-3] = 1.0
 
     def _forward(self, x, ptr, pos=None, **kwargs):
@@ -671,4 +671,3 @@ class IndividualNormal(BaseTransform):
         std = self.std.to(x.device, dtype=x.dtype)[idx].unsqueeze(0)
         jac[..., torch.arange(4), torch.arange(4)] = std
         return jac
-

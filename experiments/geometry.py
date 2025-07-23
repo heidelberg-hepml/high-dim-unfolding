@@ -23,12 +23,13 @@ class SimpleGeometry:
 
 
 class SimplePossiblyPeriodicGeometry(SimpleGeometry):
-    def __init__(self, contains_phi=False, periodic=True):
+    def __init__(self, contains_phi=False, periodic=True, scale=1.0):
         self.periodic_components = [1] if contains_phi and periodic else []
+        self.period_scale = scale
 
     def _handle_periodic(self, x):
-        x[..., self.periodic_components] = ensure_angle(
-            x[..., self.periodic_components]
+        x[..., self.periodic_components] = self.period_scale * ensure_angle(
+            x[..., self.periodic_components] / self.period_scale
         )
         return x
 

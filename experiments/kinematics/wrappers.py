@@ -236,8 +236,8 @@ class ConditionalLGATrCFM(EventCFM):
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
-        v_fourmomenta = extract_vector(mv_outputs[spurions_mask]).squeeze(dim=-2)
-        v_s = s[spurions_mask]
+        v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
+        v_s = s[~spurions_mask]
 
         v_straight = torch.zeros_like(v_fourmomenta)
         v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(
@@ -385,9 +385,34 @@ class JetConditionalLGATrCFM(JetCFM):
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
         self.condition_coordinates = self._init_coordinates("Fourmomenta")
+        if self.cfm.add_constituents:
+            self.constituents_condition_coordinates = self._init_coordinates(
+                "Fourmomenta"
+            )
         if self.cfm.transforms_float64:
             self.coordinates.to(torch.float64)
             self.condition_coordinates.to(torch.float64)
+            if self.cfm.add_constituents:
+                self.constituents_condition_coordinates.to(torch.float64)
+
+        self.sample_coords = self._init_coordinates("StandardLogPtPhiEtaLogM2")
+
+    def sample_base(self, x0, constituents_mask=None, generator=None):
+        sample = torch.randn(
+            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
+        )
+        sample[..., 1] = (
+            torch.rand(
+                x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+            )
+            * 2
+            * torch.pi
+            - torch.pi
+        )
+
+        sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
+        sample = self.sample_coords.x_to_fourmomenta(sample)
+        return sample
 
     def get_masks(self, batch):
         _, _, gen_batch_idx, _ = embed_data_into_ga(
@@ -395,15 +420,21 @@ class JetConditionalLGATrCFM(JetCFM):
             batch.jet_scalars_gen,
             torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
             # self.ga_cfg,
-            None,
         )
-        _, _, det_batch_idx, _ = embed_data_into_ga(
-            batch.x_det,
-            batch.scalars_det,
-            batch.x_det_ptr,
-            # self.ga_cfg,
-            None,
-        )
+        if self.cfm.add_constituents:
+            _, _, det_batch_idx, _ = embed_data_into_ga(
+                batch.x_det,
+                batch.scalars_det,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            _, _, det_batch_idx, _ = embed_data_into_ga(
+                batch.jet_det,
+                batch.jet_scalars_det,
+                torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                self.ga_cfg,
+            )
 
         attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
         condition_attention_mask = xformers_mask(
@@ -417,13 +448,20 @@ class JetConditionalLGATrCFM(JetCFM):
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
-        mv, s, _, _ = embed_data_into_ga(
-            batch.x_det,
-            batch.scalars_det,
-            batch.x_det_ptr,
-            # self.ga_cfg,
-            None,
-        )
+        if self.cfm.add_constituents:
+            mv, s, _, _ = embed_data_into_ga(
+                batch.x_det,
+                batch.scalars_det,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, _ = embed_data_into_ga(
+                batch.jet_det,
+                batch.jet_scalars_det,
+                torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                self.ga_cfg,
+            )
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
         attn_kwargs = {
@@ -444,8 +482,6 @@ class JetConditionalLGATrCFM(JetCFM):
     ):
         assert self.coordinates is not None
 
-        constituents_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
-
         fourmomenta = self.coordinates.x_to_fourmomenta(
             xt,
         )
@@ -463,7 +499,6 @@ class JetConditionalLGATrCFM(JetCFM):
             scalars,
             torch.arange(batch.num_graphs, device=xt.device),
             # self.ga_cfg,
-            None,
         )
 
         mv_outputs, s_outputs = self.net(
@@ -481,8 +516,8 @@ class JetConditionalLGATrCFM(JetCFM):
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
-        v_fourmomenta = extract_vector(mv_outputs[spurions_mask]).squeeze(dim=-2)
-        v_s = s[spurions_mask]
+        v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
+        v_s = s[~spurions_mask]
 
         v_straight = torch.zeros_like(v_fourmomenta)
         v_straight = self.coordinates.velocity_fourmomenta_to_x(

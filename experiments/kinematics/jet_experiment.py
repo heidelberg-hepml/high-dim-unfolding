@@ -31,7 +31,7 @@ class JetKinematicsExperiment(BaseExperiment):
             if self.cfg.evaluation.overfit:
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.load_samples = False
-                self.cfg.training.iterations = 1000
+                self.cfg.training.iterations = 100
                 self.cfg.training.validate_every_n_steps = (
                     self.cfg.training.iterations + 1
                 )
@@ -70,9 +70,14 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
                 )
-                self.cfg.model.net_condition.in_s_channels = (
-                    self.cfg.data.pos_encoding_dim + 1
-                )
+                if self.cfg.cfm.add_constituents:
+                    self.cfg.model.net_condition.in_s_channels = (
+                        self.cfg.data.pos_encoding_dim + 1
+                    )
+                else:
+                    self.cfg.model.net_condition.in_s_channels = (
+                        self.cfg.data.mult_encoding_dim
+                    )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
                 )
@@ -127,6 +132,11 @@ class JetKinematicsExperiment(BaseExperiment):
         det_jets = jetmomenta_to_fourmomenta(det_jets)
         gen_jets = jetmomenta_to_fourmomenta(gen_jets)
 
+        self.det_unit = det_jets.std()
+        self.gen_unit = gen_jets.std()
+        det_jets = det_jets / self.det_unit
+        gen_jets = gen_jets / self.gen_unit
+
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
@@ -148,14 +158,21 @@ class JetKinematicsExperiment(BaseExperiment):
         # We create a simple mask where each jet is treated as a single particle
         train_gen_mask = torch.ones(train_idx, 1, dtype=torch.bool)
         self.model.coordinates.init_fit(
-            gen_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
+            gen_jets[:train_idx].unsqueeze(1),
             mask=train_gen_mask,
             jet=gen_jets[:train_idx],
         )
 
+        if hasattr(self.model, "sample_coords"):
+            self.model.sample_coords.init_fit(
+                gen_jets[:train_idx].unsqueeze(1),
+                mask=train_gen_mask,
+                jet=gen_jets[:train_idx],
+            )
+
         jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
         self.model.condition_coordinates.init_fit(
-            det_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
+            det_jets[:train_idx].unsqueeze(1),
             mask=jet_train_det_mask,
             jet=det_jets[:train_idx],
         )
@@ -165,6 +182,8 @@ class JetKinematicsExperiment(BaseExperiment):
         gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
 
         if self.cfg.cfm.add_constituents:
+            self.const_det_unit = det_particles.std()
+            det_particles = det_particles / self.const_det_unit
             train_det_mask = (
                 torch.arange(det_particles.shape[1])[None, :]
                 < det_mults[:train_idx, None]
@@ -345,30 +364,37 @@ class JetKinematicsExperiment(BaseExperiment):
                     f"post_kinematics.pdf",
                 )
 
-            sample_batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
-                sample_batch.jet_det
+            sample_batch.jet_det = (
+                self.model.condition_coordinates.x_to_fourmomenta(sample_batch.jet_det)
+                * self.det_unit
             )
 
-            sample_batch.jet_gen = self.model.coordinates.x_to_fourmomenta(
-                sample_batch.jet_gen
+            sample_batch.jet_gen = (
+                self.model.coordinates.x_to_fourmomenta(sample_batch.jet_gen)
+                * self.gen_unit
             )
 
-            batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
-                batch.jet_det
+            batch.jet_det = (
+                self.model.condition_coordinates.x_to_fourmomenta(batch.jet_det)
+                * self.det_unit
             )
 
-            batch.jet_gen = self.model.coordinates.x_to_fourmomenta(batch.jet_gen)
+            batch.jet_gen = (
+                self.model.coordinates.x_to_fourmomenta(batch.jet_gen) * self.gen_unit
+            )
 
             if self.cfg.cfm.add_constituents:
                 sample_batch.x_det = (
                     self.model.constituents_condition_coordinates.x_to_fourmomenta(
                         sample_batch.x_det
                     )
+                    * self.const_det_unit
                 )
                 batch.x_det = (
                     self.model.constituents_condition_coordinates.x_to_fourmomenta(
                         batch.x_det
                     )
+                    * self.const_det_unit
                 )
 
             samples.extend(sample_batch.detach().to_data_list())

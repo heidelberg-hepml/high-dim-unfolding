@@ -33,6 +33,7 @@ class CFM(nn.Module):
         )
         self.odeint = odeint
         self.cfm = cfm
+        self.scaling = torch.tensor([cfm.scaling])
 
         # initialize to base objects, this will be overwritten later
         self.coordinates = c.BaseCoordinates()
@@ -68,6 +69,7 @@ class CFM(nn.Module):
                 * torch.pi
                 - torch.pi
             )
+        sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
         if 3 in self.cfm.masked_dims:
             sample[..., 3] = x0[..., 3]
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
@@ -407,6 +409,7 @@ class EventCFM(CFM):
             self.geometry = SimplePossiblyPeriodicGeometry(
                 contains_phi=self.coordinates.contains_phi,
                 periodic=self.cfm.geometry.periodic,
+                scale=self.cfm.scaling[1],
             )
         else:
             raise ValueError(f"geometry={self.cfm.geometry} not implemented")

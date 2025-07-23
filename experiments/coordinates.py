@@ -195,7 +195,7 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.M2_to_LogM2(),
-            tr.StandardNormal(),
+            tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
         ]
 
 
@@ -314,7 +314,6 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.LogPtPhiEtaLogM2_to_JetScale(),
             tr.IndividualNormal(fixed_dims, scaling),
         ]
-
 
 
 ptphietam2 = PtPhiEtaM2()

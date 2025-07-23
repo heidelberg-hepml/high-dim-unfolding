@@ -35,7 +35,6 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
     multivectors = multivectors.unsqueeze(-2)
 
     if ga_cfg is not None:
-        # beam reference
         spurions = get_spurions(
             ga_cfg.beam_spurion,
             ga_cfg.add_time_spurion,
@@ -74,9 +73,9 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
         scalars[~insert_spurion] = scalars_buffer
         new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
 
-        mask = ~insert_spurion
+        mask = insert_spurion
     else:
-        mask = torch.ones(
+        mask = torch.zeros(
             multivectors.shape[0],
             dtype=torch.bool,
             device=multivectors.device,
