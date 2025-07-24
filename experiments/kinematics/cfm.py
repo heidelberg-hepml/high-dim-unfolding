@@ -422,6 +422,8 @@ class EventCFM(CFM):
 class JetCFM(EventCFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        assert not self.cfm.add_constituents or not self.cfm.transpose
+        assert self.cfm.self_condition_prob == 0.0 or not self.cfm.transpose
 
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)

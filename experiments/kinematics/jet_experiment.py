@@ -48,23 +48,36 @@ class JetKinematicsExperiment(BaseExperiment):
             self.load_fn = load_fn
 
             if self.cfg.modelname == "JetConditionalTransformer":
+                if self.cfg.cfm.transpose:
+                    base_in_channels = 1
+                else:
+                    base_in_channels = 4
                 self.cfg.model.net.in_channels = (
-                    4 + self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
+                    base_in_channels
+                    + self.cfg.cfm.embed_t_dim
+                    + self.cfg.data.mult_encoding_dim
                 )
+                if self.cfg.cfm.transpose:
+                    self.cfg.model.net.in_channels += self.cfg.data.pos_encoding_dim
                 if self.cfg.cfm.add_constituents:
                     self.cfg.model.net_condition.in_channels = (
-                        4 + self.cfg.data.pos_encoding_dim + 1
+                        base_in_channels + self.cfg.data.pos_encoding_dim + 1
                     )
                 else:
                     self.cfg.model.net_condition.in_channels = (
-                        4 + self.cfg.data.mult_encoding_dim
+                        base_in_channels + self.cfg.data.mult_encoding_dim
                     )
+                    if self.cfg.cfm.transpose:
+                        self.cfg.model.net_condition.in_channels += (
+                            self.cfg.data.pos_encoding_dim
+                        )
                 self.cfg.model.net_condition.out_channels = (
                     self.cfg.model.net.hidden_channels
                 )
+                self.cfg.model.net.out_channels = base_in_channels
 
                 if self.cfg.cfm.self_condition_prob > 0.0:
-                    self.cfg.model.net.in_channels += 4
+                    self.cfg.model.net.in_channels += base_in_channels
 
             elif self.cfg.modelname == "JetConditionalLGATr":
                 self.cfg.model.net.in_s_channels = (

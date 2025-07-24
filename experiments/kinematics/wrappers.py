@@ -6,6 +6,7 @@ from experiments.utils import xformers_mask
 from experiments.kinematics.cfm import EventCFM, JetCFM
 from experiments.embedding import embed_data_into_ga
 from experiments.coordinates import jetmomenta_to_fourmomenta
+from experiments.dataset import positional_encoding
 from experiments.logger import LOGGER
 
 
@@ -276,33 +277,48 @@ class JetConditionalTransformerCFM(JetCFM):
         self.net = net
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
+        if self.cfm.transpose:
+            self.pe = positional_encoding(seq_length=4, pe_dim=8)
 
     def get_masks(self, batch):
-        attention_mask = xformers_mask(
-            torch.arange(batch.num_graphs), materialize=not self.use_xformers
-        )
-        if self.cfm.add_constituents:
-            condition_attention_mask = xformers_mask(
-                batch.x_det_batch, materialize=not self.use_xformers
+        if self.cfm.transpose:
+            gen_batch_idx = torch.repeat_interleave(
+                torch.arange(batch.num_graphs, device=batch.jet_gen.device), 4
             )
-            cross_attention_mask = xformers_mask(
-                torch.arange(batch.num_graphs),
-                batch.x_det_batch,
-                materialize=not self.use_xformers,
+            det_batch_idx = torch.repeat_interleave(
+                torch.arange(batch.num_graphs, device=batch.jet_det.device), 4
             )
         else:
-            condition_attention_mask = xformers_mask(
-                torch.arange(batch.num_graphs), materialize=not self.use_xformers
-            )
-            cross_attention_mask = xformers_mask(
-                torch.arange(batch.num_graphs),
-                torch.arange(batch.num_graphs),
-                materialize=not self.use_xformers,
-            )
+            gen_batch_idx = torch.arange(batch.num_graphs, device=batch.jet_gen.device)
+            if self.cfm.add_constituents:
+                det_batch_idx = batch.x_det_ptr
+            else:
+                det_batch_idx = torch.arange(
+                    batch.num_graphs, device=batch.x_det.device
+                )
+
+        attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
+        condition_attention_mask = xformers_mask(
+            det_batch_idx, materialize=not self.use_xformers
+        )
+        cross_attention_mask = xformers_mask(
+            gen_batch_idx,
+            det_batch_idx,
+            materialize=not self.use_xformers,
+        )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
-        if self.cfm.add_constituents:
+        if self.cfm.transpose:
+            input = torch.flatten(batch.jet_det).unsqueeze(-1)
+            pe = self.pe.repeat(batch.jet_det.shape[0], 1).to(
+                batch.jet_det.device, dtype=batch.jet_det.dtype
+            )
+            input = torch.cat(
+                [input, torch.repeat_interleave(batch.jet_scalars_det, 4, dim=0), pe],
+                dim=-1,
+            )
+        elif self.cfm.add_constituents:
             input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
         else:
             input = torch.cat([batch.jet_det, batch.jet_scalars_det], dim=-1)
@@ -326,7 +342,21 @@ class JetConditionalTransformerCFM(JetCFM):
                 [xt, batch.jet_scalars_gen, self.t_embedding(t), self_condition], dim=-1
             )
         else:
-            input = torch.cat([xt, batch.jet_scalars_gen, self.t_embedding(t)], dim=-1)
+            if self.cfm.transpose:
+                pe = self.pe.repeat(xt.shape[0], 1).to(xt.device, dtype=xt.dtype)
+                scalars = torch.repeat_interleave(
+                    torch.cat([batch.jet_scalars_gen, self.t_embedding(t)], dim=-1),
+                    4,
+                    dim=0,
+                )
+                input = torch.cat(
+                    [xt.flatten().unsqueeze(-1), scalars, pe],
+                    dim=-1,
+                )
+            else:
+                input = torch.cat(
+                    [xt, batch.jet_scalars_gen, self.t_embedding(t)], dim=-1
+                )
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
@@ -337,6 +367,8 @@ class JetConditionalTransformerCFM(JetCFM):
                 "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
             },
         ).squeeze(0)
+        if self.cfm.transpose:
+            vp = vp.reshape(xt.shape[0], 4)
         return vp
 
 

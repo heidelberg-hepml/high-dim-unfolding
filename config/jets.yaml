@@ -31,6 +31,7 @@ cfm:
  add_mass: false
  scaling: [1.0, 1.0, 1.0, 1.0]
  ot: false
+ transpose: false
 
 odeint:
  method: rk4
@@ -45,7 +46,7 @@ training:
  batchsize: 1024
  lr: 1e-3
  scheduler: CosineAnnealingLR
- validate_every_n_steps: 5000
+ validate_every_n_steps: 1000
  clip_grad_norm: 5.
 
 evaluate: true

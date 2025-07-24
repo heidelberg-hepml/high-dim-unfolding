@@ -38,18 +38,6 @@ class ContextualLayerNorm(nn.Module):
         self.condition_proj = nn.Linear(context_channels, in_channels * 2)
 
     def forward(self, inputs: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
-        """Forward pass.
-
-        Parameters
-        ----------
-        inputs : Tensor
-            Input data
-
-        Returns
-        -------
-        outputs : Tensor
-            Normalized inputs.
-        """
         weight, bias = self.condition_proj(condition).unsqueeze(1).chunk(2, dim=-1)
         return (
             torch.nn.functional.layer_norm(
@@ -368,7 +356,12 @@ class Transformer(nn.Module):
     ) -> None:
         super().__init__()
         self.checkpoint_blocks = checkpoint_blocks
-        self.linear_in = nn.Linear(in_channels, hidden_channels)
+        # self.linear_in = nn.Linear(in_channels, hidden_channels)
+        self.linear_in = nn.Sequential(
+            nn.Linear(in_channels, hidden_channels // 2),
+            nn.GELU(),
+            nn.Linear(hidden_channels // 2, hidden_channels),
+        )
         self.blocks = nn.ModuleList(
             [
                 BaselineTransformerBlock(
@@ -381,7 +374,12 @@ class Transformer(nn.Module):
                 for _ in range(num_blocks)
             ]
         )
-        self.linear_out = nn.Linear(hidden_channels, out_channels)
+        # self.linear_out = nn.Linear(hidden_channels, out_channels)
+        self.linear_out = nn.Sequential(
+            nn.Linear(hidden_channels, hidden_channels // 2),
+            nn.GELU(),
+            nn.Linear(hidden_channels // 2, out_channels),
+        )
 
     def forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         """Forward pass.

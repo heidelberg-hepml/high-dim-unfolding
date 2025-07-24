@@ -106,7 +106,7 @@ def load_dataset(dataset_name):
 
 def load_zplusjet(data_path, cfg, dtype):
     data = energyflow.zjets_delphes.load(
-        "Herwig",
+        "Pythia26",
         num_data=cfg.length,
         pad=True,
         cache_dir=data_path,
