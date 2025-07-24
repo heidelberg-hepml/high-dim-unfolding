@@ -164,23 +164,23 @@ class JetKinematicsExperiment(BaseExperiment):
 
         # For jet-level learning, we fit on the jet momenta directly
         # We create a simple mask where each jet is treated as a single particle
-        train_gen_mask = torch.ones(train_idx, 1, dtype=torch.bool)
+        train_gen_mask = torch.ones(1, train_idx, dtype=torch.bool)
         self.model.coordinates.init_fit(
-            gen_jets[:train_idx].unsqueeze(1),
+            gen_jets[:train_idx].unsqueeze(0),
             mask=train_gen_mask,
             jet=gen_jets[:train_idx],
         )
 
         if hasattr(self.model, "sample_coords"):
             self.model.sample_coords.init_fit(
-                gen_jets[:train_idx].unsqueeze(1),
+                gen_jets[:train_idx].unsqueeze(0),
                 mask=train_gen_mask,
                 jet=gen_jets[:train_idx],
             )
 
-        jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
+        jet_train_det_mask = torch.ones(1, train_idx, dtype=torch.bool)
         self.model.condition_coordinates.init_fit(
-            det_jets[:train_idx].unsqueeze(1),
+            det_jets[:train_idx].unsqueeze(0),
             mask=jet_train_det_mask,
             jet=det_jets[:train_idx],
         )
