@@ -161,7 +161,6 @@ class ConditionalLGATrCFM(EventCFM):
             batch.scalars_det,
             batch.x_det_ptr,
             self.ga_cfg,
-            None,
         )
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
@@ -216,7 +215,6 @@ class ConditionalLGATrCFM(EventCFM):
             scalars,
             batch.x_gen_ptr,
             # self.ga_cfg,
-            None,
         )
 
         mv_outputs, s_outputs = self.net(
