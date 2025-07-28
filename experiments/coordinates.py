@@ -212,8 +212,21 @@ class LogPtPhiEtaM2(BaseCoordinates):
         ]
 
 
+class LogPtPhiEtaM2(BaseCoordinates):
+    # (log(pt), phi, eta, log(m^2))
+    def __init__(self, pt_min, **kwargs):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.Pt_to_LogPt(pt_min),
+        ]
+
+
 class LogPtPhiEtaLogM2(BaseCoordinates):
-    # (log(pt), phi, eta, log(m^2)
+    # (log(pt), phi, eta, m^2)
     def __init__(self, pt_min, **kwargs):
         super().__init__()
         self.contains_phi = True
@@ -227,7 +240,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
 
 
 class StandardLogPtPhiEtaLogM2(BaseCoordinates):
-    # Fitted (log(pt), phi, eta, log(m^2)
+    # Fitted (log(pt), phi, eta, log(m^2))
     def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
         self.contains_phi = True
@@ -237,6 +250,20 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.Pt_to_LogPt(pt_min),
             tr.M2_to_LogM2(),
+            tr.StandardNormal([1] + fixed_dims, scaling),
+        ]
+
+
+class StandardLogPtPhiEtaM2(BaseCoordinates):
+    # Fitted (log(pt), phi, eta, m^2)
+    def __init__(self, pt_min, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.Pt_to_LogPt(pt_min),
             tr.StandardNormal([1] + fixed_dims, scaling),
         ]
 

@@ -31,9 +31,10 @@ coordinates_classes = list(all_subclasses(c.BaseCoordinates))
         ("ttbar", load_ttbar),
     ],
 )
-def test_invertibility(coordinates, dataset, data_fn):
+@pytest.mark.parametrize("mass", [1e-3, 1.0, 100.0])
+def test_invertibility(coordinates, dataset, data_fn, mass):
     """test invertibility of forward() and inverse() methods"""
-    cfg = OmegaConf.create({"length": 500, "add_pid": False, "mass": 0.001})
+    cfg = OmegaConf.create({"length": 500, "add_pid": False, "mass": mass})
     dtype = torch.float64
 
     data = data_fn("data/" + dataset, cfg, dtype)
@@ -76,9 +77,10 @@ def test_invertibility(coordinates, dataset, data_fn):
         ("ttbar", load_ttbar),
     ],
 )
-def test_velocity(coordinates, dataset, data_fn):
+@pytest.mark.parametrize("mass", [1e-3, 1.0, 100.0])
+def test_velocity(coordinates, dataset, data_fn, mass):
     """test velocity_forward() and velocity_inverse() methods"""
-    cfg = OmegaConf.create({"length": 500, "add_pid": False, "mass": 0.001})
+    cfg = OmegaConf.create({"length": 500, "add_pid": False, "mass": mass})
     device = torch.device("cpu")
     dtype = torch.float64
 
