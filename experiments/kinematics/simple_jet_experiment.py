@@ -16,7 +16,7 @@ from experiments.kinematics.observables import create_partial_jet
 from experiments.coordinates import jetmomenta_to_fourmomenta
 
 
-class JetKinematicsExperiment(BaseExperiment):
+class SimpleJetKinematicsExperiment(BaseExperiment):
     def init_physics(self):
 
         with open_dict(self.cfg):
@@ -47,50 +47,36 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.data.pt_min = pt_min
             self.load_fn = load_fn
 
-            if self.cfg.modelname == "JetConditionalTransformer":
-                if self.cfg.cfm.transpose:
-                    base_in_channels = 1
+            if self.cfg.modelname == "ConditionalTransformer":
+                if self.cfg.cfm.transpose == True:
+                    base_channels = 1
                 else:
-                    base_in_channels = 4
+                    base_channels = 4
                 self.cfg.model.net.in_channels = (
-                    base_in_channels
+                    base_channels
                     + self.cfg.cfm.embed_t_dim
-                    + self.cfg.data.mult_encoding_dim
+                    + self.cfg.data.pos_encoding_dim
                 )
-                if self.cfg.cfm.transpose:
-                    self.cfg.model.net.in_channels += self.cfg.data.pos_encoding_dim
-                if self.cfg.cfm.add_constituents:
-                    self.cfg.model.net_condition.in_channels = (
-                        base_in_channels + self.cfg.data.pos_encoding_dim + 1
-                    )
-                else:
-                    self.cfg.model.net_condition.in_channels = (
-                        base_in_channels + self.cfg.data.mult_encoding_dim
-                    )
-                    if self.cfg.cfm.transpose:
-                        self.cfg.model.net_condition.in_channels += (
-                            self.cfg.data.pos_encoding_dim
-                        )
+                self.cfg.model.net_condition.in_channels = (
+                    base_channels + self.cfg.data.pos_encoding_dim
+                )
                 self.cfg.model.net_condition.out_channels = (
                     self.cfg.model.net.hidden_channels
                 )
-                self.cfg.model.net.out_channels = base_in_channels
-
+                if self.cfg.data.add_pid:
+                    self.cfg.model.net.in_channels += 6
+                    self.cfg.model.net_condition.in_channels += 6
                 if self.cfg.cfm.self_condition_prob > 0.0:
-                    self.cfg.model.net.in_channels += base_in_channels
+                    self.cfg.model.net.in_channels += 4
+                self.cfg.model.net.out_channels = base_channels
 
-            elif self.cfg.modelname == "JetConditionalLGATr":
+            elif self.cfg.modelname == "ConditionalLGATr":
                 self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )
-                if self.cfg.cfm.add_constituents:
-                    self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.pos_encoding_dim + 1
-                    )
-                else:
-                    self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.mult_encoding_dim
-                    )
+                self.cfg.model.net_condition.in_s_channels = (
+                    self.cfg.data.pos_encoding_dim
+                )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
                 )
@@ -103,6 +89,9 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.model.net.condition_s_channels = (
                     self.cfg.model.net_condition.out_s_channels
                 )
+                if self.cfg.data.add_pid:
+                    self.cfg.model.net.in_s_channels += 6
+                    self.cfg.model.net_condition.in_s_channels += 6
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
 
@@ -142,6 +131,14 @@ class JetKinematicsExperiment(BaseExperiment):
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_jets,
+            gen_jets,
+            filename="pre_jetmomenta.pdf",
+            sqrt=True,
+        )
+
         det_jets = jetmomenta_to_fourmomenta(det_jets)
         gen_jets = jetmomenta_to_fourmomenta(gen_jets)
 
@@ -171,67 +168,43 @@ class JetKinematicsExperiment(BaseExperiment):
             jet=gen_jets[:train_idx],
         )
 
-        if hasattr(self.model, "sample_coords"):
-            self.model.sample_coords.init_fit(
-                gen_jets[:train_idx].unsqueeze(1),
-                mask=train_gen_mask,
-                jet=gen_jets[:train_idx],
-            )
-
-        jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
+        train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
         self.model.condition_coordinates.init_fit(
-            det_jets[:train_idx].unsqueeze(1),
-            mask=jet_train_det_mask,
+            det_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
+            mask=train_det_mask,
             jet=det_jets[:train_idx],
         )
 
+        # Transform jets to coordinate space, treating each jet as a single particle
         det_jets = self.model.condition_coordinates.fourmomenta_to_x(det_jets)
 
         gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
 
-        if self.cfg.cfm.add_constituents:
-            train_det_mask = (
-                torch.arange(det_particles.shape[1])[None, :]
-                < det_mults[:train_idx, None]
-            )
-            self.model.constituents_condition_coordinates.init_fit(
-                det_particles[:train_idx],
-                mask=train_det_mask,
-                jet=torch.repeat_interleave(
-                    det_jets[:train_idx], det_mults[:train_idx], dim=0
-                ),
-            )
-
-            det_mask = (
-                torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-            )
-            det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
-                det_particles[det_mask],
-                jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
-                ptr=torch.cumsum(
-                    torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
-                    dim=0,
-                ),
-            )
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_jets,
+            gen_jets,
+        )
 
         self.train_data = Dataset(
-            self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
         self.val_data = Dataset(
-            self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
         self.test_data = Dataset(
-            self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
         )
 
+        if self.cfg.cfm.transpose:
+            det_particles = det_jets.unsqueeze(2)
+            gen_particles = gen_jets.unsqueeze(2)
+        else:
+            det_particles = det_jets.unsqueeze(1)
+            gen_particles = gen_jets.unsqueeze(1)
+
         self.train_data.create_data_list(
-            det_particles=det_particles[:train_idx],
+            det_particles=det_particles[:train_idx],  # Add sequence dimension
             det_pids=det_pids[:train_idx],
             det_mults=det_mults[:train_idx],
             det_jets=det_jets[:train_idx],
@@ -355,7 +328,7 @@ class JetKinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
-            sample_batch, base = self.model.sample(
+            sample_batch, sample = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
@@ -364,37 +337,35 @@ class JetKinematicsExperiment(BaseExperiment):
             if i == 0:
                 plot_kinematics(
                     self.cfg.run_dir,
-                    batch.jet_det.detach().cpu(),
-                    batch.jet_gen.detach().cpu(),
-                    sample_batch.jet_gen.detach().cpu(),
+                    batch.x_det.detach().cpu(),
+                    batch.x_gen.detach().cpu(),
+                    sample_batch.x_gen.detach().cpu(),
                     f"post_kinematics.pdf",
                 )
-
-            sample_batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
-                sample_batch.jet_det
-            )
-
-            sample_batch.jet_gen = self.model.coordinates.x_to_fourmomenta(
-                sample_batch.jet_gen
-            )
-
-            batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
-                batch.jet_det
-            )
-
-            batch.jet_gen = self.model.coordinates.x_to_fourmomenta(batch.jet_gen)
-
-            if self.cfg.cfm.add_constituents:
-                sample_batch.x_det = (
-                    self.model.constituents_condition_coordinates.x_to_fourmomenta(
-                        sample_batch.x_det
-                    )
+            if self.cfg.cfm.transpose:
+                sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    sample_batch.x_det.transpose(1, 2)
                 )
-                batch.x_det = (
-                    self.model.constituents_condition_coordinates.x_to_fourmomenta(
-                        batch.x_det
-                    )
+                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen.transpose(1, 2)
                 )
+                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det.transpose(1, 2)
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    batch.x_gen.transpose(1, 2)
+                )
+            else:
+                sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    sample_batch.x_det
+                )
+                sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen
+                )
+                batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det
+                )
+                batch.x_gen = self.model.coordinates.x_to_fourmomenta(batch.x_gen)
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
@@ -468,10 +439,10 @@ class JetKinematicsExperiment(BaseExperiment):
         LOGGER.info(f"Creating plots in {path}")
         t0 = time.time()
 
-        if self.cfg.modelname == "JetConditionalTransformer":
-            model_label = "JetCondTr"
-        elif self.cfg.modelname == "JetConditionalLGATr":
-            model_label = "JetCondLGATr"
+        if self.cfg.modelname == "ConditionalTransformer":
+            model_label = "CondTr"
+        elif self.cfg.modelname == "ConditionalLGATr":
+            model_label = "CondLGATr"
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -494,21 +465,29 @@ class JetKinematicsExperiment(BaseExperiment):
             if self.cfg.plotting.fourmomenta:
                 filename = os.path.join(path, "fourmomenta.pdf")
                 plotter.plot_fourmomenta(
-                    filename=filename,
-                    **kwargs,
-                    jet=True,
-                    weights=weights,
-                    mask_dict=mask_dict,
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
                 )
 
             if self.cfg.plotting.jetmomenta:
                 filename = os.path.join(path, "jetmomenta.pdf")
                 plotter.plot_jetmomenta(
-                    filename=filename,
-                    **kwargs,
-                    jet=True,
-                    weights=weights,
-                    mask_dict=mask_dict,
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+
+            if self.cfg.plotting.preprocessed:
+                filename = os.path.join(path, "preprocessed.pdf")
+                plotter.plot_preprocessed(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+            if self.cfg.plotting.jetscaled:
+                filename = os.path.join(path, "jetscaled.pdf")
+                plotter.plot_jetscaled(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+                )
+            if len(self.obs.keys()) > 0:
+                filename = os.path.join(path, "observables.pdf")
+                plotter.plot_observables(
+                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
                 )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
