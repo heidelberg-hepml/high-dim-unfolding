@@ -119,7 +119,6 @@ class ConditionalLGATrCFM(EventCFM):
             odeint,
         )
         self.scalar_dims = scalar_dims
-        assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
         self.ga_cfg = GA_config
         self.net = net
         self.net_condition = net_condition
@@ -138,14 +137,12 @@ class ConditionalLGATrCFM(EventCFM):
             batch.scalars_gen,
             batch.x_gen_ptr,
             # self.ga_cfg,
-            None,
         )
         _, _, det_batch_idx, _ = embed_data_into_ga(
             batch.x_det,
             batch.scalars_det,
             batch.x_det_ptr,
-            # self.ga_cfg,
-            None,
+            self.ga_cfg,
         )
         attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
         condition_attention_mask = xformers_mask(
@@ -163,7 +160,7 @@ class ConditionalLGATrCFM(EventCFM):
             batch.x_det,
             batch.scalars_det,
             batch.x_det_ptr,
-            # self.ga_cfg,
+            self.ga_cfg,
             None,
         )
         mv = mv.unsqueeze(0)
@@ -194,12 +191,12 @@ class ConditionalLGATrCFM(EventCFM):
             )
         else:
             ptr = batch.x_gen_ptr
-        gen_jets = torch.repeat_interleave(batch.jet_gen, batch.x_gen_ptr.diff(), dim=0)
+        gen_jets = torch.repeat_interleave(batch.jet_gen, ptr.diff(), dim=0)
 
         fourmomenta = torch.zeros_like(xt)
         fourmomenta[constituents_mask] = self.coordinates.x_to_fourmomenta(
             xt[constituents_mask],
-            jet=gen_jets[constituents_mask],
+            jet=gen_jets,
             ptr=ptr,
         )
         fourmomenta[~constituents_mask] = jetmomenta_to_fourmomenta(

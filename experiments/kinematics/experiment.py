@@ -361,25 +361,18 @@ class KinematicsExperiment(BaseExperiment):
                 batch.jet_det, batch.x_det_ptr.diff(), dim=0
             )
 
-            sample_batch.x_det = fix_mass(
-                self.model.condition_coordinates.x_to_fourmomenta(
-                    sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
-                )
+            sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
             )
-            sample_batch.x_gen = fix_mass(
-                self.model.coordinates.x_to_fourmomenta(
-                    sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
-                )
+            sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
             )
-            batch.x_det = fix_mass(
-                self.model.condition_coordinates.x_to_fourmomenta(
-                    batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
-                )
+
+            batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
             )
-            batch.x_gen = fix_mass(
-                self.model.coordinates.x_to_fourmomenta(
-                    batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
-                )
+            batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
             )
 
             samples.extend(sample_batch.detach().to_data_list())

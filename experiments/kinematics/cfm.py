@@ -70,8 +70,7 @@ class CFM(nn.Module):
                 - torch.pi
             )
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
-        if 3 in self.cfm.masked_dims:
-            sample[..., 3] = x0[..., 3]
+        sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
         return sample
 
