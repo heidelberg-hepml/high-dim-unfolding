@@ -48,7 +48,7 @@ class SimpleJetKinematicsExperiment(BaseExperiment):
             self.load_fn = load_fn
 
             if self.cfg.modelname == "ConditionalTransformer":
-                if self.cfg.cfm.transpose == True:
+                if self.cfg.cfm.transpose:
                     base_channels = 1
                 else:
                     base_channels = 4

@@ -26,6 +26,7 @@ from experiments.kinematics.observables import (
     sd_mass,
     compute_zg,
     jet_mass,
+    create_jet_norm,
 )
 
 
@@ -471,12 +472,14 @@ class KinematicsExperiment(BaseExperiment):
             or self.cfg.evaluation.overfit
         ):
             if self.cfg.plotting.fourmomenta:
+                LOGGER.info("Plotting fourmomenta")
                 filename = os.path.join(path, "fourmomenta.pdf")
                 plotter.plot_fourmomenta(
                     filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
                 )
 
             if self.cfg.plotting.jetmomenta:
+                LOGGER.info("Plotting jetmomenta")
                 filename = os.path.join(path, "jetmomenta.pdf")
                 plotter.plot_jetmomenta(
                     filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
@@ -488,6 +491,7 @@ class KinematicsExperiment(BaseExperiment):
                     filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
                 )
             if self.cfg.plotting.jetscaled:
+                LOGGER.info("Plotting jetscaled")
                 filename = os.path.join(path, "jetscaled.pdf")
                 plotter.plot_jetscaled(
                     filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
@@ -533,6 +537,14 @@ class KinematicsExperiment(BaseExperiment):
 
             self.obs_coords[r"\text{jet}"] = create_partial_jet(0.0, 1.0)
 
+        if "slices" in self.cfg.plotting.observables:
+            self.obs_coords[r"1-5"] = create_partial_jet(0, 5)
+            self.obs_coords[r"6-10"] = create_partial_jet(5, 10)
+            self.obs_coords[r"11-15"] = create_partial_jet(10, 15)
+            self.obs_coords[r"16-20"] = create_partial_jet(15, 20)
+            self.obs_coords[r"1-10"] = create_partial_jet(0, 10)
+            self.obs_coords[r"11-20"] = create_partial_jet(10, 20)
+
         if self.cfg.plotting.n_pt > 0:
             if self.cfg.data.max_constituents == -1:
                 n_pt = self.cfg.plotting.n_pt
@@ -548,15 +560,24 @@ class KinematicsExperiment(BaseExperiment):
         self.obs = {}
 
         if "angle" in self.cfg.plotting.observables:
-            self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
-            self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
-            self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
-            self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
-            self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
-            self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
-            self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
+            # self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
+            # self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
+            # self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
+            # self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
+            # self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
+            # self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
+            # self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
+            # self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
+            # self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
+            self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
+            self.obs[r"\Delta \eta_{1,4}"] = compute_angles(0, 1, 3, 4, "eta")
+            self.obs[r"\Delta R_{1,4}"] = compute_angles(0, 1, 3, 4, "R")
+            self.obs[r"\Delta \phi_{2,4}"] = compute_angles(1, 2, 3, 4, "phi")
+            self.obs[r"\Delta \eta_{2,4}"] = compute_angles(1, 2, 3, 4, "eta")
+            self.obs[r"\Delta R_{2,4}"] = compute_angles(1, 2, 3, 4, "R")
+            self.obs[r"\Delta \phi_{3,4}"] = compute_angles(2, 3, 3, 4, "phi")
+            self.obs[r"\Delta \eta_{3,4}"] = compute_angles(2, 3, 3, 4, "eta")
+            self.obs[r"\Delta R_{3,4}"] = compute_angles(2, 3, 3, 4, "R")
 
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)
@@ -607,3 +628,19 @@ class KinematicsExperiment(BaseExperiment):
         if "jet_mass" in self.cfg.plotting.observables:
 
             self.obs[r"M_{jet}"] = jet_mass
+
+        if "norm" in self.cfg.plotting.observables:
+            self.obs[
+                r"\sqrt{E_{\text{jet}}^2 + p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
+            ] = create_jet_norm()
+            self.obs[
+                r"\sqrt{p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
+            ] = create_jet_norm([1, 2, 3])
+            self.obs[r"p_{T,\text{jet}}"] = create_jet_norm([1, 2])
+            self.obs[r"M_{\text{jet}}"] = create_jet_norm([0], [1, 2, 3])
+            self.obs[
+                r"\sqrt{E_{\text{jet}}^2 - p_{x,\text{jet}}^2 - p_{y,\text{jet}}^2}"
+            ] = create_jet_norm([0], [1, 2])
+            self.obs[r"\sqrt{E_{\text{jet}}^2 - p_{z,\text{jet}}^2}"] = create_jet_norm(
+                [0], [3]
+            )

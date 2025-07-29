@@ -1,4 +1,5 @@
 from experiments.logger import LOGGER
+from experiments.utils import fix_mass
 
 try:
     from fastjet_contribs import (
@@ -237,3 +238,19 @@ def jet_mass(constituents, batch_idx, other_batch_idx, **kwargs):
         mass2 = jet[0] ** 2 - (jet[1:] ** 2).sum(dim=-1)
         jet_masses.append(torch.sqrt(mass2))
     return torch.stack(jet_masses)
+
+
+def create_jet_norm(pos=[0, 1, 2, 3], neg=[]):
+    def jet_norm(constituents, batch_idx, other_batch_idx, **kwargs):
+        batch_ptr = get_ptr_from_batch(batch_idx)
+        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
+        jet_norms = []
+        for n in range(len(batch_ptr) - 1):
+            jet = fix_mass(constituents[batch_ptr[n] : batch_ptr[n + 1]], 0.1).sum(
+                dim=0
+            )
+            norm2 = (jet[..., pos] ** 2).sum(dim=-1) - (jet[..., neg] ** 2).sum(dim=-1)
+            jet_norms.append(torch.sqrt(norm2))
+        return torch.stack(jet_norms)
+
+    return jet_norm

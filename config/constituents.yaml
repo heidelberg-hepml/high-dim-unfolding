@@ -30,6 +30,7 @@ cfm:
  add_mass: false
  scaling: [1.0, 1.0, 1.0, 1.0]
  ot: false
+ gac: false
 
 odeint:
  method: rk4

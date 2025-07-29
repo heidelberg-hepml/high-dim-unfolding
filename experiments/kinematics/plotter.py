@@ -12,6 +12,7 @@ from experiments.kinematics.plots import (
 )
 from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
+from experiments.logger import LOGGER
 
 N_SAMPLES = 100000
 
@@ -658,6 +659,7 @@ def plot_observables(
 
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
+            LOGGER.info(f"Plotting observable {name}")
             extract = exp.obs[name]
             det_lvl = (
                 extract(

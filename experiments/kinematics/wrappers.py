@@ -119,7 +119,7 @@ class ConditionalLGATrCFM(EventCFM):
             odeint,
         )
         self.scalar_dims = scalar_dims
-        self.ga_cfg = GA_config
+        self.ga_cfg = GA_config if self.cfm.gac else None
         self.net = net
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
@@ -180,7 +180,6 @@ class ConditionalLGATrCFM(EventCFM):
         crossattention_mask,
         self_condition=None,
     ):
-        assert self.coordinates is not None
 
         constituents_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
         if self.cfm.add_jet:
@@ -233,7 +232,7 @@ class ConditionalLGATrCFM(EventCFM):
         s_outputs = s_outputs.squeeze(0)
 
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
-        v_s = s[~spurions_mask]
+        v_s = s_outputs[~spurions_mask]
 
         v_straight = torch.zeros_like(v_fourmomenta)
         v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(
@@ -245,7 +244,9 @@ class ConditionalLGATrCFM(EventCFM):
 
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
-        v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
+        v_straight[constituents_mask][..., self.scalar_dims] = v_s[constituents_mask][
+            ..., self.scalar_dims
+        ]
 
         return v_straight
 
