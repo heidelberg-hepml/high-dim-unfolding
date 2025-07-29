@@ -366,6 +366,14 @@ class EventCFM(CFM):
             coordinates = c.PtPhiEtaE()
         elif coordinates_label == "PtPhiEtaM2":
             coordinates = c.PtPhiEtaM2()
+        elif coordinates_label == "StandardPtPhiEtaM2":
+            coordinates = c.StandardPtPhiEtaM2(
+                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
+        elif coordinates_label == "StandardJetScaledPtPhiEtaM2":
+            coordinates = c.StandardJetScaledPtPhiEtaM2(
+                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
         elif coordinates_label == "LogPtPhiEtaE":
             coordinates = c.LogPtPhiEtaE(self.pt_min)
         elif coordinates_label == "LogPtPhiEtaM2":

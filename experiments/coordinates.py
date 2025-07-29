@@ -141,6 +141,31 @@ class PtPhiEtaM2(BaseCoordinates):
         ]
 
 
+class StandardPtPhiEtaM2(BaseCoordinates):
+    def __init__(self, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
+        ]
+
+
+class StandardJetScaledPtPhiEtaM2(BaseCoordinates):
+    def __init__(self, fixed_dims=[3], scaling=torch.ones(1, 4), **kwargs):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.PtPhiEtaM2_to_JetScale(),
+            tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
+        ]
+
+
 class PPPLogM2(BaseCoordinates):
     # (px, py, pz, log(m^2))
     def __init__(self, **kwargs):

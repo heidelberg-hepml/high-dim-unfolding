@@ -136,7 +136,7 @@ class ConditionalLGATrCFM(EventCFM):
             batch.x_gen,
             batch.scalars_gen,
             batch.x_gen_ptr,
-            # self.ga_cfg,
+            self.ga_cfg,
         )
         _, _, det_batch_idx, _ = embed_data_into_ga(
             batch.x_det,
@@ -214,7 +214,7 @@ class ConditionalLGATrCFM(EventCFM):
             fourmomenta,
             scalars,
             batch.x_gen_ptr,
-            # self.ga_cfg,
+            self.ga_cfg,
         )
 
         mv_outputs, s_outputs = self.net(
