@@ -48,7 +48,7 @@ class SimpleJetKinematicsExperiment(BaseExperiment):
             self.load_fn = load_fn
 
             if self.cfg.modelname == "ConditionalTransformer":
-                if self.cfg.cfm.transpose == True:
+                if self.cfg.cfm.transpose:
                     base_channels = 1
                 else:
                     base_channels = 4
@@ -328,7 +328,7 @@ class SimpleJetKinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
-            sample_batch, sample = self.model.sample(
+            sample_batch, base = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,
