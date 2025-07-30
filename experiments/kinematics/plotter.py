@@ -689,6 +689,16 @@ def plot_observables(
                 .detach()
             )
 
+            nan_filter = (
+                torch.isnan(det_lvl) | torch.isnan(part_lvl) | torch.isnan(model)
+            ).squeeze()
+            LOGGER.info(
+                f"Removing {nan_filter.sum()} NaN values from observable {name}, nan filter shape {nan_filter.shape}"
+            )
+            det_lvl = det_lvl[~nan_filter]
+            part_lvl = part_lvl[~nan_filter]
+            model = model[~nan_filter]
+
             xrange = np.array(
                 get_range(
                     [

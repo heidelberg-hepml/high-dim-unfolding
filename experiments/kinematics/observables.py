@@ -23,6 +23,8 @@ from experiments.coordinates import fourmomenta_to_jetmomenta
 R0 = None
 R0SoftDrop = None
 
+MASS = 0.0
+
 
 def create_partial_jet(start, end):
     assert end > start or end == -1, "End index must be greater than start index"
@@ -201,7 +203,7 @@ def tau2(constituents, batch_idx, other_batch_idx, **kwargs):
 
 
 def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents.detach().cpu())
+    constituents = np.array(fix_mass(constituents, MASS).detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     log_rhos = []
     for i in range(len(batch_ptr) - 1):
@@ -217,7 +219,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
 
 
 def compute_zg(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents.detach().cpu())
+    constituents = np.array(fix_mass(constituents, MASS).detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     zgs = []
     for i in range(len(batch_ptr) - 1):

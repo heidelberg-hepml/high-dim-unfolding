@@ -560,24 +560,15 @@ class KinematicsExperiment(BaseExperiment):
         self.obs = {}
 
         if "angle" in self.cfg.plotting.observables:
-            # self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
-            # self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
-            # self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
-            # self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            # self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
-            # self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
-            # self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            # self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
-            # self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
-            self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
-            self.obs[r"\Delta \eta_{1,4}"] = compute_angles(0, 1, 3, 4, "eta")
-            self.obs[r"\Delta R_{1,4}"] = compute_angles(0, 1, 3, 4, "R")
-            self.obs[r"\Delta \phi_{2,4}"] = compute_angles(1, 2, 3, 4, "phi")
-            self.obs[r"\Delta \eta_{2,4}"] = compute_angles(1, 2, 3, 4, "eta")
-            self.obs[r"\Delta R_{2,4}"] = compute_angles(1, 2, 3, 4, "R")
-            self.obs[r"\Delta \phi_{3,4}"] = compute_angles(2, 3, 3, 4, "phi")
-            self.obs[r"\Delta \eta_{3,4}"] = compute_angles(2, 3, 3, 4, "eta")
-            self.obs[r"\Delta R_{3,4}"] = compute_angles(2, 3, 3, 4, "R")
+            self.obs[r"\Delta \phi_{4,5}"] = compute_angles(3, 4, 4, 5, "phi")
+            self.obs[r"\Delta \eta_{4,5}"] = compute_angles(3, 4, 4, 5, "eta")
+            self.obs[r"\Delta R_{4,5}"] = compute_angles(3, 4, 4, 5, "R")
+            self.obs[r"\Delta \phi_{4,6}"] = compute_angles(3, 4, 5, 6, "phi")
+            self.obs[r"\Delta \eta_{4,6}"] = compute_angles(3, 4, 5, 6, "eta")
+            self.obs[r"\Delta R_{4,6}"] = compute_angles(3, 4, 5, 6, "R")
+            self.obs[r"\Delta \phi_{5,6}"] = compute_angles(4, 5, 5, 6, "phi")
+            self.obs[r"\Delta \eta_{5,6}"] = compute_angles(4, 5, 5, 6, "eta")
+            self.obs[r"\Delta R_{5,6}"] = compute_angles(4, 5, 5, 6, "R")
 
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)
