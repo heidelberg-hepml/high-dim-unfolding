@@ -657,6 +657,10 @@ def plot_observables(
     part_consts = exp.data_raw["truth"].x_gen[:max_n_ptr]
     model_consts = exp.data_raw["samples"].x_gen[:max_n_ptr]
 
+    LOGGER.info(
+        f"det shape {det_consts.shape}, part shape {part_consts.shape}, model shape {model_consts.shape}"
+    )
+
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             LOGGER.info(f"Plotting observable {name}")
@@ -689,15 +693,16 @@ def plot_observables(
                 .detach()
             )
 
+            min_length = min(det_lvl.shape[0], part_lvl.shape[0], model.shape[0])
             nan_filter = (
-                torch.isnan(det_lvl) | torch.isnan(part_lvl) | torch.isnan(model)
+                torch.isnan(det_lvl[:min_length])
+                | torch.isnan(part_lvl[:min_length])
+                | torch.isnan(model[:min_length])
             ).squeeze()
-            LOGGER.info(
-                f"Removing {nan_filter.sum()} NaN values from observable {name}, nan filter shape {nan_filter.shape}"
-            )
-            det_lvl = det_lvl[~nan_filter]
-            part_lvl = part_lvl[~nan_filter]
-            model = model[~nan_filter]
+
+            det_lvl = det_lvl[:min_length][~nan_filter]
+            part_lvl = part_lvl[:min_length][~nan_filter]
+            model = model[:min_length][~nan_filter]
 
             xrange = np.array(
                 get_range(
