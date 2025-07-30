@@ -592,6 +592,19 @@ class JetCFM(EventCFM):
 
 
 class JetMLPCFM(EventCFM):
+
+    def __init__(
+        self,
+        net,
+        cfm,
+        odeint,
+    ):
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.net = net
+
     def batch_loss(self, batch):
 
         new_batch = batch.clone()
@@ -739,5 +752,5 @@ class JetMLPCFM(EventCFM):
                 ],
                 dim=-1,
             )
-        vp = self.net(x=input)
+        vp = self.net(input)
         return vp

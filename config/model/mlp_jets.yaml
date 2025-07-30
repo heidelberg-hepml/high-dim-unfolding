@@ -5,6 +5,6 @@ net:
 
   in_shape: null
   out_shape: null
-  hidden_channels: 32
-  hidden_layers: 3
+  hidden_channels: 256
+  hidden_layers: 8
   dropout_prob: 0.1
