@@ -70,8 +70,7 @@ class CFM(nn.Module):
                 - torch.pi
             )
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
-        if 3 in self.cfm.masked_dims:
-            sample[..., 3] = x0[..., 3]
+        sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
         return sample
 
@@ -123,17 +122,6 @@ class CFM(nn.Module):
 
         x1 = self.sample_base(x0, constituents_mask)
 
-        if self.cfm.ot:
-            x0_norm = (x0**2).sum(dim=-1, keepdim=True)
-            x1_norm = (x1**2).sum(dim=-1, keepdim=True)
-            cost_matrix = x0_norm + x1_norm.T - 2 * x0 @ x1.T
-            cost_matrix = cost_matrix.clamp(min=1e-6)
-            x0_idx, x1_idx = linear_sum_assignment(cost_matrix.cpu().numpy())
-            x1_idx = torch.tensor(x1_idx, device=x1.device, dtype=torch.long).unsqueeze(
-                -1
-            )
-            x1 = torch.take_along_dim(x1, x1_idx, dim=0)
-
         xt, vt = self.geometry.get_trajectory(
             x_target=x0,
             x_base=x1,
@@ -181,7 +169,7 @@ class CFM(nn.Module):
         vt = self.handle_velocity(vt[constituents_mask])
 
         # evaluate conditional flow matching objective
-        distance = self.geometry.get_metric(vp, vt, xt[constituents_mask])
+        distance = self.geometry.get_metric2(vp, vt, xt[constituents_mask])
 
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (
@@ -192,6 +180,21 @@ class CFM(nn.Module):
             ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
         else:
             loss = distance
+
+        loss = scatter(
+            loss, new_batch.x_gen_batch[constituents_mask], dim=0, reduce="mean"
+        )
+
+        if self.cfm.weight > 0.0:
+            cost = self.geometry.get_distance(
+                x0[constituents_mask], x1[constituents_mask]
+            )
+            cost = scatter(
+                cost, new_batch.x_gen_batch[constituents_mask], dim=0, reduce="mean"
+            )
+            loss = loss * torch.exp(-self.cfm.weight * cost)
+
+        loss = loss.mean()
 
         if self.cfm.add_mass:
             gen_jets = torch.repeat_interleave(
@@ -367,6 +370,14 @@ class EventCFM(CFM):
             coordinates = c.PtPhiEtaE()
         elif coordinates_label == "PtPhiEtaM2":
             coordinates = c.PtPhiEtaM2()
+        elif coordinates_label == "StandardPtPhiEtaM2":
+            coordinates = c.StandardPtPhiEtaM2(
+                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
+        elif coordinates_label == "StandardJetScaledPtPhiEtaM2":
+            coordinates = c.StandardJetScaledPtPhiEtaM2(
+                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
         elif coordinates_label == "LogPtPhiEtaE":
             coordinates = c.LogPtPhiEtaE(self.pt_min)
         elif coordinates_label == "LogPtPhiEtaM2":
@@ -445,7 +456,18 @@ class JetCFM(EventCFM):
                 self.constituents_condition_coordinates.to(torch.float64)
 
     def batch_loss(self, batch):
+        """
+        Construct the conditional flow matching objective
 
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+            Target space particles in fourmomenta space
+
+        Returns
+        -------
+        loss : torch.tensor with shape (1)
+        """
         if self.cfm.add_constituents:
             new_batch, _ = add_jet_to_sequence(batch)
         else:
@@ -460,17 +482,6 @@ class JetCFM(EventCFM):
         )
 
         x1 = self.sample_base(x0)
-
-        if self.cfm.ot:
-            x0_norm = (x0**2).sum(dim=-1, keepdim=True)
-            x1_norm = (x1**2).sum(dim=-1, keepdim=True)
-            cost_matrix = x0_norm + x1_norm.T - 2 * x0 @ x1.T
-            cost_matrix = cost_matrix.clamp(min=1e-6)
-            x0_idx, x1_idx = linear_sum_assignment(cost_matrix.cpu().numpy())
-            x1_idx = torch.tensor(x1_idx, device=x1.device, dtype=torch.long).unsqueeze(
-                -1
-            )
-            x1 = torch.take_along_dim(x1, x1_idx, dim=0)
 
         xt, vt = self.geometry.get_trajectory(
             x_target=x0,
@@ -535,6 +546,22 @@ class JetCFM(EventCFM):
         return loss, distance_particlewise
 
     def sample(self, batch, device, dtype):
+        """
+        Sample from CFM model
+        Solve an ODE using a NN-parametrized velocity field
+
+        Parameters
+        ----------
+        batch : tuple of Batch graphs
+        device : torch.device
+        dtype : torch.dtype
+
+        Returns
+        -------
+        x0 : torch.tensor with shape shape = (batchsize, 4)
+            Generated events
+        """
+
         if self.cfm.add_constituents:
             new_batch, _ = add_jet_to_sequence(batch)
         else:
@@ -618,17 +645,6 @@ class JetMLPCFM(EventCFM):
         )
 
         x1 = self.sample_base(x0)
-
-        if self.cfm.ot:
-            x0_norm = (x0**2).sum(dim=-1, keepdim=True)
-            x1_norm = (x1**2).sum(dim=-1, keepdim=True)
-            cost_matrix = x0_norm + x1_norm.T - 2 * x0 @ x1.T
-            cost_matrix = cost_matrix.clamp(min=1e-6)
-            x0_idx, x1_idx = linear_sum_assignment(cost_matrix.cpu().numpy())
-            x1_idx = torch.tensor(x1_idx, device=x1.device, dtype=torch.long).unsqueeze(
-                -1
-            )
-            x1 = torch.take_along_dim(x1, x1_idx, dim=0)
 
         xt, vt = self.geometry.get_trajectory(
             x_target=x0,
@@ -729,28 +745,12 @@ class JetMLPCFM(EventCFM):
         batch,
         self_condition=None,
     ):
+        inputs_list = [xt, batch.jet_scalars_gen, self.t_embedding(t)]
+        if not self.cfm.unconditional:
+            inputs_list += [batch.jet_det, batch.jet_scalars_det]
         if self_condition is not None:
-            input = torch.cat(
-                [
-                    xt,
-                    batch.jet_scalars_gen,
-                    self.t_embedding(t),
-                    batch.jet_det,
-                    batch.jet_scalars_det,
-                    self_condition,
-                ],
-                dim=-1,
-            )
-        else:
-            input = torch.cat(
-                [
-                    xt,
-                    batch.jet_scalars_gen,
-                    self.t_embedding(t),
-                    batch.jet_det,
-                    batch.jet_scalars_det,
-                ],
-                dim=-1,
-            )
+            inputs_list.append(self_condition)
+
+        input = torch.cat(inputs_list, dim=-1)
         vp = self.net(input)
         return vp
