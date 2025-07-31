@@ -31,6 +31,7 @@ cfm:
  scaling: [1.0, 1.0, 1.0, 1.0]
  ot: false
  gac: false
+ weight: 0.0
 
 odeint:
  method: rk4

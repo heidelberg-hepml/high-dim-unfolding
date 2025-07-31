@@ -518,10 +518,10 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
             )
 
             obs_names = [
-                r"\frac{p_{T," + name + r"}}{p_{T,\text{ jet}}}",
-                r"\phi_{" + name + r"} - \phi_{\text{ jet}}",
-                r"\eta_{" + name + r"} - \eta_{\text{ jet}}",
-                r"m_{" + name + r"}",
+                r"\log{p_{T," + name + r"}} - \log{p_{T,\text{ jet}}}",
+                r"\phi_{" + name + r"} - \phi_{\text{jet}}",
+                r"\eta_{" + name + r"} - \eta_{\text{jet}}",
+                r"\log m_{" + name + r"}^2 - \log m_{\text{jet}}^2",
             ]
             for channel in range(4):
                 xlabel = obs_names[channel]
