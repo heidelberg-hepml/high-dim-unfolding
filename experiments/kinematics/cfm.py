@@ -169,7 +169,7 @@ class CFM(nn.Module):
         vt = self.handle_velocity(vt[constituents_mask])
 
         # evaluate conditional flow matching objective
-        distance = self.geometry.get_metric2(vp, vt, xt[constituents_mask])
+        distance = self.geometry.get_metric(vp, vt, xt[constituents_mask])
 
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (
