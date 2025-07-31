@@ -109,12 +109,16 @@ class JetKinematicsExperiment(BaseExperiment):
             elif self.cfg.modelname == "JetMLP":
                 base_in_channels = 4
                 self.cfg.model.net.in_shape = (
-                    2 * base_in_channels
+                    base_in_channels
                     + self.cfg.cfm.embed_t_dim
-                    + 2 * self.cfg.data.mult_encoding_dim
+                    + self.cfg.data.mult_encoding_dim
                 )
                 self.cfg.model.net.out_shape = base_in_channels
 
+                if not self.cfg.cfm.unconditional:
+                    self.cfg.model.net.in_shape += (
+                        base_in_channels + self.cfg.data.mult_encoding_dim
+                    )
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_channels += base_in_channels
 
