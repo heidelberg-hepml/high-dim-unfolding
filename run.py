@@ -12,6 +12,7 @@ from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
 from experiments.kinematics.simple_jet_experiment import SimpleJetKinematicsExperiment
+from experiments.chained.experiment import ChainedExperiment
 
 
 @hydra.main(config_path="config", config_name="constituents", version_base=None)
@@ -46,6 +47,8 @@ def ddp_worker(rank, cfg, world_size):
         constructor = JetKinematicsExperiment
     elif cfg.exp_type == "simple_jets":
         constructor = SimpleJetKinematicsExperiment
+    elif cfg.exp_type == "chained":
+        constructor = ChainedExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 

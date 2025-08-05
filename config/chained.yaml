@@ -1,0 +1,55 @@
+exp_type: chained
+exp_name: chained_sampling
+
+use_mlflow: false
+
+data:
+  data_dir: data/
+  dataset: zplusjet
+  length: -1
+  train_val_test: [0.8, 0.1, 0.1]
+  max_num_particles: null
+  max_constituents: -1
+  add_pid: false
+  pt_min: null
+  mass: 1.0
+  pos_encoding_dim: 8
+  mult_encoding_dim: 8
+
+# Configuration for the three sub-experiments
+multiplicity:
+  model_path: mlruns/multiplicity_experiment  # Path to saved multiplicity model
+  run_idx: 0  # Run index for the saved model
+  
+jets:
+  model_path: mlruns/jets_experiment  # Path to saved jets model  
+  run_idx: 0  # Run index for the saved model
+  
+constituents:
+  model_path: mlruns/constituents_experiment  # Path to saved constituents model
+  run_idx: 0  # Run index for the saved model
+
+train: false  # No training in chained experiment
+training: null
+
+evaluate: true
+evaluation:
+  batchsize: 1024
+  sample: true
+  n_batches: -1
+  save_samples: true
+  load_samples: false
+
+plot: true
+plotting:
+  fourmomenta: true
+  jetmomenta: true
+  jetscaled: false
+  preprocessed: false
+  observables: ["jet", "angle"]
+  n_pt: 3
+  correlations: false
+
+defaults:
+  - default
+  - _self_
