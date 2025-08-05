@@ -3,31 +3,18 @@ exp_name: chained_sampling
 
 use_mlflow: false
 
-data:
-  data_dir: data/
-  dataset: zplusjet
-  length: -1
-  train_val_test: [0.8, 0.1, 0.1]
-  max_num_particles: null
-  max_constituents: -1
-  add_pid: false
-  pt_min: null
-  mass: 1.0
-  pos_encoding_dim: 8
-  mult_encoding_dim: 8
+# Paths to the three previous experiment directories
+# Each should contain config.yaml and models/model_run*.pt
+experiment_paths:
+  multiplicity: runs/multiplicity_experiment/run_name  # Path to multiplicity experiment directory
+  jets: runs/jets_experiment/run_name  # Path to jets experiment directory  
+  constituents: runs/constituents_experiment/run_name  # Path to constituents experiment directory
 
-# Configuration for the three sub-experiments
-multiplicity:
-  model_path: mlruns/multiplicity_experiment  # Path to saved multiplicity model
-  run_idx: 0  # Run index for the saved model
-  
-jets:
-  model_path: mlruns/jets_experiment  # Path to saved jets model  
-  run_idx: 0  # Run index for the saved model
-  
-constituents:
-  model_path: mlruns/constituents_experiment  # Path to saved constituents model
-  run_idx: 0  # Run index for the saved model
+# Which run index to use for model loading from each experiment
+model_run_indices:
+  multiplicity: 0
+  jets: 0
+  constituents: 0
 
 train: false  # No training in chained experiment
 training: null

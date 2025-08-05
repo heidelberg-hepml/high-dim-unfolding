@@ -5,7 +5,7 @@ from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
 
 import os, time
-from omegaconf import open_dict
+from omegaconf import open_dict, OmegaConf
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import Dataset, load_dataset
@@ -35,79 +35,89 @@ class ChainedExperiment(BaseExperiment):
         self.sampled_constituents = None
 
     def init_physics(self):
-        with open_dict(self.cfg):
-            # Load dataset info once
-            max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
-                self.cfg.data.dataset
-            )
-
-            self.cfg.data.max_num_particles = max_num_particles
-            self.cfg.data.diff = diff
-            self.cfg.data.pt_min = pt_min
-            self.cfg.cfm.masked_dims = masked_dims
-            self.load_fn = load_fn
-
-            # Initialize sub-experiment configurations
-            self._init_multiplicity_config()
-            self._init_jet_config()
-            self._init_constituents_config()
+        """Load configurations from previous experiment directories and set up subexperiments"""
+        # Initialize sub-experiment configurations by loading from paths
+        self._init_multiplicity_config()
+        self._init_jet_config()
+        self._init_constituents_config()
 
     def _init_multiplicity_config(self):
-        """Initialize multiplicity experiment with saved model"""
-        mult_cfg = self.cfg.multiplicity.copy()
-        # Configure warm start from original model path
+        """Load multiplicity experiment config from directory and set up for chaining"""
+        mult_path = self.cfg.experiment_paths.multiplicity
+        mult_config_path = os.path.join(mult_path, "config.yaml")
+        
+        LOGGER.info(f"Loading multiplicity config from {mult_config_path}")
+        mult_cfg = OmegaConf.load(mult_config_path)
+        
+        # Override settings for chained experiment
         with open_dict(mult_cfg):
-            mult_cfg.warm_start_idx = self.cfg.multiplicity.run_idx
+            # Set up warm start to load the trained model from original directory
+            mult_cfg.warm_start_idx = self.cfg.model_run_indices.multiplicity
+            # Keep original run_dir for model loading, but store new output dir
+            mult_cfg.original_run_dir = mult_cfg.run_dir  # Save original
+            mult_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "multiplicity")  # New output dir
             mult_cfg.run_name = f"chained_mult_{self.cfg.run_idx}"
-            mult_cfg.run_dir = os.path.join(self.cfg.run_dir, "multiplicity")
-            mult_cfg.run_idx = 0  # New run for this chained experiment
-            mult_cfg.evaluation.load_samples = False
-            mult_cfg.evaluation.sample = True
-            mult_cfg.evaluation.save_samples = True
+            mult_cfg.run_idx = 0
+            # Configure for sampling only
             mult_cfg.train = False
             mult_cfg.evaluate = True
-            # Store original run directory for model loading
-            mult_cfg.original_run_dir = self.cfg.multiplicity.model_path
+            mult_cfg.evaluation.sample = True
+            mult_cfg.evaluation.save_samples = True
+            mult_cfg.evaluation.load_samples = False
 
         self.multiplicity_exp = MultiplicityExperiment(
             mult_cfg, self.rank, self.world_size
         )
 
     def _init_jet_config(self):
-        """Initialize jet experiment with saved model"""
-        jet_cfg = self.cfg.jets.copy()
-        # Configure warm start from original model path
+        """Load jets experiment config from directory and set up for chaining"""
+        jets_path = self.cfg.experiment_paths.jets
+        jets_config_path = os.path.join(jets_path, "config.yaml")
+        
+        LOGGER.info(f"Loading jets config from {jets_config_path}")
+        jet_cfg = OmegaConf.load(jets_config_path)
+        
+        # Override settings for chained experiment
         with open_dict(jet_cfg):
-            jet_cfg.warm_start_idx = self.cfg.jets.run_idx
+            # Set up warm start to load the trained model from original directory
+            jet_cfg.warm_start_idx = self.cfg.model_run_indices.jets
+            # Keep original run_dir for model loading, but store new output dir
+            jet_cfg.original_run_dir = jet_cfg.run_dir  # Save original
+            jet_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "jets")  # New output dir
             jet_cfg.run_name = f"chained_jets_{self.cfg.run_idx}"
-            jet_cfg.run_dir = os.path.join(self.cfg.run_dir, "jets")
-            jet_cfg.run_idx = 0  # New run for this chained experiment
-            jet_cfg.evaluation.load_samples = False
-            jet_cfg.evaluation.sample = True
-            jet_cfg.evaluation.save_samples = True
+            jet_cfg.run_idx = 0
+            # Configure for sampling only
             jet_cfg.train = False
             jet_cfg.evaluate = True
-            # Store original run directory for model loading
-            jet_cfg.original_run_dir = self.cfg.jets.model_path
+            jet_cfg.evaluation.sample = True
+            jet_cfg.evaluation.save_samples = True
+            jet_cfg.evaluation.load_samples = False
 
         self.jet_exp = JetKinematicsExperiment(jet_cfg, self.rank, self.world_size)
 
     def _init_constituents_config(self):
-        """Initialize constituents experiment with saved model"""
-        const_cfg = self.cfg.constituents.copy()
-        # Configure warm start from original model path
+        """Load constituents experiment config from directory and set up for chaining"""
+        const_path = self.cfg.experiment_paths.constituents
+        const_config_path = os.path.join(const_path, "config.yaml")
+        
+        LOGGER.info(f"Loading constituents config from {const_config_path}")
+        const_cfg = OmegaConf.load(const_config_path)
+        
+        # Override settings for chained experiment
         with open_dict(const_cfg):
-            const_cfg.warm_start_idx = self.cfg.constituents.run_idx
+            # Set up warm start to load the trained model from original directory
+            const_cfg.warm_start_idx = self.cfg.model_run_indices.constituents
+            # Keep original run_dir for model loading, but store new output dir
+            const_cfg.original_run_dir = const_cfg.run_dir  # Save original
+            const_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "constituents")  # New output dir
             const_cfg.run_name = f"chained_constituents_{self.cfg.run_idx}"
-            const_cfg.run_dir = os.path.join(self.cfg.run_dir, "constituents")
-            const_cfg.run_idx = 0  # New run for this chained experiment
-            const_cfg.evaluation.load_samples = False
-            const_cfg.evaluation.sample = True
-            const_cfg.evaluation.save_samples = True
+            const_cfg.run_idx = 0
+            # Configure for sampling only
             const_cfg.train = False
             const_cfg.evaluate = True
-            # Store original run directory for model loading
-            const_cfg.original_run_dir = self.cfg.constituents.model_path
+            const_cfg.evaluation.sample = True
+            const_cfg.evaluation.save_samples = True
+            const_cfg.evaluation.load_samples = False
 
         self.constituents_exp = KinematicsExperiment(
             const_cfg, self.rank, self.world_size
@@ -123,19 +133,25 @@ class ChainedExperiment(BaseExperiment):
         self.multiplicity_exp.init_physics()
         self.multiplicity_exp.init_data()
         self.multiplicity_exp._init_dataloader()
-        # Model loading handled by warm_start mechanism
+        # Override run_dir after initialization for output directory
+        with open_dict(self.multiplicity_exp.cfg):
+            self.multiplicity_exp.cfg.run_dir = self.multiplicity_exp.cfg.new_run_dir
 
         LOGGER.info("Initializing jet experiment...")
         self.jet_exp.init_physics()
         self.jet_exp.init_data()
         self.jet_exp._init_dataloader()
-        # Model loading handled by warm_start mechanism
+        # Override run_dir after initialization for output directory
+        with open_dict(self.jet_exp.cfg):
+            self.jet_exp.cfg.run_dir = self.jet_exp.cfg.new_run_dir
 
         LOGGER.info("Initializing constituents experiment...")
         self.constituents_exp.init_physics()
         self.constituents_exp.init_data()
         self.constituents_exp._init_dataloader()
-        # Model loading handled by warm_start mechanism
+        # Override run_dir after initialization for output directory
+        with open_dict(self.constituents_exp.cfg):
+            self.constituents_exp.cfg.run_dir = self.constituents_exp.cfg.new_run_dir
 
     def sample_chain(self):
         """
