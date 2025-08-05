@@ -148,6 +148,7 @@ class ChainedExperiment(BaseExperiment):
     def init_subexperiments(self):
         """Initialize all sub-experiments with their models"""
         LOGGER.info("Initializing multiplicity experiment...")
+        self.multiplicity_exp._init()
         self.multiplicity_exp.init_physics()
         self.multiplicity_exp.init_model()
         self.multiplicity_exp.init_data()
@@ -157,6 +158,7 @@ class ChainedExperiment(BaseExperiment):
             self.multiplicity_exp.cfg.run_dir = self.multiplicity_exp.cfg.new_run_dir
 
         LOGGER.info("Initializing jet experiment...")
+        self.jet_exp._init()
         self.jet_exp.init_physics()
         self.jet_exp.init_model()
         self.jet_exp.init_data()
@@ -166,6 +168,7 @@ class ChainedExperiment(BaseExperiment):
             self.jet_exp.cfg.run_dir = self.jet_exp.cfg.new_run_dir
 
         LOGGER.info("Initializing constituents experiment...")
+        self.constituents_exp._init()
         self.constituents_exp.init_physics()
         self.constituents_exp.init_model()
         self.constituents_exp.init_data()
