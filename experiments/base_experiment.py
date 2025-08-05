@@ -384,9 +384,6 @@ class BaseExperiment:
         torch.backends.cuda.enable_mem_efficient_sdp(
             self.cfg.training.enable_mem_efficient_sdp
         )
-        if self.cfg.training.force_xformers:
-            LOGGER.debug("Forcing use of xformers' attention implementation")
-            lgatr.primitives.attention.FORCE_XFORMERS = True
 
     def _init_optimizer(self, param_groups=None):
         if param_groups is None:
