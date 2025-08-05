@@ -288,6 +288,10 @@ class ChainedExperiment(BaseExperiment):
         """Data loaders handled per sub-experiment"""
         pass
 
+    def _init_backend(self):
+        """Backend handled per sub-experiment"""
+        pass
+
     def _init_optimizer(self):
         """Not used in chained experiment"""
         pass

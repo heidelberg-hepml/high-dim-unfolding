@@ -212,9 +212,13 @@ class BaseExperiment:
 
         if not self.warm_start:
             if self.cfg.run_name is None:
-                modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
-                rnd_number = np.random.randint(low=0, high=9999)
-                run_name = f"{modelname}_{rnd_number:04}"
+                try:
+                    modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+                    rnd_number = np.random.randint(low=0, high=9999)
+                    run_name = f"{modelname}_{rnd_number:04}"
+                except AttributeError:
+                    LOGGER.warning("Model name could not be determined")
+                    run_name = f"run_{rnd_number:04}"
             else:
                 run_name = self.cfg.run_name
 

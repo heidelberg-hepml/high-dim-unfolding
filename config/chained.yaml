@@ -6,9 +6,9 @@ use_mlflow: false
 # Paths to the three previous experiment directories
 # Each should contain config.yaml and models/model_run*.pt
 experiment_paths:
-  multiplicity: runs/multiplicity_experiment/run_name  # Path to multiplicity experiment directory
-  jets: runs/jets_experiment/run_name  # Path to jets experiment directory  
-  constituents: runs/constituents_experiment/run_name  # Path to constituents experiment directory
+  multiplicity: /remote/gpu04/petitjean/high-dim-unfolding/runs/clean_mult_test/lgatr_33536  # Path to multiplicity experiment directory
+  jets: /remote/gpu04/petitjean/high-dim-unfolding/runs/jets_long/new_tr_42234  # Path to jets experiment directory
+  constituents: /remote/gpu04/petitjean/high-dim-unfolding/runs/params/S_pos_37577  # Path to constituents experiment directory
 
 # Which run index to use for model loading from each experiment
 model_run_indices:
@@ -33,7 +33,7 @@ plotting:
   jetmomenta: true
   jetscaled: false
   preprocessed: false
-  observables: ["jet", "angle"]
+  observables: ["jet"]
   n_pt: 3
   correlations: false
 
