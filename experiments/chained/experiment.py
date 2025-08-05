@@ -19,17 +19,16 @@ from experiments.utils import get_device
 class ChainedExperiment(BaseExperiment):
     """
     Chained experiment that runs multiplicity -> jets -> constituents sampling in sequence.
-    Uses detector-level conditions consistently across all three stages.
     """
 
     def __init__(self, cfg, rank=0, world_size=1):
         super().__init__(cfg, rank, world_size)
-        
+
         # Initialize the three sub-experiments
         self.multiplicity_exp = None
-        self.jet_exp = None  
+        self.jet_exp = None
         self.constituents_exp = None
-        
+
         # Storage for chained samples
         self.sampled_multiplicities = None
         self.sampled_jets = None
@@ -41,7 +40,7 @@ class ChainedExperiment(BaseExperiment):
             max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
                 self.cfg.data.dataset
             )
-            
+
             self.cfg.data.max_num_particles = max_num_particles
             self.cfg.data.diff = diff
             self.cfg.data.pt_min = pt_min
@@ -50,288 +49,163 @@ class ChainedExperiment(BaseExperiment):
 
             # Initialize sub-experiment configurations
             self._init_multiplicity_config()
-            self._init_jet_config()  
+            self._init_jet_config()
             self._init_constituents_config()
 
     def _init_multiplicity_config(self):
         """Initialize multiplicity experiment with saved model"""
         mult_cfg = self.cfg.multiplicity.copy()
-        mult_cfg.data = self.cfg.data.copy()
-        mult_cfg.run_dir = self.cfg.multiplicity.model_path
-        mult_cfg.warm_start_idx = self.cfg.multiplicity.run_idx
-        mult_cfg.evaluation.load_samples = False
-        mult_cfg.evaluation.sample = True
-        mult_cfg.train = False
-        mult_cfg.evaluate = True
-        
-        self.multiplicity_exp = MultiplicityExperiment(mult_cfg, self.rank, self.world_size)
+        # Configure warm start from original model path
+        with open_dict(mult_cfg):
+            mult_cfg.warm_start_idx = self.cfg.multiplicity.run_idx
+            mult_cfg.run_name = f"chained_mult_{self.cfg.run_idx}"
+            mult_cfg.run_dir = os.path.join(self.cfg.run_dir, "multiplicity")
+            mult_cfg.run_idx = 0  # New run for this chained experiment
+            mult_cfg.evaluation.load_samples = False
+            mult_cfg.evaluation.sample = True
+            mult_cfg.evaluation.save_samples = True
+            mult_cfg.train = False
+            mult_cfg.evaluate = True
+            # Store original run directory for model loading
+            mult_cfg.original_run_dir = self.cfg.multiplicity.model_path
+
+        self.multiplicity_exp = MultiplicityExperiment(
+            mult_cfg, self.rank, self.world_size
+        )
 
     def _init_jet_config(self):
-        """Initialize jet experiment with saved model"""  
+        """Initialize jet experiment with saved model"""
         jet_cfg = self.cfg.jets.copy()
-        jet_cfg.data = self.cfg.data.copy()
-        jet_cfg.run_dir = self.cfg.jets.model_path
-        jet_cfg.warm_start_idx = self.cfg.jets.run_idx
-        jet_cfg.evaluation.load_samples = False
-        jet_cfg.evaluation.sample = True
-        jet_cfg.train = False
-        jet_cfg.evaluate = True
-        
+        # Configure warm start from original model path
+        with open_dict(jet_cfg):
+            jet_cfg.warm_start_idx = self.cfg.jets.run_idx
+            jet_cfg.run_name = f"chained_jets_{self.cfg.run_idx}"
+            jet_cfg.run_dir = os.path.join(self.cfg.run_dir, "jets")
+            jet_cfg.run_idx = 0  # New run for this chained experiment
+            jet_cfg.evaluation.load_samples = False
+            jet_cfg.evaluation.sample = True
+            jet_cfg.evaluation.save_samples = True
+            jet_cfg.train = False
+            jet_cfg.evaluate = True
+            # Store original run directory for model loading
+            jet_cfg.original_run_dir = self.cfg.jets.model_path
+
         self.jet_exp = JetKinematicsExperiment(jet_cfg, self.rank, self.world_size)
 
     def _init_constituents_config(self):
         """Initialize constituents experiment with saved model"""
         const_cfg = self.cfg.constituents.copy()
-        const_cfg.data = self.cfg.data.copy() 
-        const_cfg.run_dir = self.cfg.constituents.model_path
-        const_cfg.warm_start_idx = self.cfg.constituents.run_idx
-        const_cfg.evaluation.load_samples = False
-        const_cfg.evaluation.sample = True
-        const_cfg.train = False
-        const_cfg.evaluate = True
-        
-        self.constituents_exp = KinematicsExperiment(const_cfg, self.rank, self.world_size)
+        # Configure warm start from original model path
+        with open_dict(const_cfg):
+            const_cfg.warm_start_idx = self.cfg.constituents.run_idx
+            const_cfg.run_name = f"chained_constituents_{self.cfg.run_idx}"
+            const_cfg.run_dir = os.path.join(self.cfg.run_dir, "constituents")
+            const_cfg.run_idx = 0  # New run for this chained experiment
+            const_cfg.evaluation.load_samples = False
+            const_cfg.evaluation.sample = True
+            const_cfg.evaluation.save_samples = True
+            const_cfg.train = False
+            const_cfg.evaluate = True
+            # Store original run directory for model loading
+            const_cfg.original_run_dir = self.cfg.constituents.model_path
+
+        self.constituents_exp = KinematicsExperiment(
+            const_cfg, self.rank, self.world_size
+        )
 
     def init_data(self):
-        """Initialize data for the chained experiment"""
-        t0 = time.time()
-        data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
-        LOGGER.info(f"Creating chained experiment data from {data_path}")
-        
-        # Initialize device and dtype
-        self.device = get_device()
-        self.dtype = torch.float32
-        
-        # Load the original data
-        data = self.load_fn(data_path, self.cfg.data, self.dtype)
-        
-        # Store detector-level data that will be used as condition throughout
-        self.det_particles = data["det_particles"]
-        self.det_mults = data["det_mults"]
-        self.det_pids = data["det_pids"]
-        self.det_jets = data["det_jets"]
-        
-        # Store generator-level truth for comparison
-        self.gen_particles = data["gen_particles"]
-        self.gen_mults = data["gen_mults"]
-        self.gen_pids = data["gen_pids"]
-        self.gen_jets = data["gen_jets"]
-        
-        size = len(self.det_particles)
-        split = self.cfg.data.train_val_test
-        train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
-        self.test_idx = (val_idx, test_idx)
-        
-        LOGGER.info(f"Initialized chained experiment data in {time.time() - t0:.2f} seconds")
+        """Data initialization handled by individual subexperiments"""
+        pass
 
     def init_subexperiments(self):
         """Initialize all sub-experiments with their models"""
         LOGGER.info("Initializing multiplicity experiment...")
         self.multiplicity_exp.init_physics()
         self.multiplicity_exp.init_data()
-        self.multiplicity_exp.init_distributed()
-        self.multiplicity_exp.load_model()
-        
+        self.multiplicity_exp._init_dataloader()
+        # Model loading handled by warm_start mechanism
+
         LOGGER.info("Initializing jet experiment...")
         self.jet_exp.init_physics()
         self.jet_exp.init_data()
-        self.jet_exp.init_distributed() 
-        self.jet_exp.load_model()
-        
+        self.jet_exp._init_dataloader()
+        # Model loading handled by warm_start mechanism
+
         LOGGER.info("Initializing constituents experiment...")
         self.constituents_exp.init_physics()
         self.constituents_exp.init_data()
-        self.constituents_exp.init_distributed()
-        self.constituents_exp.load_model()
+        self.constituents_exp._init_dataloader()
+        # Model loading handled by warm_start mechanism
 
-    def sample_chain(self, n_events=None):
+    def sample_chain(self):
         """
         Run the full sampling chain: multiplicity -> jets -> constituents
+        Each experiment uses its own data pipeline, but we patch the gen-level data
         """
-        if n_events is None:
-            n_events = self.test_idx[1] - self.test_idx[0]
-            
-        LOGGER.info(f"Starting chained sampling for {n_events} events")
-        
-        # Use test data indices
-        start_idx, end_idx = self.test_idx
-        det_particles_test = self.det_particles[start_idx:end_idx]
-        det_jets_test = self.det_jets[start_idx:end_idx]
-        det_mults_test = self.det_mults[start_idx:end_idx]
-        
-        # Step 1: Sample multiplicities conditioned on detector data
+        LOGGER.info("Starting chained sampling...")
+
+        # Step 1: Sample multiplicities using original data pipeline
         LOGGER.info("Step 1: Sampling multiplicities...")
-        self.sampled_multiplicities = self._sample_multiplicities(
-            det_particles_test, det_jets_test, det_mults_test
-        )
-        
-        # Step 2: Sample jet kinematics conditioned on detector jets and sampled multiplicities  
+        self.multiplicity_exp.evaluate()
+        # Get sampled multiplicities from the experiment's results
+        mult_samples_path = os.path.join(self.cfg.run_dir, "multiplicity", f"samples_0")
+        mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
+        self.sampled_multiplicities = mult_samples["samples"][:, 0]  # First column is samples
+
+        # Step 2: Sample jets using original data pipeline but patch multiplicities
         LOGGER.info("Step 2: Sampling jet kinematics...")
-        self.sampled_jets = self._sample_jets(
-            det_jets_test, self.sampled_multiplicities
-        )
-        
-        # Step 3: Sample constituents conditioned on detector data, sampled jets, and sampled multiplicities
+        self._patch_jet_data_with_multiplicities(self.sampled_multiplicities)
+        self.jet_exp.evaluate()
+        # Get sampled jets from the experiment's results
+        jet_samples_path = os.path.join(self.cfg.run_dir, "jets", f"samples_0")
+        self.sampled_jets = torch.load(os.path.join(jet_samples_path, "samples.pt"))
+
+        # Step 3: Sample constituents using original data pipeline but patch jets and multiplicities
         LOGGER.info("Step 3: Sampling constituents...")
-        self.sampled_constituents = self._sample_constituents(
-            det_particles_test, det_jets_test, det_mults_test,
-            self.sampled_jets, self.sampled_multiplicities
-        )
-        
+        self._patch_constituents_data_with_samples(self.sampled_jets, self.sampled_multiplicities)
+        self.constituents_exp.evaluate()
+        # Get sampled constituents from the experiment's results
+        const_samples_path = os.path.join(self.cfg.run_dir, "constituents", f"samples_0")
+        self.sampled_constituents = torch.load(os.path.join(const_samples_path, "samples.pt"))
+
         LOGGER.info("Chained sampling complete!")
 
-    def _sample_multiplicities(self, det_particles, det_jets, det_mults):
-        """Sample multiplicities using the multiplicity model"""
-        # Create dataset for multiplicity sampling
-        mult_dataset = Dataset(self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim)
-        mult_dataset.create_data_list(
-            det_particles=det_particles,
-            det_pids=self.det_pids[self.test_idx[0]:self.test_idx[1]],
-            det_mults=det_mults,
-            det_jets=det_jets.sum(dim=1, keepdim=True),  # Sum for total jet momentum
-            gen_particles=torch.zeros_like(det_particles),  # Dummy
-            gen_pids=torch.zeros_like(self.det_pids[self.test_idx[0]:self.test_idx[1]]),  # Dummy
-            gen_mults=torch.zeros_like(det_mults),  # Dummy - will be replaced by samples
-            gen_jets=torch.zeros_like(det_jets.sum(dim=1, keepdim=True)),  # Dummy
-        )
-        
-        mult_loader = DataLoader(
-            dataset=mult_dataset,
-            batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
-            follow_batch=["x_gen", "x_det"],
-        )
-        
-        sampled_mults = []
-        self.multiplicity_exp.model.eval()
-        with torch.no_grad():
-            for batch in mult_loader:
-                batch = batch.to(self.device)
-                output = self.multiplicity_exp.model(batch)
-                
-                # Process output through distribution using experiment's method
-                from experiments.multiplicity.distributions import process_params
-                params = process_params(output)
-                predicted_dist = self.multiplicity_exp.distribution(params)
-                
-                # Sample from distribution
-                sample = predicted_dist.sample()
-                
-                # Handle differential case if needed
-                if self.multiplicity_exp.cfg.dist.diff:
-                    sample = batch.x_det_ptr.diff() + sample
-                    
-                sampled_mults.append(sample.cpu())
-        
-        return torch.cat(sampled_mults, dim=0)
+    def _patch_jet_data_with_multiplicities(self, sampled_multiplicities):
+        """Patch the jet experiment's dataset to use sampled multiplicities as gen_mults"""
+        # Replace gen_mults in test data with sampled multiplicities
+        for i, data_point in enumerate(self.jet_exp.test_data):
+            if i < len(sampled_multiplicities):
+                data_point.mult_gen = sampled_multiplicities[i].item()
 
-    def _sample_jets(self, det_jets, sampled_mults):
-        """Sample jet kinematics using the jet model and sampled multiplicities"""
-        # Create modified dataset where gen_mults are replaced with sampled multiplicities
-        jet_dataset = Dataset(
-            self.dtype, 
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=getattr(self.cfg.data, 'mult_encoding_dim', 0)
-        )
+    def _patch_constituents_data_with_samples(self, sampled_jets, sampled_multiplicities):
+        """Patch the constituents experiment's dataset to use sampled jets and multiplicities"""
+        # Extract jet momenta from the jet samples batch
+        jet_momenta = sampled_jets.jet_gen if hasattr(sampled_jets, 'jet_gen') else sampled_jets
         
-        # Create dummy particles based on sampled multiplicities
-        max_particles = sampled_mults.max().item()
-        dummy_particles = torch.zeros(len(sampled_mults), max_particles, 4, dtype=self.dtype)
-        dummy_pids = torch.zeros(len(sampled_mults), max_particles, 6, dtype=self.dtype)
-        
-        jet_dataset.create_data_list(
-            det_particles=dummy_particles,  # Not used in jet experiment
-            det_pids=dummy_pids,  # Not used in jet experiment  
-            det_mults=sampled_mults,  # Use sampled multiplicities
-            det_jets=det_jets,
-            gen_particles=dummy_particles,  # Dummy
-            gen_pids=dummy_pids,  # Dummy
-            gen_mults=sampled_mults,  # Use sampled multiplicities
-            gen_jets=torch.zeros_like(det_jets),  # Will be replaced by samples
-        )
-        
-        jet_loader = DataLoader(
-            dataset=jet_dataset,
-            batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
-            follow_batch=["x_gen", "x_det"],
-        )
-        
-        sampled_jets = []
-        self.jet_exp.model.eval()
-        with torch.no_grad():
-            for batch in jet_loader:
-                batch = batch.to(self.device)
-                sample_batch, _ = self.jet_exp.model.sample(batch, self.device, self.dtype)
-                sampled_jets.append(sample_batch.jet_gen.cpu())
-        
-        return torch.cat(sampled_jets, dim=0)
-
-    def _sample_constituents(self, det_particles, det_jets, det_mults, sampled_jets, sampled_mults):
-        """Sample constituents using the constituents model, sampled jets, and sampled multiplicities"""
-        # Create modified dataset where gen_jets and gen_mults are replaced with samples
-        const_dataset = Dataset(self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim)
-        const_dataset.create_data_list(
-            det_particles=det_particles,
-            det_pids=self.det_pids[self.test_idx[0]:self.test_idx[1]],
-            det_mults=det_mults, 
-            det_jets=det_jets,
-            gen_particles=torch.zeros_like(det_particles),  # Will be replaced by samples
-            gen_pids=torch.zeros_like(self.det_pids[self.test_idx[0]:self.test_idx[1]]),  # Will be replaced
-            gen_mults=sampled_mults,  # Use sampled multiplicities
-            gen_jets=sampled_jets,  # Use sampled jets
-        )
-        
-        const_loader = DataLoader(
-            dataset=const_dataset,
-            batch_size=self.cfg.evaluation.batchsize,
-            shuffle=False,
-            follow_batch=["x_gen", "x_det"],
-        )
-        
-        sampled_constituents = []
-        self.constituents_exp.model.eval()
-        with torch.no_grad():
-            for batch in const_loader:
-                batch = batch.to(self.device)
-                sample_batch, _ = self.constituents_exp.model.sample(batch, self.device, self.dtype)
-                sampled_constituents.append(sample_batch.x_gen.cpu())
-        
-        return torch.cat(sampled_constituents, dim=0)
+        # Replace gen_jets and gen_mults in test data with samples
+        for i, data_point in enumerate(self.constituents_exp.test_data):
+            if i < len(sampled_multiplicities):
+                data_point.mult_gen = sampled_multiplicities[i].item()
+            if i < len(jet_momenta):
+                data_point.jet_gen = jet_momenta[i]
 
     def evaluate(self):
         """Run the full chained evaluation"""
         self.init_subexperiments()
         self.sample_chain()
-        
-        # Save the results
-        if self.cfg.evaluation.save_samples:
-            self._save_samples()
+
+        # Results are already saved by individual experiments
+        LOGGER.info("Chained evaluation complete. Individual experiment samples saved to run_dir.")
 
     def _save_samples(self):
-        """Save all sampled quantities"""
-        path = os.path.join(self.cfg.run_dir, f"chained_samples_{self.cfg.run_idx}")
-        os.makedirs(path, exist_ok=True)
-        
-        LOGGER.info(f"Saving chained samples to {path}")
-        
-        torch.save({
-            'multiplicities': self.sampled_multiplicities,
-            'jets': self.sampled_jets,  
-            'constituents': self.sampled_constituents,
-            'det_particles': self.det_particles[self.test_idx[0]:self.test_idx[1]],
-            'det_jets': self.det_jets[self.test_idx[0]:self.test_idx[1]],
-            'det_mults': self.det_mults[self.test_idx[0]:self.test_idx[1]],
-            'gen_particles': self.gen_particles[self.test_idx[0]:self.test_idx[1]],
-            'gen_jets': self.gen_jets[self.test_idx[0]:self.test_idx[1]], 
-            'gen_mults': self.gen_mults[self.test_idx[0]:self.test_idx[1]],
-        }, os.path.join(path, 'chained_samples.pt'))
+        """Samples are saved by individual experiments in their evaluate() methods"""
+        pass
 
     def plot(self):
         """Create plots comparing truth vs chained samples"""
         # Implementation would create comparison plots between:
         # - Truth multiplicities vs sampled multiplicities
-        # - Truth jets vs sampled jets  
+        # - Truth jets vs sampled jets
         # - Truth constituents vs sampled constituents
         LOGGER.info("Plotting for chained experiment not yet implemented")
 
@@ -364,7 +238,7 @@ class ChainedExperiment(BaseExperiment):
         pass
 
     def _init_scheduler(self):
-        """Not used in chained experiment"""  
+        """Not used in chained experiment"""
         pass
 
     def train(self):
