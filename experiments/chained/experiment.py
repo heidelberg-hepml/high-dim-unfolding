@@ -45,19 +45,23 @@ class ChainedExperiment(BaseExperiment):
         """Load multiplicity experiment config from directory and set up for chaining"""
         mult_path = self.cfg.experiment_paths.multiplicity
         mult_config_path = os.path.join(mult_path, "config.yaml")
-        
+
         LOGGER.info(f"Loading multiplicity config from {mult_config_path}")
         mult_cfg = OmegaConf.load(mult_config_path)
-        
+
         # Override settings for chained experiment
         with open_dict(mult_cfg):
             # Set up warm start to load the trained model from original directory
             mult_cfg.warm_start_idx = self.cfg.model_run_indices.multiplicity
             # Keep original run_dir for model loading, but store new output dir
             mult_cfg.original_run_dir = mult_cfg.run_dir  # Save original
-            mult_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "multiplicity")  # New output dir
+            mult_cfg.new_run_dir = os.path.join(
+                self.cfg.run_dir, "multiplicity"
+            )  # New output dir
             mult_cfg.run_name = f"chained_mult_{self.cfg.run_idx}"
-            mult_cfg.run_idx = self.cfg.run_idx  # Use the same run_idx as parent chained experiment
+            mult_cfg.run_idx = (
+                self.cfg.run_idx
+            )  # Use the same run_idx as parent chained experiment
             # Configure for sampling only
             mult_cfg.train = False
             mult_cfg.evaluate = True
@@ -75,19 +79,23 @@ class ChainedExperiment(BaseExperiment):
         """Load jets experiment config from directory and set up for chaining"""
         jets_path = self.cfg.experiment_paths.jets
         jets_config_path = os.path.join(jets_path, "config.yaml")
-        
+
         LOGGER.info(f"Loading jets config from {jets_config_path}")
         jet_cfg = OmegaConf.load(jets_config_path)
-        
+
         # Override settings for chained experiment
         with open_dict(jet_cfg):
             # Set up warm start to load the trained model from original directory
             jet_cfg.warm_start_idx = self.cfg.model_run_indices.jets
             # Keep original run_dir for model loading, but store new output dir
             jet_cfg.original_run_dir = jet_cfg.run_dir  # Save original
-            jet_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "jets")  # New output dir
+            jet_cfg.new_run_dir = os.path.join(
+                self.cfg.run_dir, "jets"
+            )  # New output dir
             jet_cfg.run_name = f"chained_jets_{self.cfg.run_idx}"
-            jet_cfg.run_idx = self.cfg.run_idx  # Use the same run_idx as parent chained experiment
+            jet_cfg.run_idx = (
+                self.cfg.run_idx
+            )  # Use the same run_idx as parent chained experiment
             # Configure for sampling only
             jet_cfg.train = False
             jet_cfg.evaluate = True
@@ -103,19 +111,23 @@ class ChainedExperiment(BaseExperiment):
         """Load constituents experiment config from directory and set up for chaining"""
         const_path = self.cfg.experiment_paths.constituents
         const_config_path = os.path.join(const_path, "config.yaml")
-        
+
         LOGGER.info(f"Loading constituents config from {const_config_path}")
         const_cfg = OmegaConf.load(const_config_path)
-        
+
         # Override settings for chained experiment
         with open_dict(const_cfg):
             # Set up warm start to load the trained model from original directory
             const_cfg.warm_start_idx = self.cfg.model_run_indices.constituents
             # Keep original run_dir for model loading, but store new output dir
             const_cfg.original_run_dir = const_cfg.run_dir  # Save original
-            const_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "constituents")  # New output dir
+            const_cfg.new_run_dir = os.path.join(
+                self.cfg.run_dir, "constituents"
+            )  # New output dir
             const_cfg.run_name = f"chained_constituents_{self.cfg.run_idx}"
-            const_cfg.run_idx = self.cfg.run_idx  # Use the same run_idx as parent chained experiment
+            const_cfg.run_idx = (
+                self.cfg.run_idx
+            )  # Use the same run_idx as parent chained experiment
             # Configure for sampling only
             const_cfg.train = False
             const_cfg.evaluate = True
@@ -137,6 +149,7 @@ class ChainedExperiment(BaseExperiment):
         """Initialize all sub-experiments with their models"""
         LOGGER.info("Initializing multiplicity experiment...")
         self.multiplicity_exp.init_physics()
+        self.multiplicity_exp.init_model()
         self.multiplicity_exp.init_data()
         self.multiplicity_exp._init_dataloader()
         # Override run_dir after initialization for output directory
@@ -145,6 +158,7 @@ class ChainedExperiment(BaseExperiment):
 
         LOGGER.info("Initializing jet experiment...")
         self.jet_exp.init_physics()
+        self.jet_exp.init_model()
         self.jet_exp.init_data()
         self.jet_exp._init_dataloader()
         # Override run_dir after initialization for output directory
@@ -153,6 +167,7 @@ class ChainedExperiment(BaseExperiment):
 
         LOGGER.info("Initializing constituents experiment...")
         self.constituents_exp.init_physics()
+        self.constituents_exp.init_model()
         self.constituents_exp.init_data()
         self.constituents_exp._init_dataloader()
         # Override run_dir after initialization for output directory
@@ -170,25 +185,37 @@ class ChainedExperiment(BaseExperiment):
         LOGGER.info("Step 1: Sampling multiplicities...")
         self.multiplicity_exp.evaluate()
         # Get sampled multiplicities from the experiment's results
-        mult_samples_path = os.path.join(self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}")
+        mult_samples_path = os.path.join(
+            self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}"
+        )
         mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
-        self.sampled_multiplicities = mult_samples["samples"][:, 0]  # First column is samples
+        self.sampled_multiplicities = mult_samples["samples"][
+            :, 0
+        ]  # First column is samples
 
         # Step 2: Sample jets using original data pipeline but patch multiplicities
         LOGGER.info("Step 2: Sampling jet kinematics...")
         self._patch_jet_data_with_multiplicities(self.sampled_multiplicities)
         self.jet_exp.evaluate()
         # Get sampled jets from the experiment's results
-        jet_samples_path = os.path.join(self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}")
+        jet_samples_path = os.path.join(
+            self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}"
+        )
         self.sampled_jets = torch.load(os.path.join(jet_samples_path, "samples.pt"))
 
         # Step 3: Sample constituents using original data pipeline but patch jets and multiplicities
         LOGGER.info("Step 3: Sampling constituents...")
-        self._patch_constituents_data_with_samples(self.sampled_jets, self.sampled_multiplicities)
+        self._patch_constituents_data_with_samples(
+            self.sampled_jets, self.sampled_multiplicities
+        )
         self.constituents_exp.evaluate()
         # Get sampled constituents from the experiment's results
-        const_samples_path = os.path.join(self.cfg.run_dir, "constituents", f"samples_{self.cfg.run_idx}")
-        self.sampled_constituents = torch.load(os.path.join(const_samples_path, "samples.pt"))
+        const_samples_path = os.path.join(
+            self.cfg.run_dir, "constituents", f"samples_{self.cfg.run_idx}"
+        )
+        self.sampled_constituents = torch.load(
+            os.path.join(const_samples_path, "samples.pt")
+        )
 
         LOGGER.info("Chained sampling complete!")
 
@@ -199,11 +226,15 @@ class ChainedExperiment(BaseExperiment):
             if i < len(sampled_multiplicities):
                 data_point.mult_gen = sampled_multiplicities[i].item()
 
-    def _patch_constituents_data_with_samples(self, sampled_jets, sampled_multiplicities):
+    def _patch_constituents_data_with_samples(
+        self, sampled_jets, sampled_multiplicities
+    ):
         """Patch the constituents experiment's dataset to use sampled jets and multiplicities"""
         # Extract jet momenta from the jet samples batch
-        jet_momenta = sampled_jets.jet_gen if hasattr(sampled_jets, 'jet_gen') else sampled_jets
-        
+        jet_momenta = (
+            sampled_jets.jet_gen if hasattr(sampled_jets, "jet_gen") else sampled_jets
+        )
+
         # Replace gen_jets and gen_mults in test data with samples
         for i, data_point in enumerate(self.constituents_exp.test_data):
             if i < len(sampled_multiplicities):
@@ -217,7 +248,9 @@ class ChainedExperiment(BaseExperiment):
         self.sample_chain()
 
         # Results are already saved by individual experiments
-        LOGGER.info("Chained evaluation complete. Individual experiment samples and plots saved to run_dir.")
+        LOGGER.info(
+            "Chained evaluation complete. Individual experiment samples and plots saved to run_dir."
+        )
 
     def _save_samples(self):
         """Samples are saved by individual experiments in their evaluate() methods"""
@@ -227,7 +260,9 @@ class ChainedExperiment(BaseExperiment):
         """Create plots for chained experiment"""
         # Individual experiments create their own plots during evaluate()
         # This could be extended to create comparison plots across the chain
-        LOGGER.info("Individual experiment plots created during evaluate(). Chained comparison plots not yet implemented.")
+        LOGGER.info(
+            "Individual experiment plots created during evaluate(). Chained comparison plots not yet implemented."
+        )
 
     def _init_loss(self):
         """Not used in chained experiment"""
