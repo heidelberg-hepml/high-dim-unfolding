@@ -57,13 +57,15 @@ class ChainedExperiment(BaseExperiment):
             mult_cfg.original_run_dir = mult_cfg.run_dir  # Save original
             mult_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "multiplicity")  # New output dir
             mult_cfg.run_name = f"chained_mult_{self.cfg.run_idx}"
-            mult_cfg.run_idx = 0
+            mult_cfg.run_idx = self.cfg.run_idx  # Use the same run_idx as parent chained experiment
             # Configure for sampling only
             mult_cfg.train = False
             mult_cfg.evaluate = True
             mult_cfg.evaluation.sample = True
             mult_cfg.evaluation.save_samples = True
             mult_cfg.evaluation.load_samples = False
+            # Enable plotting
+            mult_cfg.plot = True
 
         self.multiplicity_exp = MultiplicityExperiment(
             mult_cfg, self.rank, self.world_size
@@ -85,13 +87,15 @@ class ChainedExperiment(BaseExperiment):
             jet_cfg.original_run_dir = jet_cfg.run_dir  # Save original
             jet_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "jets")  # New output dir
             jet_cfg.run_name = f"chained_jets_{self.cfg.run_idx}"
-            jet_cfg.run_idx = 0
+            jet_cfg.run_idx = self.cfg.run_idx  # Use the same run_idx as parent chained experiment
             # Configure for sampling only
             jet_cfg.train = False
             jet_cfg.evaluate = True
             jet_cfg.evaluation.sample = True
             jet_cfg.evaluation.save_samples = True
             jet_cfg.evaluation.load_samples = False
+            # Enable plotting
+            jet_cfg.plot = True
 
         self.jet_exp = JetKinematicsExperiment(jet_cfg, self.rank, self.world_size)
 
@@ -111,13 +115,15 @@ class ChainedExperiment(BaseExperiment):
             const_cfg.original_run_dir = const_cfg.run_dir  # Save original
             const_cfg.new_run_dir = os.path.join(self.cfg.run_dir, "constituents")  # New output dir
             const_cfg.run_name = f"chained_constituents_{self.cfg.run_idx}"
-            const_cfg.run_idx = 0
+            const_cfg.run_idx = self.cfg.run_idx  # Use the same run_idx as parent chained experiment
             # Configure for sampling only
             const_cfg.train = False
             const_cfg.evaluate = True
             const_cfg.evaluation.sample = True
             const_cfg.evaluation.save_samples = True
             const_cfg.evaluation.load_samples = False
+            # Enable plotting
+            const_cfg.plot = True
 
         self.constituents_exp = KinematicsExperiment(
             const_cfg, self.rank, self.world_size
@@ -164,7 +170,7 @@ class ChainedExperiment(BaseExperiment):
         LOGGER.info("Step 1: Sampling multiplicities...")
         self.multiplicity_exp.evaluate()
         # Get sampled multiplicities from the experiment's results
-        mult_samples_path = os.path.join(self.cfg.run_dir, "multiplicity", f"samples_0")
+        mult_samples_path = os.path.join(self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}")
         mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
         self.sampled_multiplicities = mult_samples["samples"][:, 0]  # First column is samples
 
@@ -173,7 +179,7 @@ class ChainedExperiment(BaseExperiment):
         self._patch_jet_data_with_multiplicities(self.sampled_multiplicities)
         self.jet_exp.evaluate()
         # Get sampled jets from the experiment's results
-        jet_samples_path = os.path.join(self.cfg.run_dir, "jets", f"samples_0")
+        jet_samples_path = os.path.join(self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}")
         self.sampled_jets = torch.load(os.path.join(jet_samples_path, "samples.pt"))
 
         # Step 3: Sample constituents using original data pipeline but patch jets and multiplicities
@@ -181,7 +187,7 @@ class ChainedExperiment(BaseExperiment):
         self._patch_constituents_data_with_samples(self.sampled_jets, self.sampled_multiplicities)
         self.constituents_exp.evaluate()
         # Get sampled constituents from the experiment's results
-        const_samples_path = os.path.join(self.cfg.run_dir, "constituents", f"samples_0")
+        const_samples_path = os.path.join(self.cfg.run_dir, "constituents", f"samples_{self.cfg.run_idx}")
         self.sampled_constituents = torch.load(os.path.join(const_samples_path, "samples.pt"))
 
         LOGGER.info("Chained sampling complete!")
@@ -211,19 +217,17 @@ class ChainedExperiment(BaseExperiment):
         self.sample_chain()
 
         # Results are already saved by individual experiments
-        LOGGER.info("Chained evaluation complete. Individual experiment samples saved to run_dir.")
+        LOGGER.info("Chained evaluation complete. Individual experiment samples and plots saved to run_dir.")
 
     def _save_samples(self):
         """Samples are saved by individual experiments in their evaluate() methods"""
         pass
 
     def plot(self):
-        """Create plots comparing truth vs chained samples"""
-        # Implementation would create comparison plots between:
-        # - Truth multiplicities vs sampled multiplicities
-        # - Truth jets vs sampled jets
-        # - Truth constituents vs sampled constituents
-        LOGGER.info("Plotting for chained experiment not yet implemented")
+        """Create plots for chained experiment"""
+        # Individual experiments create their own plots during evaluate()
+        # This could be extended to create comparison plots across the chain
+        LOGGER.info("Individual experiment plots created during evaluate(). Chained comparison plots not yet implemented.")
 
     def _init_loss(self):
         """Not used in chained experiment"""
