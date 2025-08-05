@@ -29,6 +29,9 @@ from experiments.kinematics.observables import (
     create_jet_norm,
 )
 
+PERM = torch.tensor([0, 3, 1, 4, 2]).view(1, -1, 1)
+INV_PERM = torch.tensor([0, 2, 4, 1, 3]).view(1, -1, 1)
+
 
 class KinematicsExperiment(BaseExperiment):
     def init_physics(self):
@@ -151,6 +154,21 @@ class KinematicsExperiment(BaseExperiment):
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
+            mask = torch.where(
+                (det_mults >= self.cfg.data.max_constituents)
+                * (gen_mults >= self.cfg.data.max_constituents),
+                True,
+                False,
+            )
+            det_mults = det_mults[mask]
+            gen_mults = gen_mults[mask]
+            det_particles = torch.take_along_dim(det_particles[mask], PERM, dim=1)
+            gen_particles = torch.take_along_dim(gen_particles[mask], PERM, dim=1)
+            det_pids = det_pids[mask]
+            gen_pids = gen_pids[mask]
+            det_jets = det_jets[mask]
+            gen_jets = gen_jets[mask]
+            size = len(gen_particles)
 
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
@@ -561,14 +579,12 @@ class KinematicsExperiment(BaseExperiment):
 
         if "angle" in self.cfg.plotting.observables:
             self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
-            self.obs[r"\Delta \eta_{1,2}"] = compute_angles(0, 1, 1, 2, "eta")
-            self.obs[r"\Delta R_{1,2}"] = compute_angles(0, 1, 1, 2, "R")
             self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            self.obs[r"\Delta \eta_{1,3}"] = compute_angles(0, 1, 2, 3, "eta")
-            self.obs[r"\Delta R_{1,3}"] = compute_angles(0, 1, 2, 3, "R")
+            self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
+            self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "eta")
             self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            self.obs[r"\Delta \eta_{2,3}"] = compute_angles(1, 2, 2, 3, "eta")
-            self.obs[r"\Delta R_{2,3}"] = compute_angles(1, 2, 2, 3, "R")
+            self.obs[r"\Delta \phi_{2,4}"] = compute_angles(1, 2, 3, 4, "phi")
+            self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "eta")
 
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)
