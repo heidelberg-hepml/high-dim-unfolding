@@ -13,7 +13,7 @@ data:
  max_constituents: -1
  add_pid: false
  pt_min: null
- mass: 0.001
+ mass: 1.0
  pos_encoding_dim: 8
 
 dist: 
@@ -23,11 +23,10 @@ dist:
 
 train: true
 training:
- iterations: 10000
+ iterations: 100000
  batchsize: 1024
  lr: 1e-3
- validate_every_n_steps: 100000
- force_xformers: true # 'false' runs on cpu and gpu, 'true' only runs on gpu but is much faster
+ validate_every_n_steps: 5000
  scheduler: CosineAnnealingLR
 
 evaluate: true
@@ -39,11 +38,11 @@ plot: true
 plotting:
  loss: true
  histogram: true
- distributions: false
- n_distributions: 0
+ distributions: true
+ n_distributions: 5
  diff: true
- corr: false
- components: false
+ corr: true
+ components: true
 
 defaults:
  - model: tr_multiplicity
