@@ -13,8 +13,8 @@ data:
  max_constituents: -1
  add_pid: false
  pt_min: null
- mass: 1.0
- pos_encoding_dim: 8
+ mass: 0.001
+ pos_encoding_dim: 0
 
 dist: 
  type: GaussianMixture
@@ -26,7 +26,7 @@ training:
  iterations: 100000
  batchsize: 1024
  lr: 1e-3
- validate_every_n_steps: 5000
+ validate_every_n_steps: 100000
  scheduler: CosineAnnealingLR
 
 evaluate: true
@@ -38,11 +38,10 @@ plot: true
 plotting:
  loss: true
  histogram: true
- distributions: true
- n_distributions: 5
+ n_distributions: 0
  diff: true
- corr: true
- components: true
+ corr: false
+ components: false
 
 defaults:
  - model: tr_multiplicity

@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import torch
 from torch.distributions import Categorical, Gamma, Normal
-from matplotlib.backends.backend_pdf import PdfPages
+import einops
 
 from experiments.base_plots import plot_loss
 from experiments.multiplicity.distributions import (
@@ -54,7 +55,7 @@ def plot_mixer(cfg, plot_path, plot_dict):
         elif cfg.data.dataset == "ttbar":
             xrange = [30, 130]
             diff_xrange = [0, 50]
-        if cfg.plotting.distributions:
+        if cfg.plotting.n_distributions > 0:
             file = f"{plot_path}/distributions.pdf"
             if cfg.dist.diff:
                 plot_distributions(
@@ -477,6 +478,11 @@ def plot_components(file, params, samples, xrange, distribution_label, diff, n_p
     elif distribution_label == "Categorical":
         LOGGER.info("Not plotting components for categorical distribution")
         return
+
+    if params.ndim == 2:
+        params = einops.rearrange(
+            params, "... (n_mix n_params) -> ... n_mix n_params", n_params=3
+        )
 
     with PdfPages(file) as pdf:
 
