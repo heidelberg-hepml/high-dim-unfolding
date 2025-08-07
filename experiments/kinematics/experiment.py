@@ -380,23 +380,23 @@ class KinematicsExperiment(BaseExperiment):
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
 
-        n = 100
+        n = -1
 
         pt_count = 0
         for sample in samples[:n]:
             pt = get_pt(sample.x_gen)
-            LOGGER.info(f"pT: {pt}")
+            # LOGGER.info(f"pT: {pt}")
             pt_diff = pt[:-1] - pt[1:]
             if torch.any(pt_diff < 0):
                 pt_count += 1
         LOGGER.info(
-            f"Found {pt_count} events with non-ordered pT in samples x_gen over {n} events."
+            f"Found {pt_count} events with non-ordered pT in samples x_gen over {n if n > 0 else len(samples)} events."
         )
 
         pt_count = 0
         for sample in samples[:n]:
             pt = get_pt(sample.x_det)
-            LOGGER.info(f"pT: {pt}")
+            # LOGGER.info(f"pT: {pt}")
             pt_diff = pt[:-1] - pt[1:]
             if torch.any(pt_diff < 0):
                 pt_count += 1
@@ -407,7 +407,7 @@ class KinematicsExperiment(BaseExperiment):
         pt_count = 0
         for sample in targets[:n]:
             pt = get_pt(sample.x_gen)
-            LOGGER.info(f"pT: {pt}")
+            # LOGGER.info(f"pT: {pt}")
             pt_diff = pt[:-1] - pt[1:]
             if torch.any(pt_diff < 0):
                 pt_count += 1
@@ -418,7 +418,7 @@ class KinematicsExperiment(BaseExperiment):
         pt_count = 0
         for sample in targets[:n]:
             pt = get_pt(sample.x_det)
-            LOGGER.info(f"pT: {pt}")
+            # LOGGER.info(f"pT: {pt}")
             pt_diff = pt[:-1] - pt[1:]
             if torch.any(pt_diff < 0):
                 pt_count += 1
@@ -610,11 +610,11 @@ class KinematicsExperiment(BaseExperiment):
         if "angle" in self.cfg.plotting.observables:
             self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
             self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
-            self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "eta")
+            # self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
+            # self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "phi")
             self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            self.obs[r"\Delta \phi_{2,4}"] = compute_angles(1, 2, 3, 4, "phi")
-            self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "eta")
+            # self.obs[r"\Delta \phi_{2,4}"] = compute_angles(1, 2, 3, 4, "phi")
+            # self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "phi")
 
         if "dimass" in self.cfg.plotting.observables:
             # dijet mass (only for CMS dataset with 3 jets)

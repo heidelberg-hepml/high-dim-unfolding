@@ -316,12 +316,12 @@ class CFM(nn.Module):
 
         if self.cfm.sort:
             # sort generated events by pT
-            pt = x0[..., 0].unsqueeze(-1)
+            pt = sample_batch.x_gen[..., 0].unsqueeze(-1)
             x_perm = torch.argsort(pt, dim=0, descending=True)
-            x0 = x0.take_along_dim(x_perm, dim=0)
-            index = batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
+            sample_batch.x_gen = sample_batch.x_gen.take_along_dim(x_perm, dim=0)
+            index = sample_batch.x_gen_batch.unsqueeze(-1).take_along_dim(x_perm, dim=0)
             index_perm = torch.argsort(index, dim=0, stable=True)
-            x0 = x0.take_along_dim(index_perm, dim=0)
+            sample_batch.x_gen = sample_batch.x_gen.take_along_dim(index_perm, dim=0)
 
         return sample_batch, x1
 

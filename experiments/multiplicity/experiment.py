@@ -118,13 +118,19 @@ class MultiplicityExperiment(BaseExperiment):
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
         self.train_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
+            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
         )
         self.val_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
+            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
         )
         self.test_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
+            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
         )
         self.train_data.create_data_list(
             det_particles=det_particles[:train_idx],

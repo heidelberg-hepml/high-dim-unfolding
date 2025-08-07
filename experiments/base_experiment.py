@@ -580,9 +580,10 @@ class BaseExperiment:
                 if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
                     self.scheduler.step(val_loss)
 
-            # gc.collect()
-            # if self.device == torch.device("cuda"):
-            #     torch.cuda.empty_cache()
+            if (step + 1) % self.cfg.training.clear_every_n_steps == 0:
+                gc.collect()
+                if self.device == torch.device("cuda"):
+                    torch.cuda.empty_cache()
 
             # output
             dt = time.time() - self.training_start_time
@@ -717,12 +718,8 @@ class BaseExperiment:
         #     self.val_metrics[key].append(np.mean(values))
         if self.cfg.use_mlflow:
             log_mlflow("val.loss", val_loss, step=step)
-            for key, values in self.val_metrics.items():
-                log_mlflow(f"val.{key}", values[-1], step=step)
-
-        gc.collect()
-        if self.device == torch.device("cuda"):
-            torch.cuda.empty_cache()
+            # for key, values in self.val_metrics.items():
+            #     log_mlflow(f"val.{key}", values[-1], step=step)
 
         return val_loss
 

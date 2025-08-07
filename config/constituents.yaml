@@ -31,7 +31,7 @@ cfm:
  add_mass: false
  scaling: [1.0, 1.0, 1.0, 1.0]
  ot: false
- gac: false
+ gac: true
  weight: 0.0
  sort: false
 

@@ -450,7 +450,6 @@ class StandardNormal(BaseTransform):
         # self.mean[:, self.fixed_dims] = 0
         self.std[:, self.fixed_dims] = 1
         self.std = self.std / self.scaling.to(x.device, dtype=x.dtype)
-        LOGGER.info(f"StandardNormal: mean = {self.mean}, std = {self.std}")
 
     def _forward(self, x, **kwargs):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(

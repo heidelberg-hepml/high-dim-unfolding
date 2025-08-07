@@ -238,7 +238,7 @@ class ConditionalLGATrCFM(EventCFM):
         v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(
             v_fourmomenta[constituents_mask],
             fourmomenta[constituents_mask],
-            jet=gen_jets[constituents_mask],
+            jet=gen_jets,
             ptr=ptr,
         )[0]
 
