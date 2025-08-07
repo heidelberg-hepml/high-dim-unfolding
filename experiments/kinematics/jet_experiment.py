@@ -106,6 +106,22 @@ class JetKinematicsExperiment(BaseExperiment):
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
 
+            elif self.cfg.modelname == "JetMLP":
+                base_in_channels = 4
+                self.cfg.model.net.in_shape = (
+                    base_in_channels
+                    + self.cfg.cfm.embed_t_dim
+                    + self.cfg.data.mult_encoding_dim
+                )
+                self.cfg.model.net.out_shape = base_in_channels
+
+                if not self.cfg.cfm.unconditional:
+                    self.cfg.model.net.in_shape += (
+                        base_in_channels + self.cfg.data.mult_encoding_dim
+                    )
+                if self.cfg.cfm.self_condition_prob > 0.0:
+                    self.cfg.model.net.in_channels += base_in_channels
+
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
             self.cfg.model.cfm = self.cfg.cfm
@@ -472,6 +488,10 @@ class JetKinematicsExperiment(BaseExperiment):
             model_label = "JetCondTr"
         elif self.cfg.modelname == "JetConditionalLGATr":
             model_label = "JetCondLGATr"
+        elif self.cfg.modelname == "JetMLP":
+            model_label = "JetMLP"
+        else:
+            model_label = self.cfg.modelname
         kwargs = {
             "exp": self,
             "model_label": model_label,

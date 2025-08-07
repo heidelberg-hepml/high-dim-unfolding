@@ -328,7 +328,7 @@ class SimpleJetKinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
-            sample_batch, sample = self.model.sample(
+            sample_batch, base = self.model.sample(
                 batch,
                 self.device,
                 self.dtype,

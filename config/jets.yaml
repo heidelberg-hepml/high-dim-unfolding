@@ -30,8 +30,8 @@ cfm:
  add_constituents: false
  add_mass: false
  scaling: [1.0, 1.0, 1.0, 1.0]
- ot: false
  transpose: false
+ unconditional: false
 
 odeint:
  method: rk4
@@ -43,7 +43,7 @@ odeint:
 train: true
 training:
  iterations: 100000
- batchsize: 1024
+ batchsize: 16384
  lr: 1e-3
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 1000
@@ -51,7 +51,7 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 4096
+ batchsize: 16384
  classifier: false
  sample: true
  n_batches: -1
