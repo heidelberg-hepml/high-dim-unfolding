@@ -380,52 +380,6 @@ class KinematicsExperiment(BaseExperiment):
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
 
-        n = -1
-
-        pt_count = 0
-        for sample in samples[:n]:
-            pt = get_pt(sample.x_gen)
-            # LOGGER.info(f"pT: {pt}")
-            pt_diff = pt[:-1] - pt[1:]
-            if torch.any(pt_diff < 0):
-                pt_count += 1
-        LOGGER.info(
-            f"Found {pt_count} events with non-ordered pT in samples x_gen over {n if n > 0 else len(samples)} events."
-        )
-
-        pt_count = 0
-        for sample in samples[:n]:
-            pt = get_pt(sample.x_det)
-            # LOGGER.info(f"pT: {pt}")
-            pt_diff = pt[:-1] - pt[1:]
-            if torch.any(pt_diff < 0):
-                pt_count += 1
-        LOGGER.info(
-            f"Found {pt_count} events with non-ordered pT in samples x_det over {n} events."
-        )
-
-        pt_count = 0
-        for sample in targets[:n]:
-            pt = get_pt(sample.x_gen)
-            # LOGGER.info(f"pT: {pt}")
-            pt_diff = pt[:-1] - pt[1:]
-            if torch.any(pt_diff < 0):
-                pt_count += 1
-        LOGGER.info(
-            f"Found {pt_count} events with non-ordered pT in targets x_gen over {n} events."
-        )
-
-        pt_count = 0
-        for sample in targets[:n]:
-            pt = get_pt(sample.x_det)
-            # LOGGER.info(f"pT: {pt}")
-            pt_diff = pt[:-1] - pt[1:]
-            if torch.any(pt_diff < 0):
-                pt_count += 1
-        LOGGER.info(
-            f"Found {pt_count} events with non-ordered pT in targets x_det over {n} events."
-        )
-
         self.data_raw["samples"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
         )
