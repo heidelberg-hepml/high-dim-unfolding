@@ -10,6 +10,7 @@ data:
  train_val_test: [0.8, 0.1, 0.1]
  max_num_particles: null
  max_constituents: -1
+  min_mult: 2
  add_pid: false
  pt_min: null
  mass: 1.0

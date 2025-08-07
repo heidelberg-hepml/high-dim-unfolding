@@ -10,7 +10,7 @@ from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import Dataset, load_dataset
-from experiments.utils import fix_mass
+from experiments.utils import fix_mass, get_pt
 from experiments.coordinates import fourmomenta_to_jetmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.logger import LOGGER
@@ -28,9 +28,6 @@ from experiments.kinematics.observables import (
     jet_mass,
     create_jet_norm,
 )
-
-PERM = torch.tensor([0, 3, 1, 4, 2]).view(1, -1, 1)
-INV_PERM = torch.tensor([0, 2, 4, 1, 3]).view(1, -1, 1)
 
 
 class KinematicsExperiment(BaseExperiment):
@@ -154,20 +151,6 @@ class KinematicsExperiment(BaseExperiment):
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
-            mask = torch.where(
-                (det_mults >= self.cfg.data.max_constituents)
-                * (gen_mults >= self.cfg.data.max_constituents),
-                True,
-                False,
-            )
-            det_mults = det_mults[mask]
-            gen_mults = gen_mults[mask]
-            det_particles = torch.take_along_dim(det_particles[mask], PERM, dim=1)
-            gen_particles = torch.take_along_dim(gen_particles[mask], PERM, dim=1)
-            det_pids = det_pids[mask]
-            gen_pids = gen_pids[mask]
-            det_jets = det_jets[mask]
-            gen_jets = gen_jets[mask]
             size = len(gen_particles)
 
         split = self.cfg.data.train_val_test
@@ -397,6 +380,52 @@ class KinematicsExperiment(BaseExperiment):
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
 
+        n = 100
+
+        pt_count = 0
+        for sample in samples[:n]:
+            pt = get_pt(sample.x_gen)
+            LOGGER.info(f"pT: {pt}")
+            pt_diff = pt[:-1] - pt[1:]
+            if torch.any(pt_diff < 0):
+                pt_count += 1
+        LOGGER.info(
+            f"Found {pt_count} events with non-ordered pT in samples x_gen over {n} events."
+        )
+
+        pt_count = 0
+        for sample in samples[:n]:
+            pt = get_pt(sample.x_det)
+            LOGGER.info(f"pT: {pt}")
+            pt_diff = pt[:-1] - pt[1:]
+            if torch.any(pt_diff < 0):
+                pt_count += 1
+        LOGGER.info(
+            f"Found {pt_count} events with non-ordered pT in samples x_det over {n} events."
+        )
+
+        pt_count = 0
+        for sample in targets[:n]:
+            pt = get_pt(sample.x_gen)
+            LOGGER.info(f"pT: {pt}")
+            pt_diff = pt[:-1] - pt[1:]
+            if torch.any(pt_diff < 0):
+                pt_count += 1
+        LOGGER.info(
+            f"Found {pt_count} events with non-ordered pT in targets x_gen over {n} events."
+        )
+
+        pt_count = 0
+        for sample in targets[:n]:
+            pt = get_pt(sample.x_det)
+            LOGGER.info(f"pT: {pt}")
+            pt_diff = pt[:-1] - pt[1:]
+            if torch.any(pt_diff < 0):
+                pt_count += 1
+        LOGGER.info(
+            f"Found {pt_count} events with non-ordered pT in targets x_det over {n} events."
+        )
+
         self.data_raw["samples"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
         )
@@ -444,6 +473,7 @@ class KinematicsExperiment(BaseExperiment):
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
 
         samples = self.data_raw["samples"].to_data_list()
+
         # convert the list into a dataloader
         sampler = torch.utils.data.DistributedSampler(
             samples,

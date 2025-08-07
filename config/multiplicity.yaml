@@ -11,6 +11,7 @@ data:
  max_num_particles: null
  diff: null
  max_constituents: -1
+ min_mult: 2
  add_pid: false
  pt_min: null
  mass: 0.001

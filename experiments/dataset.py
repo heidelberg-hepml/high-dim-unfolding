@@ -123,6 +123,14 @@ def load_zplusjet(data_path, cfg, dtype):
     gen_jets = torch.tensor(data["gen_jets"], dtype=dtype)
     gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
 
+    mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    det_particles = det_particles[mult_mask]
+    det_jets = det_jets[mult_mask]
+    det_mults = det_mults[mult_mask]
+    gen_particles = gen_particles[mult_mask]
+    gen_jets = gen_jets[mult_mask]
+    gen_mults = gen_mults[mult_mask]
+
     # undo the dataset scaling
     det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
     det_particles[..., 2] = ensure_angle(det_particles[..., 2])
@@ -227,6 +235,14 @@ def load_ttbar(data_path, cfg, dtype):
         stop = start + length
         gen_particles[i, :length] = array[start:stop]
         start = stop
+
+    mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    det_particles = det_particles[mult_mask]
+    det_jets = det_jets[mult_mask]
+    det_mults = det_mults[mult_mask]
+    gen_particles = gen_particles[mult_mask]
+    gen_jets = gen_jets[mult_mask]
+    gen_mults = gen_mults[mult_mask]
 
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
