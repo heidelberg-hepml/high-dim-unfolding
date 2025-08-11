@@ -31,7 +31,7 @@ EPS1 = 1e-5
 EPS2 = 1e-10
 
 # exp(x) -> exp(x.clamp(max=CUTOFF))
-CUTOFF = 10
+CUTOFF = 15
 
 
 def unpack_last(x):

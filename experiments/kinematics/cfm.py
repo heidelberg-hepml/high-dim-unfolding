@@ -490,10 +490,6 @@ class JetCFM(EventCFM):
             t=t,
         )
 
-        LOGGER.info(
-            f"x0 eta std: {x0[:, 2].std():.3f}, x1 eta std: {x1[:, 2].std():.3f}, xt eta std: {xt[:, 2].std():.3f}"
-        )
-
         attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
             new_batch
         )

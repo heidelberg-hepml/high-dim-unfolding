@@ -7,7 +7,7 @@ data:
  data_dir: data/
  dataset: zplusjet
  length: -1
- train_val_test: [0.8, 0.1, 0.1]
+ train_val_test: [0.65, 0.05, 0.3]
  max_num_particles: null
  max_constituents: -1
  min_mult: 2
@@ -24,7 +24,7 @@ cfm:
   type: simple
   periodic: true
  transforms_float64: true
- masked_dims: []
+ masked_dims: [3]
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
  add_jet: true

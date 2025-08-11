@@ -224,15 +224,16 @@ class MultiplicityExperiment(BaseExperiment):
             self.results_train = self._evaluate_single(self.train_loader, "train")
             self.results_val = self._evaluate_single(self.val_loader, "val")
             self.results_test = self._evaluate_single(self.test_loader, "test")
-        if self.cfg.evaluation.save != 0:
+        if self.cfg.evaluation.save_samples:
             tensor_path = os.path.join(self.cfg.run_dir, f"tensors_{self.cfg.run_idx}")
             os.makedirs(tensor_path, exist_ok=True)
             torch.save(
-                self.results_test["samples"][: self.cfg.evaluation.save],
+                self.results_test["samples"],
                 f"{tensor_path}/samples.pt",
             )
+        if self.cfg.evaluation.save_params > 0:
             torch.save(
-                self.results_test["params"][: self.cfg.evaluation.save],
+                self.results_test["params"][: self.cfg.evaluation.save_params],
                 f"{tensor_path}/params.pt",
             )
 
@@ -243,19 +244,19 @@ class MultiplicityExperiment(BaseExperiment):
         )
         outputs = {}
         self.model.eval()
-        loss = []
+        nll = []
         params = []
         samples = []
         with torch.no_grad():
             for batch in loader:
-                batch_samples, batch_params, batch_loss = self.sample(batch)
-                loss.append(batch_loss)
+                batch_samples, batch_params, batch_nll = self.sample(batch)
+                nll.append(batch_nll)
                 params.append(batch_params)
                 samples.append(batch_samples)
-        loss = torch.tensor(loss)
-        LOGGER.info(f"NLL on {title} dataset: {loss.mean():.4f}")
+        nll = torch.tensor(nll)
+        LOGGER.info(f"NLL on {title} dataset: {nll.mean():.4f}")
 
-        outputs["loss"] = loss.mean()
+        outputs["loss"] = nll.mean()
         outputs["params"] = torch.cat(params)
         outputs["samples"] = torch.cat(samples)
         if self.cfg.use_mlflow:
@@ -344,10 +345,10 @@ class MultiplicityExperiment(BaseExperiment):
         if self.cfg.dist.diff:
             if self.cfg.dist.type == "Categorical":
                 # Rescale to have only positive indices
-                loss = self.loss(
+                nll = cross_entropy(
                     predicted_dist,
                     label - det_mult - self.cfg.data.diff[0],
-                )
+                ).mean()
                 # Rescale back to original range
                 sample = (
                     (det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
@@ -355,13 +356,13 @@ class MultiplicityExperiment(BaseExperiment):
                     .detach()
                 )
             else:
-                loss = self.loss(predicted_dist, label - det_mult)
+                nll = cross_entropy(predicted_dist, label - det_mult).mean()
                 sample = (det_mult + predicted_dist.sample()).cpu().detach()
         else:
-            loss = self.loss(predicted_dist, label)
+            nll = cross_entropy(predicted_dist, label).mean()
             sample = predicted_dist.sample().cpu().detach()
 
-        return sample, params.cpu().detach(), loss.cpu().detach()
+        return sample, params.cpu().detach(), nll.cpu().detach()
 
     def _init_metrics(self):
         return {"nll": [], "mse": []}

@@ -13,7 +13,7 @@ import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 from experiments.kinematics.observables import create_partial_jet
-from experiments.coordinates import jetmomenta_to_fourmomenta
+from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 
 
 class JetKinematicsExperiment(BaseExperiment):
@@ -399,6 +399,27 @@ class JetKinematicsExperiment(BaseExperiment):
             )
 
             batch.jet_gen = self.model.coordinates.x_to_fourmomenta(batch.jet_gen)
+
+            if i == 0:
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    batch.jet_det.detach().cpu(),
+                    batch.jet_gen.detach().cpu(),
+                    sample_batch.jet_gen.detach().cpu(),
+                    f"post_kinematics_4m.pdf",
+                )
+                tr_jet_det = fourmomenta_to_jetmomenta(batch.jet_det).detach().cpu()
+                tr_jet_gen = fourmomenta_to_jetmomenta(batch.jet_gen).detach().cpu()
+                tr_sample_jet_gen = (
+                    fourmomenta_to_jetmomenta(sample_batch.jet_gen).detach().cpu()
+                )
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    tr_jet_det,
+                    tr_jet_gen,
+                    tr_sample_jet_gen,
+                    f"post_kinematics_jetm.pdf",
+                )
 
             if self.cfg.cfm.add_constituents:
                 sample_batch.x_det = (

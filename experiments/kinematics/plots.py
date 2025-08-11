@@ -37,7 +37,7 @@ def plot_histogram(
     xrange,
     model_label,
     logy=False,
-    n_bins=60,
+    n_bins=40,
     error_range=[0.85, 1.15],
     error_ticks=[0.9, 1.0, 1.1],
     weights=None,

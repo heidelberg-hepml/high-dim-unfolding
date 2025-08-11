@@ -34,7 +34,8 @@ training:
 evaluate: true
 evaluation:
  batchsize: 4096
- save: 0
+ save_samples: true
+ save_params: 0
 
 plot: true
 plotting:
