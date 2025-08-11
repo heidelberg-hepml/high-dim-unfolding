@@ -775,7 +775,7 @@ class BaseExperiment:
     def _init_loss(self):
         raise NotImplementedError()
 
-    def _batch_loss(self, data):
+    def _batch_loss(self, batch):
         raise NotImplementedError()
 
     def _init_metrics(self):

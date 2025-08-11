@@ -140,7 +140,7 @@ def plot_fourmomenta(
             max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            if jet != True:
+            if not jet:
                 det_lvl = (
                     extract(
                         exp.data_raw["samples"].x_det[:det_max_n_ptr],
@@ -172,36 +172,9 @@ def plot_fourmomenta(
                     .detach()
                 )
             else:
-                det_lvl = (
-                    extract(
-                        exp.data_raw["samples"].jet_det[:max_n],
-                        torch.arange(max_n, dtype=torch.long),
-                        torch.arange(max_n, dtype=torch.long),
-                        exp.data_raw["samples"].jet_det[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
-                part_lvl = (
-                    extract(
-                        exp.data_raw["truth"].jet_gen[:max_n],
-                        torch.arange(max_n, dtype=torch.long),
-                        torch.arange(max_n, dtype=torch.long),
-                        exp.data_raw["truth"].jet_gen[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
-                model = (
-                    extract(
-                        exp.data_raw["samples"].jet_gen[:max_n],
-                        torch.arange(max_n, dtype=torch.long),
-                        torch.arange(max_n, dtype=torch.long),
-                        exp.data_raw["samples"].jet_gen[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
+                det_lvl = exp.data_raw["samples"].jet_det[:max_n]
+                part_lvl = exp.data_raw["truth"].jet_gen[:max_n]
+                model = exp.data_raw["samples"].jet_gen[:max_n]
 
             obs_names = [
                 "E_{" + name + "}",
@@ -259,68 +232,29 @@ def plot_jetmomenta(
             max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
             max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
             det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            if jet != True:
-                det_lvl = (
-                    extract(
-                        exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                        exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                        exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                        exp.data_raw["samples"].jet_det[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
-                part_lvl = (
-                    extract(
-                        exp.data_raw["truth"].x_gen[:max_n_ptr],
-                        exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                        exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
-                        exp.data_raw["truth"].jet_gen[:max_n],
-                    )[0][: len(det_lvl)]
-                    .cpu()
-                    .detach()
-                )
-                model = (
-                    extract(
-                        exp.data_raw["samples"].x_gen[:max_n_ptr],
-                        exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                        exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                        exp.data_raw["samples"].jet_gen[:max_n],
-                    )[0][: len(det_lvl)]
-                    .cpu()
-                    .detach()
-                )
+            if not jet:
+                det_lvl = extract(
+                    exp.data_raw["samples"].x_det[:det_max_n_ptr],
+                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["samples"].jet_det[:max_n],
+                )[0]
+                part_lvl = extract(
+                    exp.data_raw["truth"].x_gen[:max_n_ptr],
+                    exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["truth"].jet_gen[:max_n],
+                )[0][: len(det_lvl)]
+                model = extract(
+                    exp.data_raw["samples"].x_gen[:max_n_ptr],
+                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                    exp.data_raw["samples"].jet_gen[:max_n],
+                )[0][: len(det_lvl)]
             else:
-                det_lvl = (
-                    extract(
-                        exp.data_raw["samples"].jet_det[:max_n],
-                        torch.arange(max_n, dtype=torch.long),
-                        torch.arange(max_n, dtype=torch.long),
-                        exp.data_raw["samples"].jet_det[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
-                part_lvl = (
-                    extract(
-                        exp.data_raw["truth"].jet_gen[:max_n],
-                        torch.arange(max_n, dtype=torch.long),
-                        torch.arange(max_n, dtype=torch.long),
-                        exp.data_raw["truth"].jet_gen[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
-                model = (
-                    extract(
-                        exp.data_raw["samples"].jet_gen[:max_n],
-                        torch.arange(max_n, dtype=torch.long),
-                        torch.arange(max_n, dtype=torch.long),
-                        exp.data_raw["samples"].jet_gen[:max_n],
-                    )[0]
-                    .cpu()
-                    .detach()
-                )
+                det_lvl = exp.data_raw["samples"].jet_det[:max_n]
+                part_lvl = exp.data_raw["truth"].jet_gen[:max_n]
+                model = exp.data_raw["samples"].jet_gen[:max_n]
 
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
             det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()

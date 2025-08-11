@@ -74,11 +74,11 @@ class CFM(nn.Module):
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
         return sample
 
-    def get_velocity(self, x, t):
+    def get_velocity(self, xt, t):
         """
         Parameters
         ----------
-        x : torch.tensor with shape (batchsize, 4)
+        xt : torch.tensor with shape (batchsize, 4)
         t : torch.tensor with shape (batchsize, 1)
         """
         # implemented by architecture-specific subclasses
@@ -490,6 +490,10 @@ class JetCFM(EventCFM):
             t=t,
         )
 
+        LOGGER.info(
+            f"x0 eta std: {x0[:, 2].std():.3f}, x1 eta std: {x1[:, 2].std():.3f}, xt eta std: {xt[:, 2].std():.3f}"
+        )
+
         attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
             new_batch
         )
@@ -544,7 +548,7 @@ class JetCFM(EventCFM):
             loss = distance
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
-        return loss, distance_particlewise
+        return loss.mean(), distance_particlewise
 
     def sample(self, batch, device, dtype):
         """
@@ -613,6 +617,10 @@ class JetCFM(EventCFM):
                 torch.tensor([1.0, 0.0], device=x1.device),
                 **self.odeint,
             )[-1]
+
+        LOGGER.info(
+            f"x0 eta std: {x0[:, 2].std():.3f}, x1 eta std: {x1[:, 2].std():.3f}, true eta std: {batch.jet_gen[:, 2].std():.3f}"
+        )
 
         sample_batch.jet_gen = self.geometry._handle_periodic(x0)
 
@@ -692,7 +700,7 @@ class JetMLPCFM(EventCFM):
             loss = distance
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
-        return loss, distance_particlewise
+        return loss.mean(), distance_particlewise
 
     def sample(self, batch, device, dtype):
 

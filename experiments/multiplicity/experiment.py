@@ -241,28 +241,28 @@ class MultiplicityExperiment(BaseExperiment):
             f"### Starting to evaluate model on {title} dataset with "
             f"{len(loader.dataset)} elements, batchsize {loader.batch_size} ###"
         )
-        metrics = {}
+        outputs = {}
         self.model.eval()
         loss = []
         params = []
         samples = []
         with torch.no_grad():
             for batch in loader:
-                batch_loss, batch_metrics = self._batch_loss(batch)
+                batch_samples, batch_params, batch_loss = self.sample(batch)
                 loss.append(batch_loss)
-                params.append(batch_metrics["params"])
-                samples.append(batch_metrics["samples"])
+                params.append(batch_params)
+                samples.append(batch_samples)
         loss = torch.tensor(loss)
         LOGGER.info(f"NLL on {title} dataset: {loss.mean():.4f}")
 
-        metrics["loss"] = loss.mean()
-        metrics["params"] = torch.cat(params)
-        metrics["samples"] = torch.cat(samples)
+        outputs["loss"] = loss.mean()
+        outputs["params"] = torch.cat(params)
+        outputs["samples"] = torch.cat(samples)
         if self.cfg.use_mlflow:
-            for key, value in metrics.items():
+            for key, value in outputs.items():
                 name = f"{title}"
                 log_mlflow(f"{name}.{key}", value, step=step)
-        return metrics
+        return outputs
 
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
@@ -288,39 +288,80 @@ class MultiplicityExperiment(BaseExperiment):
         predicted_dist = self.distribution(params)  # batch of mixtures
 
         label = batch.x_gen_ptr.diff()
+        det_mult = batch.x_det_ptr.diff()
+
+        label_0 = (label - det_mult == 0).sum()
+        label_1 = (label - det_mult == 1).sum()
 
         if self.cfg.dist.diff:
             if self.cfg.dist.type == "Categorical":
                 # Rescale to have only positive indices
                 loss = self.loss(
                     predicted_dist,
-                    label - batch.x_det_ptr.diff() - self.cfg.data.diff[0],
+                    label - det_mult - self.cfg.data.diff[0],
                 )
                 # Rescale back to original range
                 sample = (
-                    (
-                        batch.x_det_ptr.diff()
-                        + predicted_dist.sample()
-                        + self.cfg.data.diff[0]
-                    )
+                    (det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
                     .cpu()
                     .detach()
                 )
             else:
-                loss = self.loss(predicted_dist, label - batch.x_det_ptr.diff())
-                sample = (
-                    (batch.x_det_ptr.diff() + predicted_dist.sample()).cpu().detach()
-                )
+                loss = self.loss(predicted_dist, label - det_mult)
+                sample = (det_mult + predicted_dist.sample()).cpu().detach()
         else:
             loss = self.loss(predicted_dist, label)
             sample = predicted_dist.sample().cpu().detach()
+
+        # sample_0 = (sample.to(det_mult.device) - det_mult == 0).sum()
+        # sample_1 = (sample.to(det_mult.device) - det_mult == 1).sum()
+        # if sample_1 < sample_0:
+        #     LOGGER.info(
+        #         f"Samples 1s ({sample_1.cpu().item()}) is less than 0s ({sample_0.cpu().item()})"
+        #     )
+        #     LOGGER.info(
+        #         f"True 1s {label_1.cpu().item()}, True 0s {label_0.cpu().item()}"
+        #     )
+        #     LOGGER.info(f"Loss: {loss.cpu().item()}")
+
         assert torch.isfinite(loss).all()
-        det_mult = batch.x_det_ptr.diff().cpu()
         metrics = {
-            "params": params.cpu().detach(),
-            "samples": torch.stack([sample, label.cpu(), det_mult], dim=-1),
+            "nll": loss.cpu().detach(),
+            "mse": torch.mean((sample - label.cpu().detach()) ** 2),
         }
         return loss, metrics
 
+    def sample(self, batch):
+        batch = batch.to(self.device)
+
+        output = self.model(batch)
+        params = process_params(output)
+        predicted_dist = self.distribution(params)  # batch of mixtures
+
+        label = batch.x_gen_ptr.diff()
+        det_mult = batch.x_det_ptr.diff()
+
+        if self.cfg.dist.diff:
+            if self.cfg.dist.type == "Categorical":
+                # Rescale to have only positive indices
+                loss = self.loss(
+                    predicted_dist,
+                    label - det_mult - self.cfg.data.diff[0],
+                )
+                # Rescale back to original range
+                sample = (
+                    (det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
+                    .cpu()
+                    .detach()
+                )
+            else:
+                loss = self.loss(predicted_dist, label - det_mult)
+                sample = (det_mult + predicted_dist.sample()).cpu().detach()
+        else:
+            loss = self.loss(predicted_dist, label)
+            sample = predicted_dist.sample().cpu().detach()
+
+        return sample, params.cpu().detach(), loss.cpu().detach()
+
     def _init_metrics(self):
-        return {"params": [], "samples": []}
+        return {"nll": [], "mse": []}

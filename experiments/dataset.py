@@ -102,6 +102,8 @@ def load_dataset(dataset_name):
         pt_min = 0.0
         masked_dim = [3]
         load_fn = load_ttbar
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
     return max_num_particles, diff, pt_min, masked_dim, load_fn
 
 
