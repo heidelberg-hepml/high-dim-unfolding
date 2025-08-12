@@ -591,10 +591,6 @@ def plot_observables(
     part_consts = exp.data_raw["truth"].x_gen[:max_n_ptr]
     model_consts = exp.data_raw["samples"].x_gen[:max_n_ptr]
 
-    LOGGER.info(
-        f"det shape {det_consts.shape}, part shape {part_consts.shape}, model shape {model_consts.shape}"
-    )
-
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
             LOGGER.info(f"Plotting observable {name}")

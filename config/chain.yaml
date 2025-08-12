@@ -6,7 +6,7 @@ use_mlflow: false
 # Paths to the three previous experiment directories
 # Each should contain config.yaml and models/model_run*.pt
 experiment_paths:
-  multiplicity: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/mult_z_1685064  # Path to multiplicity experiment directory
+  multiplicity: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/mult_z_1690208  # Path to multiplicity experiment directory
   jets: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/jets_z_1685069  # Path to jets experiment directory
   constituents: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/constituents_z_1685066  # Path to constituents experiment directory
 

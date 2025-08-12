@@ -376,7 +376,9 @@ class KinematicsExperiment(BaseExperiment):
                     .squeeze()
                     .to(self.device)
                 )
-                LOGGER.info(f"Sampling {num_nodes} nodes, len {len(data_points)}")
+                LOGGER.info(
+                    f"nodes shape {num_nodes.shape}, len data {len(data_points)}"
+                )
                 for j, data in enumerate(data_points):
                     data.x_gen = torch.zeros(
                         num_nodes[j], 4, dtype=self.dtype, device=self.device
@@ -552,6 +554,10 @@ class KinematicsExperiment(BaseExperiment):
             os.path.join(path, "truth.pt"), weights_only=False, map_location=self.device
         )
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
+
+        self.data_raw["samples"].x_gen = fix_mass(self.data_raw["samples"].x_gen)
+        self.data_raw["truth"].x_gen = fix_mass(self.data_raw["truth"].x_gen)
+        self.data_raw["truth"].x_det = fix_mass(self.data_raw["truth"].x_det)
 
         samples = self.data_raw["samples"].to_data_list()
 
