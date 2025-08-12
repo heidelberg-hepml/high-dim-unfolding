@@ -221,8 +221,8 @@ class MultiplicityExperiment(BaseExperiment):
             self._evaluate_single(self.test_loader, "test_noema")
 
         else:
-            self.results_train = self._evaluate_single(self.train_loader, "train")
-            self.results_val = self._evaluate_single(self.val_loader, "val")
+            # self.results_train = self._evaluate_single(self.train_loader, "train")
+            # self.results_val = self._evaluate_single(self.val_loader, "val")
             self.results_test = self._evaluate_single(self.test_loader, "test")
         if self.cfg.evaluation.save_samples:
             tensor_path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")

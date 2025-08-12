@@ -196,7 +196,7 @@ class ChainedExperiment(BaseExperiment):
             self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}"
         )
         mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
-        self.sampled_multiplicities = mult_samples["samples"][:, 0]
+        self.sampled_multiplicities = mult_samples[:, 0]
 
         # Step 2: Sample jets using original data pipeline but patch multiplicities
         LOGGER.info("Step 2: Sampling jet kinematics...")
