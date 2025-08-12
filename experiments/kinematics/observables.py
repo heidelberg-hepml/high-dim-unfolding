@@ -200,7 +200,7 @@ def tau2(constituents, batch_idx, other_batch_idx, **kwargs):
 
 
 def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents).detach().cpu()
+    constituents = np.array(constituents.detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     log_rhos = []
     for i in range(len(batch_ptr) - 1):
@@ -216,7 +216,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
 
 
 def compute_zg(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents).detach().cpu()
+    constituents = np.array(constituents.detach().cpu())
     batch_ptr = get_ptr_from_batch(batch_idx)
     zgs = []
     for i in range(len(batch_ptr) - 1):
