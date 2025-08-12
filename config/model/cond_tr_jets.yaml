@@ -5,7 +5,7 @@ net:
 
   in_channels: null
   out_channels: null
-  hidden_channels: 64
+  hidden_channels: 32
 
   num_blocks: 2
   num_heads: 4
@@ -16,7 +16,7 @@ net_condition:
 
   in_channels: null
   out_channels: null
-  hidden_channels: 64
+  hidden_channels: 32
 
   num_blocks: 2
   num_heads: 4

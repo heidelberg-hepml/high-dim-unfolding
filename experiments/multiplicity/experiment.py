@@ -225,7 +225,7 @@ class MultiplicityExperiment(BaseExperiment):
             self.results_val = self._evaluate_single(self.val_loader, "val")
             self.results_test = self._evaluate_single(self.test_loader, "test")
         if self.cfg.evaluation.save_samples:
-            tensor_path = os.path.join(self.cfg.run_dir, f"tensors_{self.cfg.run_idx}")
+            tensor_path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
             os.makedirs(tensor_path, exist_ok=True)
             torch.save(
                 self.results_test["samples"],
@@ -361,8 +361,15 @@ class MultiplicityExperiment(BaseExperiment):
         else:
             nll = cross_entropy(predicted_dist, label).mean()
             sample = predicted_dist.sample().cpu().detach()
+        sample_tensor = torch.stack(
+            [sample, det_mult.cpu().detach(), label.cpu().detach()], dim=1
+        )
 
-        return sample, params.cpu().detach(), nll.cpu().detach()
+        return (
+            sample_tensor,
+            params.cpu().detach(),
+            nll.cpu().detach(),
+        )
 
     def _init_metrics(self):
         return {"nll": [], "mse": []}

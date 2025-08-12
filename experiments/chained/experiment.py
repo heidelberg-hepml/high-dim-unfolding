@@ -13,6 +13,7 @@ from experiments.logger import LOGGER
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
+from experiments.coordinates import fourmomenta_to_jetmomenta
 from experiments.utils import get_device
 
 
@@ -156,6 +157,7 @@ class ChainedExperiment(BaseExperiment):
         # Override run_dir after initialization for output directory
         with open_dict(self.multiplicity_exp.cfg):
             self.multiplicity_exp.cfg.run_dir = self.multiplicity_exp.cfg.new_run_dir
+            self.multiplicity_exp.cfg.run_idx = self.cfg.run_idx
 
         LOGGER.info("Initializing jet experiment...")
         self.jet_exp._init()
@@ -166,6 +168,7 @@ class ChainedExperiment(BaseExperiment):
         # Override run_dir after initialization for output directory
         with open_dict(self.jet_exp.cfg):
             self.jet_exp.cfg.run_dir = self.jet_exp.cfg.new_run_dir
+            self.jet_exp.cfg.run_idx = self.cfg.run_idx
 
         LOGGER.info("Initializing constituents experiment...")
         self.constituents_exp._init()
@@ -176,6 +179,7 @@ class ChainedExperiment(BaseExperiment):
         # Override run_dir after initialization for output directory
         with open_dict(self.constituents_exp.cfg):
             self.constituents_exp.cfg.run_dir = self.constituents_exp.cfg.new_run_dir
+            self.constituents_exp.cfg.run_idx = self.cfg.run_idx
 
     def sample_chain(self):
         """
@@ -192,9 +196,7 @@ class ChainedExperiment(BaseExperiment):
             self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}"
         )
         mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
-        self.sampled_multiplicities = mult_samples["samples"][
-            :, 0
-        ]  # First column is samples
+        self.sampled_multiplicities = mult_samples["samples"][:, 0]
 
         # Step 2: Sample jets using original data pipeline but patch multiplicities
         LOGGER.info("Step 2: Sampling jet kinematics...")
@@ -227,23 +229,21 @@ class ChainedExperiment(BaseExperiment):
         # Replace gen_mults in test data with sampled multiplicities
         for i, data_point in enumerate(self.jet_exp.test_data):
             if i < len(sampled_multiplicities):
-                data_point.mult_gen = sampled_multiplicities[i].item()
+                data_point.x_gen = torch.ones(sampled_multiplicities[i].item(), 4)
 
     def _patch_constituents_data_with_samples(
         self, sampled_jets, sampled_multiplicities
     ):
         """Patch the constituents experiment's dataset to use sampled jets and multiplicities"""
         # Extract jet momenta from the jet samples batch
-        jet_momenta = (
-            sampled_jets.jet_gen if hasattr(sampled_jets, "jet_gen") else sampled_jets
-        )
+        jet_momenta = sampled_jets.jet_gen
 
         # Replace gen_jets and gen_mults in test data with samples
         for i, data_point in enumerate(self.constituents_exp.test_data):
             if i < len(sampled_multiplicities):
-                data_point.mult_gen = sampled_multiplicities[i].item()
+                data_point.x_gen = torch.ones(sampled_multiplicities[i].item(), 4)
             if i < len(jet_momenta):
-                data_point.jet_gen = jet_momenta[i]
+                data_point.jet_gen = fourmomenta_to_jetmomenta(jet_momenta[i : i + 1])
 
     def evaluate(self):
         """Run the full chained evaluation"""

@@ -238,7 +238,6 @@ class BaseExperiment:
         with open_dict(self.cfg):
             self.cfg.run_idx = run_idx
             if not self.warm_start:
-                self.cfg.warm_start_idx = 0
                 self.cfg.run_name = run_name
                 self.cfg.run_dir = run_dir
 
