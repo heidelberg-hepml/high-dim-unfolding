@@ -28,13 +28,13 @@ training:
  iterations: 100000
  batchsize: 1024
  lr: 1e-3
- validate_every_n_steps: 100000
+ validate_every_n_steps: 5000
  scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
  batchsize: 4096
- save_samples: true
+ save_samples: false
  save_params: 0
 
 plot: true

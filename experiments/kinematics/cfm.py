@@ -361,6 +361,8 @@ class EventCFM(CFM):
             coordinates = c.Fourmomenta()
         elif coordinates_label == "PPPM2":
             coordinates = c.PPPM2()
+        elif coordinates_label == "StandardPPPM2":
+            coordinates = c.StandardPPPM2()
         elif coordinates_label == "PPPLogM2":
             coordinates = c.PPPLogM2()
         elif coordinates_label == "StandardPPPLogM2":
@@ -469,6 +471,7 @@ class JetCFM(EventCFM):
         -------
         loss : torch.tensor with shape (1)
         """
+        assert not self.cfm.add_constituents, "Debugging, no constituents"
         if self.cfm.add_constituents:
             new_batch, _ = add_jet_to_sequence(batch)
         else:
@@ -496,6 +499,7 @@ class JetCFM(EventCFM):
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
+        assert self.cfm.self_condition_prob == 0.0, "Debugging, no self condition"
         if self.cfm.self_condition_prob > 0.0:
             self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
             if torch.rand(1) < self.cfm.self_condition_prob:
@@ -530,9 +534,16 @@ class JetCFM(EventCFM):
         vp = self.handle_velocity(vp)
         vt = self.handle_velocity(vt)
 
+        # LOGGER.info(
+        #     f"vp std: {vp.std(dim=0).cpu().detach()}, vt std: {vt.std(dim=0).cpu().detach()}"
+        # )
+
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(vp, vt, xt)
 
+        assert (
+            self.cfm.cosine_similarity_factor == 0.0
+        ), "Debugging, no cosine similarity"
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (
                 1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
@@ -563,6 +574,7 @@ class JetCFM(EventCFM):
             Generated events
         """
 
+        assert not self.cfm.add_constituents, "Debugging, no constituents"
         if self.cfm.add_constituents:
             new_batch, _ = add_jet_to_sequence(batch)
         else:
@@ -597,6 +609,7 @@ class JetCFM(EventCFM):
         # sample from base distribution
         x1 = self.sample_base(new_batch.jet_gen)
 
+        assert self.cfm.self_condition_prob == 0.0, "Debugging, no self condition"
         if self.cfm.self_condition_prob > 0.0:
             v1 = torch.zeros_like(x1, device=x1.device, dtype=x1.dtype)
             x0 = custom_rk4(

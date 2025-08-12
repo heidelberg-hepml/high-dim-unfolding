@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 
@@ -8,12 +9,19 @@ from omegaconf import open_dict
 
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import Dataset, load_zplusjet, load_cms, load_ttbar
+from experiments.dataset import (
+    Dataset,
+    load_zplusjet,
+    load_cms,
+    load_ttbar,
+    positional_encoding,
+)
 import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 from experiments.kinematics.observables import create_partial_jet
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
+from experiments.utils import GaussianFourierProjection
 
 
 class JetKinematicsExperiment(BaseExperiment):
@@ -230,20 +238,28 @@ class JetKinematicsExperiment(BaseExperiment):
                 ),
             )
 
+        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        mult_encoding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=self.cfg.data.mult_encoding_dim, scale=30.0
+            ),
+            nn.Linear(self.cfg.data.mult_encoding_dim, self.cfg.data.mult_encoding_dim),
+        ).to(dtype=self.dtype)
+
         self.train_data = Dataset(
             self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
 
         self.train_data.create_data_list(
@@ -327,7 +343,7 @@ class JetKinematicsExperiment(BaseExperiment):
         )
 
     @torch.no_grad()
-    def evaluate(self):
+    def evaluate(self, sampled_mults=None):
         # EMA-evaluation not implemented
         loaders = {
             "train": self.train_loader,
@@ -337,7 +353,7 @@ class JetKinematicsExperiment(BaseExperiment):
         self.model.eval()
         if self.cfg.evaluation.sample:
             t0 = time.time()
-            self._sample_events(loaders["test"])
+            self._sample_events(loaders["test"], sampled_mults)
             loaders["gen"] = self.sample_loader
             dt = time.time() - t0
             LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
@@ -353,7 +369,7 @@ class JetKinematicsExperiment(BaseExperiment):
         else:
             LOGGER.info("Skip sampling")
 
-    def _sample_events(self, loader):
+    def _sample_events(self, loader, sampled_mults=None):
         samples = []
         targets = []
         self.data_raw = {}
@@ -370,6 +386,16 @@ class JetKinematicsExperiment(BaseExperiment):
 
         for i in range(n_batches):
             batch = next(it).to(self.device)
+            new_batch = batch.clone()
+
+            if sampled_mults is not None:
+                new_batch.jet_scalars_gen = self.test_data.mult_embedding(
+                    sampled_mults[
+                        self.cfg.evaluation.batchsize
+                        * i : self.cfg.evaluation.batchsize
+                        * (i + 1)
+                    ].to(dtype=self.dtype)
+                ).to(self.device)
 
             sample_batch, base = self.model.sample(
                 batch,

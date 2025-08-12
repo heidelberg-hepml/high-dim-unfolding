@@ -1,14 +1,14 @@
-exp_type: chained
-exp_name: chained_sampling
+exp_type: chain
+exp_name: chain_sampling
 
 use_mlflow: false
 
 # Paths to the three previous experiment directories
 # Each should contain config.yaml and models/model_run*.pt
 experiment_paths:
-  multiplicity: /remote/gpu04/petitjean/high-dim-unfolding/runs/clean_mult_long/tr_z_43785  # Path to multiplicity experiment directory
-  jets: /remote/gpu04/petitjean/high-dim-unfolding/runs/jets_mlp/test_42475  # Path to jets experiment directory
-  constituents: /remote/gpu04/petitjean/high-dim-unfolding/runs/params/S_pos_37577  # Path to constituents experiment directory
+  multiplicity: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/mult_z_1685064  # Path to multiplicity experiment directory
+  jets: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/jets_z_1685069  # Path to jets experiment directory
+  constituents: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/constituents_z_1685066  # Path to constituents experiment directory
 
 # Which run index to use for model loading from each experiment
 model_run_indices:
@@ -16,7 +16,7 @@ model_run_indices:
   jets: 0
   constituents: 0
 
-train: false  # No training in chained experiment
+train: false  # No training in chain experiment
 training: null
 
 evaluate: true

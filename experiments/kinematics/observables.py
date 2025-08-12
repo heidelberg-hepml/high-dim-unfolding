@@ -1,5 +1,4 @@
 from experiments.logger import LOGGER
-from experiments.utils import fix_mass
 
 try:
     from fastjet_contribs import (
@@ -22,8 +21,6 @@ from experiments.coordinates import fourmomenta_to_jetmomenta
 
 R0 = None
 R0SoftDrop = None
-
-MASS = 0.0
 
 
 def create_partial_jet(start, end):
@@ -203,7 +200,7 @@ def tau2(constituents, batch_idx, other_batch_idx, **kwargs):
 
 
 def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(fix_mass(constituents, MASS).detach().cpu())
+    constituents = np.array(constituents).detach().cpu()
     batch_ptr = get_ptr_from_batch(batch_idx)
     log_rhos = []
     for i in range(len(batch_ptr) - 1):
@@ -219,7 +216,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
 
 
 def compute_zg(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(fix_mass(constituents, MASS).detach().cpu())
+    constituents = np.array(constituents).detach().cpu()
     batch_ptr = get_ptr_from_batch(batch_idx)
     zgs = []
     for i in range(len(batch_ptr) - 1):
@@ -248,9 +245,7 @@ def create_jet_norm(pos=[0, 1, 2, 3], neg=[]):
         other_batch_ptr = get_ptr_from_batch(other_batch_idx)
         jet_norms = []
         for n in range(len(batch_ptr) - 1):
-            jet = fix_mass(constituents[batch_ptr[n] : batch_ptr[n + 1]], 0.1).sum(
-                dim=0
-            )
+            jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
             norm2 = (jet[..., pos] ** 2).sum(dim=-1) - (jet[..., neg] ** 2).sum(dim=-1)
             jet_norms.append(torch.sqrt(norm2))
         return torch.stack(jet_norms)

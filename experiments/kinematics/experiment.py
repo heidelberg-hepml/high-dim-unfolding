@@ -1,18 +1,26 @@
 import numpy as np
 import torch
+from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
+import copy
 
 import os, time
 from omegaconf import open_dict
 
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import Dataset, load_dataset
-from experiments.utils import fix_mass, get_pt
-from experiments.coordinates import fourmomenta_to_jetmomenta
+from experiments.dataset import Dataset, load_dataset, positional_encoding
+from experiments.utils import (
+    fix_mass,
+    get_batch_from_ptr,
+    get_pt,
+    GaussianFourierProjection,
+)
+from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 import experiments.kinematics.plotter as plotter
+from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 import experiments.kinematics.observables as obs
 from experiments.kinematics.observables import (
@@ -206,14 +214,28 @@ class KinematicsExperiment(BaseExperiment):
             ),
         )
 
+        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        mult_encoding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=self.cfg.data.mult_encoding_dim, scale=30.0
+            ),
+            nn.Linear(self.cfg.data.mult_encoding_dim, self.cfg.data.mult_encoding_dim),
+        ).to(dtype=self.dtype)
+
         self.train_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.val_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.test_data = Dataset(
-            self.dtype, pos_encoding_dim=self.cfg.data.pos_encoding_dim
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
 
         self.train_data.create_data_list(
@@ -297,7 +319,7 @@ class KinematicsExperiment(BaseExperiment):
         )
 
     @torch.no_grad()
-    def evaluate(self):
+    def evaluate(self, sampled_mults=None, sampled_jets=None):
         # EMA-evaluation not implemented
         loaders = {
             "train": self.train_loader,
@@ -307,7 +329,7 @@ class KinematicsExperiment(BaseExperiment):
         self.model.eval()
         if self.cfg.evaluation.sample:
             t0 = time.time()
-            self._sample_events(loaders["test"])
+            self._sample_events(loaders["test"], sampled_mults, sampled_jets)
             loaders["gen"] = self.sample_loader
             dt = time.time() - t0
             LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
@@ -323,7 +345,7 @@ class KinematicsExperiment(BaseExperiment):
         else:
             LOGGER.info("Skip sampling")
 
-    def _sample_events(self, loader):
+    def _sample_events(self, loader, sampled_mults=None, sampled_jets=None):
         samples = []
         targets = []
         self.data_raw = {}
@@ -341,8 +363,43 @@ class KinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
 
+            if sampled_mults is not None:
+
+                new_batch = batch.clone()
+                data_points = new_batch.to_data_list()
+                num_nodes = (
+                    sampled_mults[
+                        self.cfg.evaluation.batchsize
+                        * i : self.cfg.evaluation.batchsize
+                        * (i + 1)
+                    ]
+                    .squeeze()
+                    .to(self.device)
+                )
+                LOGGER.info(f"Sampling {num_nodes} nodes, len {len(data_points)}")
+                for j, data in enumerate(data_points):
+                    data.x_gen = torch.zeros(
+                        num_nodes[j], 4, dtype=self.dtype, device=self.device
+                    )
+                    data.scalars_gen = self.test_data.pos_encoding[: num_nodes[j]].to(
+                        self.device
+                    )
+
+                new_batch = Batch.from_data_list(
+                    data_points, follow_batch=["x_gen", "x_det"]
+                )
+
+            else:
+                new_batch = batch.clone()
+
+            if sampled_jets is not None:
+                slice = self.cfg.evaluation.batchsize * i
+                new_batch.jet_gen = sampled_jets[
+                    slice : slice + self.cfg.evaluation.batchsize
+                ].to(self.device)
+
             sample_batch, base = self.model.sample(
-                batch,
+                new_batch,
                 self.device,
                 self.dtype,
             )
@@ -363,19 +420,89 @@ class KinematicsExperiment(BaseExperiment):
                 batch.jet_det, batch.x_det_ptr.diff(), dim=0
             )
 
-            sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
+            sample_batch.x_det = fix_mass(
+                self.model.condition_coordinates.x_to_fourmomenta(
+                    sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
+                )
             )
-            sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
+            sample_batch.x_gen = fix_mass(
+                self.model.coordinates.x_to_fourmomenta(
+                    sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
+                )
             )
 
-            batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
+            if self.cfg.cfm.rescale:
+                summed_sample_gen_jets = torch.repeat_interleave(
+                    scatter(
+                        sample_batch.x_gen,
+                        sample_batch.x_gen_batch,
+                        dim=0,
+                        reduce="sum",
+                    ),
+                    sample_batch.x_gen_ptr.diff(),
+                    dim=0,
+                )
+                true_sample_gen_jets = jetmomenta_to_fourmomenta(sample_gen_jets)
+                sample_batch.x_gen = sample_batch.x_gen * (
+                    true_sample_gen_jets / summed_sample_gen_jets
+                )
+
+            batch.x_det = fix_mass(
+                self.model.condition_coordinates.x_to_fourmomenta(
+                    batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
+                )
             )
-            batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
+            batch.x_gen = fix_mass(
+                self.model.coordinates.x_to_fourmomenta(
+                    batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
+                )
             )
+
+            # if i == 0:
+            #     plot_kinematics(
+            #         self.cfg.run_dir,
+            #         batch.jet_det.detach().cpu(),
+            #         batch.jet_gen.detach().cpu(),
+            #         sample_batch.jet_gen.detach().cpu(),
+            #         f"true_jet_kinematics.pdf",
+            #         sqrt=True,
+            #     )
+
+            #     plot_kinematics(
+            #         self.cfg.run_dir,
+            #         fourmomenta_to_jetmomenta(
+            #             scatter(
+            #                 fix_mass(batch.x_det, 0.0),
+            #                 batch.x_det_batch,
+            #                 dim=0,
+            #                 reduce="sum",
+            #             )
+            #         )
+            #         .detach()
+            #         .cpu(),
+            #         fourmomenta_to_jetmomenta(
+            #             scatter(
+            #                 fix_mass(batch.x_gen, 0.0),
+            #                 batch.x_gen_batch,
+            #                 dim=0,
+            #                 reduce="sum",
+            #             )
+            #         )
+            #         .detach()
+            #         .cpu(),
+            #         fourmomenta_to_jetmomenta(
+            #             scatter(
+            #                 fix_mass(sample_batch.x_gen, 0.0),
+            #                 sample_batch.x_gen_batch,
+            #                 dim=0,
+            #                 reduce="sum",
+            #             )
+            #         )
+            #         .detach()
+            #         .cpu(),
+            #         f"new_jet_kinematics.pdf",
+            #         sqrt=True,
+            #     )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

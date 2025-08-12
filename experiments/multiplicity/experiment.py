@@ -1,4 +1,5 @@
 import torch
+from torch import nn
 from torch_geometric.loader import DataLoader
 from torch.distributions import Categorical
 import numpy as np
@@ -7,7 +8,7 @@ import os, time
 from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import Dataset, load_dataset
+from experiments.dataset import Dataset, load_dataset, positional_encoding
 from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
@@ -17,6 +18,7 @@ from experiments.multiplicity.distributions import (
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
+from experiments.utils import GaussianFourierProjection
 
 MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
@@ -117,20 +119,28 @@ class MultiplicityExperiment(BaseExperiment):
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
+        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        mult_encoding = nn.Sequential(
+            GaussianFourierProjection(
+                embed_dim=self.cfg.data.mult_encoding_dim, scale=30.0
+            ),
+            nn.Linear(self.cfg.data.mult_encoding_dim, self.cfg.data.mult_encoding_dim),
+        ).to(dtype=self.dtype)
+
         self.train_data = Dataset(
             self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
-            pos_encoding_dim=self.cfg.data.pos_encoding_dim,
-            mult_encoding_dim=self.cfg.data.mult_encoding_dim,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
         )
         self.train_data.create_data_list(
             det_particles=det_particles[:train_idx],
@@ -221,8 +231,8 @@ class MultiplicityExperiment(BaseExperiment):
             self._evaluate_single(self.test_loader, "test_noema")
 
         else:
-            # self.results_train = self._evaluate_single(self.train_loader, "train")
-            # self.results_val = self._evaluate_single(self.val_loader, "val")
+            self.results_train = self._evaluate_single(self.train_loader, "train")
+            self.results_val = self._evaluate_single(self.val_loader, "val")
             self.results_test = self._evaluate_single(self.test_loader, "test")
         if self.cfg.evaluation.save_samples:
             tensor_path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
@@ -361,8 +371,13 @@ class MultiplicityExperiment(BaseExperiment):
         else:
             nll = cross_entropy(predicted_dist, label).mean()
             sample = predicted_dist.sample().cpu().detach()
+
+        sample = torch.clamp(
+            sample, min=self.cfg.data.min_mult, max=self.cfg.data.max_num_particles
+        )
+
         sample_tensor = torch.stack(
-            [sample, det_mult.cpu().detach(), label.cpu().detach()], dim=1
+            [sample, label.cpu().detach(), det_mult.cpu().detach()], dim=1
         )
 
         return (

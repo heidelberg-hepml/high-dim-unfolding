@@ -33,6 +33,8 @@ EPS2 = 1e-10
 # exp(x) -> exp(x.clamp(max=CUTOFF))
 CUTOFF = 15
 
+MASS = 0.0
+
 
 def unpack_last(x):
     # unpack along the last dimension
@@ -224,7 +226,7 @@ def flatten_dict(d, parent_key="", sep="."):
     return dict(items)
 
 
-def fix_mass(constituents, mass=0.1):
+def fix_mass(constituents, mass=MASS):
     new_constituents = constituents.clone()
     new_constituents[..., 0] = torch.sqrt(
         torch.sum(new_constituents[..., 1:] ** 2 + mass**2, dim=-1)

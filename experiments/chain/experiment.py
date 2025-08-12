@@ -14,12 +14,12 @@ from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
 from experiments.coordinates import fourmomenta_to_jetmomenta
-from experiments.utils import get_device
+from experiments.utils import get_device, GaussianFourierProjection
 
 
-class ChainedExperiment(BaseExperiment):
+class ChainExperiment(BaseExperiment):
     """
-    Chained experiment that runs multiplicity -> jets -> constituents sampling in sequence.
+    Chain experiment that runs multiplicity -> jets -> constituents sampling in sequence.
     """
 
     def __init__(self, cfg, rank=0, world_size=1):
@@ -196,33 +196,37 @@ class ChainedExperiment(BaseExperiment):
             self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}"
         )
         mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
-        self.sampled_multiplicities = mult_samples[:, 0]
+        self.sampled_multiplicities = mult_samples[:, :1].to(dtype=torch.int64)
 
         # Step 2: Sample jets using original data pipeline but patch multiplicities
         LOGGER.info("Step 2: Sampling jet kinematics...")
-        self._patch_jet_data_with_multiplicities(self.sampled_multiplicities)
-        self.jet_exp.evaluate()
+        # self._patch_jet_data_with_multiplicities(self.sampled_multiplicities)
+        self.jet_exp.evaluate(self.sampled_multiplicities)
         # Get sampled jets from the experiment's results
         jet_samples_path = os.path.join(
             self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}"
         )
-        self.sampled_jets = torch.load(os.path.join(jet_samples_path, "samples.pt"))
+        self.sampled_jets = fourmomenta_to_jetmomenta(
+            torch.load(
+                os.path.join(jet_samples_path, "samples.pt"), weights_only=False
+            ).jet_gen
+        )
 
         # Step 3: Sample constituents using original data pipeline but patch jets and multiplicities
         LOGGER.info("Step 3: Sampling constituents...")
-        self._patch_constituents_data_with_samples(
-            self.sampled_jets, self.sampled_multiplicities
-        )
-        self.constituents_exp.evaluate()
-        # Get sampled constituents from the experiment's results
-        const_samples_path = os.path.join(
-            self.cfg.run_dir, "constituents", f"samples_{self.cfg.run_idx}"
-        )
-        self.sampled_constituents = torch.load(
-            os.path.join(const_samples_path, "samples.pt")
-        )
+        # self._patch_constituents_data_with_samples(
+        #     self.sampled_jets, self.sampled_multiplicities
+        # )
+        self.constituents_exp.evaluate(self.sampled_multiplicities, self.sampled_jets)
+        # # Get sampled constituents from the experiment's results
+        # const_samples_path = os.path.join(
+        #     self.cfg.run_dir, "constituents", f"samples_{self.cfg.run_idx}"
+        # )
+        # self.sampled_constituents = torch.load(
+        #     os.path.join(const_samples_path, "samples.pt"), weights_only=False
+        # )
 
-        LOGGER.info("Chained sampling complete!")
+        LOGGER.info("Chained sampling complete.")
 
     def _patch_jet_data_with_multiplicities(self, sampled_multiplicities):
         """Patch the jet experiment's dataset to use sampled multiplicities as gen_mults"""
@@ -230,6 +234,11 @@ class ChainedExperiment(BaseExperiment):
         for i, data_point in enumerate(self.jet_exp.test_data):
             if i < len(sampled_multiplicities):
                 data_point.x_gen = torch.ones(sampled_multiplicities[i].item(), 4)
+                data_point.jet_scalars_gen = self.jet_exp.test_data.mult_embedding(
+                    torch.tensor(
+                        [[sampled_multiplicities[i].item()]], dtype=self.jet_exp.dtype
+                    )
+                ).detach()
 
     def _patch_constituents_data_with_samples(
         self, sampled_jets, sampled_multiplicities
@@ -242,6 +251,9 @@ class ChainedExperiment(BaseExperiment):
         for i, data_point in enumerate(self.constituents_exp.test_data):
             if i < len(sampled_multiplicities):
                 data_point.x_gen = torch.ones(sampled_multiplicities[i].item(), 4)
+                data_point.scalars_gen = self.constituents_exp.test_data.pos_encoding[
+                    : sampled_multiplicities[i].item()
+                ]
             if i < len(jet_momenta):
                 data_point.jet_gen = fourmomenta_to_jetmomenta(jet_momenta[i : i + 1])
 
@@ -255,17 +267,17 @@ class ChainedExperiment(BaseExperiment):
             "Chained evaluation complete. Individual experiment samples and plots saved to run_dir."
         )
 
-    def _save_samples(self):
-        """Samples are saved by individual experiments in their evaluate() methods"""
-        pass
-
     def plot(self):
         """Create plots for chained experiment"""
         # Individual experiments create their own plots during evaluate()
         # This could be extended to create comparison plots across the chain
-        LOGGER.info(
-            "Individual experiment plots created during evaluate(). Chained comparison plots not yet implemented."
-        )
+        LOGGER.info("Plotting multiplicity...")
+        self.multiplicity_exp.plot()
+        LOGGER.info("Plotting jets...")
+        self.jet_exp.plot()
+        LOGGER.info("Plotting constituents...")
+        self.constituents_exp.plot()
+        LOGGER.info("Plotting complete.")
 
     def _init_loss(self):
         """Not used in chained experiment"""
@@ -293,7 +305,7 @@ class ChainedExperiment(BaseExperiment):
 
     def _init_backend(self):
         """Backend handled per sub-experiment"""
-        pass
+        self.device = get_device()
 
     def _init_optimizer(self):
         """Not used in chained experiment"""

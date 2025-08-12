@@ -17,14 +17,10 @@ from experiments.coordinates import (
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, pos_encoding_dim=0, mult_encoding_dim=8):
+    def __init__(self, dtype, pos_encoding, mult_encoding):
         self.dtype = dtype
-        if pos_encoding_dim > 0:
-            self.pos_encoding = positional_encoding(pe_dim=pos_encoding_dim)
-        self.mult_embedding = nn.Sequential(
-            GaussianFourierProjection(embed_dim=mult_encoding_dim, scale=30.0),
-            nn.Linear(mult_encoding_dim, mult_encoding_dim),
-        ).to(dtype=dtype)
+        self.pos_encoding = pos_encoding
+        self.mult_embedding = mult_encoding
 
     def __len__(self):
         return len(self.data_list)
