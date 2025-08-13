@@ -22,6 +22,7 @@ from experiments.logger import LOGGER
 from experiments.kinematics.observables import create_partial_jet
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 from experiments.utils import GaussianFourierProjection
+import experiments.utils as utils
 
 
 class JetKinematicsExperiment(BaseExperiment):
@@ -30,6 +31,10 @@ class JetKinematicsExperiment(BaseExperiment):
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             self.cfg.cfm.run_dir = self.cfg.run_dir
+
+            utils.EPS1 = self.cfg.eps1
+            utils.EPS2 = self.cfg.eps2
+            utils.CUTOFF = self.cfg.cutoff
 
             if self.cfg.evaluation.load_samples:
                 self.cfg.train = False

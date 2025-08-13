@@ -8,12 +8,11 @@ import os
 
 from experiments.utils import (
     ensure_angle,
+    fix_mass,
     pid_encoding,
     GaussianFourierProjection,
 )
-from experiments.coordinates import (
-    jetmomenta_to_fourmomenta,
-)
+from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_jetmomenta
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -160,13 +159,16 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., 3] = cfg.mass**2
     gen_particles[..., 3] = cfg.mass**2
 
-    det_jets[..., [1, 2]] = det_jets[..., [2, 1]]
-    gen_jets[..., [1, 2]] = gen_jets[..., [2, 1]]
-    det_jets[..., 3] = det_jets[..., 3] ** 2
-    gen_jets[..., 3] = gen_jets[..., 3] ** 2
+    # det_jets[..., [1, 2]] = det_jets[..., [2, 1]]
+    # gen_jets[..., [1, 2]] = gen_jets[..., [2, 1]]
+    # det_jets[..., 3] = det_jets[..., 3] ** 2
+    # gen_jets[..., 3] = gen_jets[..., 3] ** 2
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+
+    det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
 
     return {
         "det_jets": det_jets,
@@ -258,6 +260,9 @@ def load_ttbar(data_path, cfg, dtype):
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+
+    det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
 
     return {
         "det_particles": det_particles,

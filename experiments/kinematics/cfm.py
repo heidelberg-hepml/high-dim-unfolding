@@ -534,10 +534,6 @@ class JetCFM(EventCFM):
         vp = self.handle_velocity(vp)
         vt = self.handle_velocity(vt)
 
-        # LOGGER.info(
-        #     f"vp std: {vp.std(dim=0).cpu().detach()}, vt std: {vt.std(dim=0).cpu().detach()}"
-        # )
-
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(vp, vt, xt)
 
