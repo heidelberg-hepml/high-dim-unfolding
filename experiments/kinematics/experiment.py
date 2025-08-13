@@ -559,6 +559,28 @@ class KinematicsExperiment(BaseExperiment):
         self.data_raw["truth"].x_gen = fix_mass(self.data_raw["truth"].x_gen)
         self.data_raw["truth"].x_det = fix_mass(self.data_raw["truth"].x_det)
 
+        if self.cfg.cfm.rescale:
+            summed_sample_gen_jets = torch.repeat_interleave(
+                scatter(
+                    self.data_raw["samples"].x_gen,
+                    self.data_raw["samples"].x_gen_batch,
+                    dim=0,
+                    reduce="sum",
+                ),
+                self.data_raw["samples"].x_gen_ptr.diff(),
+                dim=0,
+            )
+            sample_gen_jets = torch.repeat_interleave(
+                self.data_raw["samples"].jet_gen,
+                self.data_raw["samples"].x_gen_ptr.diff(),
+                dim=0,
+            )
+
+            true_sample_gen_jets = jetmomenta_to_fourmomenta(sample_gen_jets)
+            self.data_raw["samples"].x_gen = self.data_raw["samples"].x_gen * (
+                true_sample_gen_jets / summed_sample_gen_jets
+            )
+
         samples = self.data_raw["samples"].to_data_list()
 
         # convert the list into a dataloader
