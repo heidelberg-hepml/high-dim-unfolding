@@ -142,6 +142,8 @@ class MultiplicityExperiment(BaseExperiment):
             pos_encoding=pos_encoding,
             mult_encoding=mult_encoding,
         )
+        self.model.mult_encoding = mult_encoding
+
         self.train_data.create_data_list(
             det_particles=det_particles[:train_idx],
             det_pids=det_pids[:train_idx],

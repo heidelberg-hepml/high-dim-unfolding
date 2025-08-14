@@ -70,6 +70,8 @@ class KinematicsExperiment(BaseExperiment):
             self.cfg.cfm.masked_dims = masked_dims
             self.load_fn = load_fn
 
+            self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
+
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
 
@@ -215,12 +217,8 @@ class KinematicsExperiment(BaseExperiment):
         )
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
-        mult_encoding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=self.cfg.data.mult_encoding_dim, scale=30.0
-            ),
-            nn.Linear(self.cfg.data.mult_encoding_dim, self.cfg.data.mult_encoding_dim),
-        ).to(dtype=self.dtype)
+
+        mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
@@ -364,7 +362,6 @@ class KinematicsExperiment(BaseExperiment):
             batch = next(it).to(self.device)
 
             if sampled_mults is not None:
-
                 new_batch = batch.clone()
                 data_points = new_batch.to_data_list()
                 num_nodes = (
@@ -375,9 +372,6 @@ class KinematicsExperiment(BaseExperiment):
                     ]
                     .squeeze()
                     .to(self.device)
-                )
-                LOGGER.info(
-                    f"nodes shape {num_nodes.shape}, len data {len(data_points)}"
                 )
                 for j, data in enumerate(data_points):
                     data.x_gen = torch.zeros(
@@ -460,51 +454,51 @@ class KinematicsExperiment(BaseExperiment):
                 )
             )
 
-            # if i == 0:
-            #     plot_kinematics(
-            #         self.cfg.run_dir,
-            #         batch.jet_det.detach().cpu(),
-            #         batch.jet_gen.detach().cpu(),
-            #         sample_batch.jet_gen.detach().cpu(),
-            #         f"true_jet_kinematics.pdf",
-            #         sqrt=True,
-            #     )
+            if i == 0:
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    batch.jet_det.detach().cpu(),
+                    batch.jet_gen.detach().cpu(),
+                    sample_batch.jet_gen.detach().cpu(),
+                    f"true_jet_kinematics.pdf",
+                    sqrt=True,
+                )
 
-            #     plot_kinematics(
-            #         self.cfg.run_dir,
-            #         fourmomenta_to_jetmomenta(
-            #             scatter(
-            #                 fix_mass(batch.x_det, 0.0),
-            #                 batch.x_det_batch,
-            #                 dim=0,
-            #                 reduce="sum",
-            #             )
-            #         )
-            #         .detach()
-            #         .cpu(),
-            #         fourmomenta_to_jetmomenta(
-            #             scatter(
-            #                 fix_mass(batch.x_gen, 0.0),
-            #                 batch.x_gen_batch,
-            #                 dim=0,
-            #                 reduce="sum",
-            #             )
-            #         )
-            #         .detach()
-            #         .cpu(),
-            #         fourmomenta_to_jetmomenta(
-            #             scatter(
-            #                 fix_mass(sample_batch.x_gen, 0.0),
-            #                 sample_batch.x_gen_batch,
-            #                 dim=0,
-            #                 reduce="sum",
-            #             )
-            #         )
-            #         .detach()
-            #         .cpu(),
-            #         f"new_jet_kinematics.pdf",
-            #         sqrt=True,
-            #     )
+                plot_kinematics(
+                    self.cfg.run_dir,
+                    fourmomenta_to_jetmomenta(
+                        scatter(
+                            batch.x_det,
+                            batch.x_det_batch,
+                            dim=0,
+                            reduce="sum",
+                        )
+                    )
+                    .detach()
+                    .cpu(),
+                    fourmomenta_to_jetmomenta(
+                        scatter(
+                            batch.x_gen,
+                            batch.x_gen_batch,
+                            dim=0,
+                            reduce="sum",
+                        )
+                    )
+                    .detach()
+                    .cpu(),
+                    fourmomenta_to_jetmomenta(
+                        scatter(
+                            sample_batch.x_gen,
+                            sample_batch.x_gen_batch,
+                            dim=0,
+                            reduce="sum",
+                        )
+                    )
+                    .detach()
+                    .cpu(),
+                    f"new_jet_kinematics.pdf",
+                    sqrt=True,
+                )
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

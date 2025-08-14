@@ -31,6 +31,10 @@ class CFM(nn.Module):
             ),
             nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
         )
+        self.mult_encoding = nn.Sequential(
+            GaussianFourierProjection(embed_dim=cfm.mult_encoding_dim, scale=30.0),
+            nn.Linear(cfm.mult_encoding_dim, cfm.mult_encoding_dim),
+        )
         self.odeint = odeint
         self.cfm = cfm
         self.scaling = torch.tensor([cfm.scaling])
@@ -443,7 +447,6 @@ class JetCFM(EventCFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert not self.cfm.add_constituents or not self.cfm.transpose
-        assert self.cfm.self_condition_prob == 0.0 or not self.cfm.transpose
 
     def init_coordinates(self):
         self.coordinates = self._init_coordinates(self.cfm.coordinates)
@@ -471,7 +474,7 @@ class JetCFM(EventCFM):
         -------
         loss : torch.tensor with shape (1)
         """
-        assert not self.cfm.add_constituents, "Debugging, no constituents"
+
         if self.cfm.add_constituents:
             new_batch, _ = add_jet_to_sequence(batch)
         else:
@@ -499,7 +502,6 @@ class JetCFM(EventCFM):
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
-        assert self.cfm.self_condition_prob == 0.0, "Debugging, no self condition"
         if self.cfm.self_condition_prob > 0.0:
             self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
             if torch.rand(1) < self.cfm.self_condition_prob:
@@ -537,9 +539,6 @@ class JetCFM(EventCFM):
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(vp, vt, xt)
 
-        assert (
-            self.cfm.cosine_similarity_factor == 0.0
-        ), "Debugging, no cosine similarity"
         if self.cfm.cosine_similarity_factor > 0.0:
             cosine_similarity = (
                 1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
@@ -570,7 +569,6 @@ class JetCFM(EventCFM):
             Generated events
         """
 
-        assert not self.cfm.add_constituents, "Debugging, no constituents"
         if self.cfm.add_constituents:
             new_batch, _ = add_jet_to_sequence(batch)
         else:
@@ -605,7 +603,6 @@ class JetCFM(EventCFM):
         # sample from base distribution
         x1 = self.sample_base(new_batch.jet_gen)
 
-        assert self.cfm.self_condition_prob == 0.0, "Debugging, no self condition"
         if self.cfm.self_condition_prob > 0.0:
             v1 = torch.zeros_like(x1, device=x1.device, dtype=x1.dtype)
             x0 = custom_rk4(

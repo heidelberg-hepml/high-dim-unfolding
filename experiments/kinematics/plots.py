@@ -1,3 +1,4 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -405,7 +406,8 @@ def plot_kinematics(
         gen[..., 3] = np.sqrt(gen[..., 3])
         if model is not None:
             model[..., 3] = np.sqrt(model[..., 3])
-    with PdfPages(path + "/" + filename) as pdf:
+    os.makedirs(path, exist_ok=True)
+    with PdfPages(os.path.join(path, filename)) as pdf:
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
         for i, ax in enumerate(axs.flatten()):
             xlims = np.array(get_range([reco[..., i], gen[..., i]]))

@@ -60,6 +60,8 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.data.pt_min = pt_min
             self.load_fn = load_fn
 
+            self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
+
             if self.cfg.modelname == "JetConditionalTransformer":
                 if self.cfg.cfm.transpose:
                     base_in_channels = 1
@@ -181,7 +183,7 @@ class JetKinematicsExperiment(BaseExperiment):
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
-        # initialize cfm (might require data)
+        # initialize cfm (requires data)
         self.model.init_physics(
             pt_min=self.cfg.data.pt_min,
             mass=self.cfg.data.mass,
@@ -199,13 +201,6 @@ class JetKinematicsExperiment(BaseExperiment):
             mask=train_gen_mask,
             jet=gen_jets[:train_idx],
         )
-
-        if hasattr(self.model, "sample_coords"):
-            self.model.sample_coords.init_fit(
-                gen_jets[:train_idx].unsqueeze(1),
-                mask=train_gen_mask,
-                jet=gen_jets[:train_idx],
-            )
 
         jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
         self.model.condition_coordinates.init_fit(
@@ -244,12 +239,7 @@ class JetKinematicsExperiment(BaseExperiment):
             )
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
-        mult_encoding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=self.cfg.data.mult_encoding_dim, scale=30.0
-            ),
-            nn.Linear(self.cfg.data.mult_encoding_dim, self.cfg.data.mult_encoding_dim),
-        ).to(dtype=self.dtype)
+        mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
@@ -394,7 +384,7 @@ class JetKinematicsExperiment(BaseExperiment):
             new_batch = batch.clone()
 
             if sampled_mults is not None:
-                new_batch.jet_scalars_gen = self.test_data.mult_embedding(
+                new_batch.jet_scalars_gen = self.model.mult_encoding(
                     sampled_mults[
                         self.cfg.evaluation.batchsize
                         * i : self.cfg.evaluation.batchsize
@@ -406,6 +396,10 @@ class JetKinematicsExperiment(BaseExperiment):
                 batch,
                 self.device,
                 self.dtype,
+            )
+
+            LOGGER.info(
+                f"sample mass: {sample_batch.jet_gen[:,3].mean()}, gen mass: {batch.jet_gen[:,3].mean()}, det mass: {batch.jet_det[:,3].mean()}"
             )
 
             sample_batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(

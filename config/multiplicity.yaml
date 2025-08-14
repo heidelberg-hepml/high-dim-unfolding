@@ -26,14 +26,14 @@ dist:
 train: true
 training:
  iterations: 100000
- batchsize: 1024
+ batchsize: 16384
  lr: 1e-3
  validate_every_n_steps: 5000
  scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
- batchsize: 4096
+ batchsize: 16384
  save_samples: false
  save_params: 0
 

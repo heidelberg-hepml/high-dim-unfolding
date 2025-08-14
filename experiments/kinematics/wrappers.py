@@ -333,26 +333,28 @@ class JetConditionalTransformerCFM(JetCFM):
         crossattention_mask,
         self_condition=None,
     ):
-        if self_condition is not None:
+
+        if self.cfm.transpose:
+            pe = self.pe.repeat(xt.shape[0], 1).to(xt.device, dtype=xt.dtype)
+            scalars = torch.repeat_interleave(
+                torch.cat([batch.jet_scalars_gen, self.t_embedding(t)], dim=-1),
+                4,
+                dim=0,
+            )
             input = torch.cat(
-                [xt, batch.jet_scalars_gen, self.t_embedding(t), self_condition], dim=-1
+                [xt.flatten().unsqueeze(-1), scalars, pe],
+                dim=-1,
             )
         else:
+            input = torch.cat([xt, batch.jet_scalars_gen, self.t_embedding(t)], dim=-1)
+        if self_condition is not None:
             if self.cfm.transpose:
-                pe = self.pe.repeat(xt.shape[0], 1).to(xt.device, dtype=xt.dtype)
-                scalars = torch.repeat_interleave(
-                    torch.cat([batch.jet_scalars_gen, self.t_embedding(t)], dim=-1),
-                    4,
-                    dim=0,
-                )
                 input = torch.cat(
-                    [xt.flatten().unsqueeze(-1), scalars, pe],
-                    dim=-1,
+                    [input, self_condition.flatten().unsqueeze(-1)], dim=-1
                 )
             else:
-                input = torch.cat(
-                    [xt, batch.jet_scalars_gen, self.t_embedding(t)], dim=-1
-                )
+                input = torch.cat([input, self_condition], dim=-1)
+
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
@@ -423,8 +425,6 @@ class JetConditionalLGATrCFM(JetCFM):
             if self.cfm.add_constituents:
                 self.constituents_condition_coordinates.to(torch.float64)
 
-        self.sample_coords = self._init_coordinates("StandardLogPtPhiEtaLogM2")
-
     def sample_base(self, x0, constituents_mask=None, generator=None):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
@@ -439,7 +439,6 @@ class JetConditionalLGATrCFM(JetCFM):
         )
 
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
-        sample = self.sample_coords.x_to_fourmomenta(sample)
         return sample
 
     def get_masks(self, batch):
@@ -526,7 +525,7 @@ class JetConditionalLGATrCFM(JetCFM):
             fourmomenta,
             scalars,
             torch.arange(batch.num_graphs, device=xt.device),
-            # self.ga_cfg,
+            self.ga_cfg,
         )
 
         mv_outputs, s_outputs = self.net(
