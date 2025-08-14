@@ -229,13 +229,17 @@ class JetKinematicsExperiment(BaseExperiment):
             det_mask = (
                 torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
             )
-            det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
-                det_particles[det_mask],
-                jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
-                ptr=torch.cumsum(
-                    torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
-                    dim=0,
-                ),
+            det_particles[det_mask] = (
+                self.model.constituents_condition_coordinates.fourmomenta_to_x(
+                    det_particles[det_mask],
+                    jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+                    ptr=torch.cumsum(
+                        torch.cat(
+                            [torch.zeros(1, dtype=torch.int64), det_mults], dim=0
+                        ),
+                        dim=0,
+                    ),
+                )
             )
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)

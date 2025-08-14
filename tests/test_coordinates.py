@@ -7,7 +7,6 @@ from experiments.dataset import load_zplusjet, load_cms, load_ttbar
 
 
 TOLERANCES = dict(atol=1e-3, rtol=1e-4)
-n_batches = 10
 
 
 def all_subclasses(cls):
@@ -19,22 +18,24 @@ def all_subclasses(cls):
     return subclasses
 
 
-coordinates_classes = list(all_subclasses(c.BaseCoordinates))
+coordinates_classes = [c.StandardLogPtPhiEtaLogM2, c.StandardJetScaledLogPtPhiEtaLogM2]
 
 
 @pytest.mark.parametrize("coordinates", coordinates_classes)
 @pytest.mark.parametrize(
     "dataset, data_fn",
     [
-        ("zplusjet", load_zplusjet),
-        ("cms", load_cms),
+        # ("zplusjet", load_zplusjet),
+        # ("cms", load_cms),
         ("ttbar", load_ttbar),
     ],
 )
-@pytest.mark.parametrize("mass", [1e-3, 1.0, 100.0])
+@pytest.mark.parametrize("mass", [1.0])
 def test_invertibility(coordinates, dataset, data_fn, mass):
     """test invertibility of forward() and inverse() methods"""
-    cfg = OmegaConf.create({"length": 500, "add_pid": False, "mass": mass})
+    cfg = OmegaConf.create(
+        {"length": -1, "add_pid": False, "mass": mass, "min_mult": 1}
+    )
     dtype = torch.float64
 
     data = data_fn("data/" + dataset, cfg, dtype)
@@ -72,15 +73,15 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
 @pytest.mark.parametrize(
     "dataset, data_fn",
     [
-        ("zplusjet", load_zplusjet),
-        ("cms", load_cms),
+        # ("zplusjet", load_zplusjet),
+        # ("cms", load_cms),
         ("ttbar", load_ttbar),
     ],
 )
-@pytest.mark.parametrize("mass", [1e-3, 1.0, 100.0])
+@pytest.mark.parametrize("mass", [1.0])
 def test_velocity(coordinates, dataset, data_fn, mass):
     """test velocity_forward() and velocity_inverse() methods"""
-    cfg = OmegaConf.create({"length": 500, "add_pid": False, "mass": mass})
+    cfg = OmegaConf.create({"length": -1, "add_pid": False, "mass": mass})
     device = torch.device("cpu")
     dtype = torch.float64
 

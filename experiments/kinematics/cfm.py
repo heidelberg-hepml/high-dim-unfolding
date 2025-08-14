@@ -35,6 +35,7 @@ class CFM(nn.Module):
             GaussianFourierProjection(embed_dim=cfm.mult_encoding_dim, scale=30.0),
             nn.Linear(cfm.mult_encoding_dim, cfm.mult_encoding_dim),
         )
+
         self.odeint = odeint
         self.cfm = cfm
         self.scaling = torch.tensor([cfm.scaling])
@@ -549,7 +550,12 @@ class JetCFM(EventCFM):
         else:
             loss = distance
 
+        if self.cfm.weight > 0.0:
+            cost = self.geometry.get_distance(x0, x1)
+            loss = loss * torch.exp(-self.cfm.weight * cost)
+
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
+
         return loss.mean(), distance_particlewise
 
     def sample(self, batch, device, dtype):

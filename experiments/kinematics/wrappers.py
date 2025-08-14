@@ -425,28 +425,12 @@ class JetConditionalLGATrCFM(JetCFM):
             if self.cfm.add_constituents:
                 self.constituents_condition_coordinates.to(torch.float64)
 
-    def sample_base(self, x0, constituents_mask=None, generator=None):
-        sample = torch.randn(
-            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
-        )
-        sample[..., 1] = (
-            torch.rand(
-                x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-            )
-            * 2
-            * torch.pi
-            - torch.pi
-        )
-
-        sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
-        return sample
-
     def get_masks(self, batch):
         _, _, gen_batch_idx, _ = embed_data_into_ga(
             batch.jet_gen,
             batch.jet_scalars_gen,
             torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
-            # self.ga_cfg,
+            self.ga_cfg,
         )
         if self.cfm.add_constituents:
             _, _, det_batch_idx, _ = embed_data_into_ga(
@@ -507,7 +491,6 @@ class JetConditionalLGATrCFM(JetCFM):
         crossattention_mask,
         self_condition=None,
     ):
-        assert self.coordinates is not None
 
         fourmomenta = self.coordinates.x_to_fourmomenta(
             xt,
@@ -524,7 +507,7 @@ class JetConditionalLGATrCFM(JetCFM):
         mv, s, _, spurions_mask = embed_data_into_ga(
             fourmomenta,
             scalars,
-            torch.arange(batch.num_graphs, device=xt.device),
+            torch.arange(batch.num_graphs + 1, device=xt.device),
             self.ga_cfg,
         )
 
@@ -540,11 +523,12 @@ class JetConditionalLGATrCFM(JetCFM):
                 "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
             },
         )
+
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
-        v_s = s[~spurions_mask]
+        v_s = s_outputs[~spurions_mask]
 
         v_straight = torch.zeros_like(v_fourmomenta)
         v_straight = self.coordinates.velocity_fourmomenta_to_x(

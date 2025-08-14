@@ -43,6 +43,7 @@ training:
  
  scheduler: null
  scheduler_scale: 1
+ scheduler_warmup_factor: 0.03
  cosanneal_eta_min: 0
  reduceplateau_factor: 0.1
  reduceplateau_patience: 50
