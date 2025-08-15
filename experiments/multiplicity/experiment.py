@@ -120,29 +120,19 @@ class MultiplicityExperiment(BaseExperiment):
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
-        mult_encoding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=self.cfg.data.mult_encoding_dim, scale=30.0
-            ),
-            nn.Linear(self.cfg.data.mult_encoding_dim, self.cfg.data.mult_encoding_dim),
-        ).to(dtype=self.dtype)
 
         self.train_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
         )
-        self.model.mult_encoding = mult_encoding
 
         self.train_data.create_data_list(
             det_particles=det_particles[:train_idx],

@@ -15,7 +15,7 @@ data:
  pt_min: null
  mass: 1.0
  pos_encoding_dim: 8
- mult_encoding_dim: 0
+ mult_embedding_dim: 0
 
 cfm:
  embed_t_dim: 8

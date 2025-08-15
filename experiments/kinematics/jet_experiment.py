@@ -70,7 +70,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.model.net.in_channels = (
                     base_in_channels
                     + self.cfg.cfm.embed_t_dim
-                    + self.cfg.data.mult_encoding_dim
+                    + self.cfg.data.mult_embedding_dim
                 )
                 if self.cfg.cfm.transpose:
                     self.cfg.model.net.in_channels += self.cfg.data.pos_encoding_dim
@@ -80,7 +80,7 @@ class JetKinematicsExperiment(BaseExperiment):
                     )
                 else:
                     self.cfg.model.net_condition.in_channels = (
-                        base_in_channels + self.cfg.data.mult_encoding_dim
+                        base_in_channels + self.cfg.data.mult_embedding_dim
                     )
                     if self.cfg.cfm.transpose:
                         self.cfg.model.net_condition.in_channels += (
@@ -96,7 +96,7 @@ class JetKinematicsExperiment(BaseExperiment):
 
             elif self.cfg.modelname == "JetConditionalLGATr":
                 self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_embedding_dim
                 )
                 if self.cfg.cfm.add_constituents:
                     self.cfg.model.net_condition.in_s_channels = (
@@ -104,7 +104,7 @@ class JetKinematicsExperiment(BaseExperiment):
                     )
                 else:
                     self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.mult_encoding_dim
+                        self.cfg.data.mult_embedding_dim
                     )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
@@ -126,13 +126,13 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.model.net.in_shape = (
                     base_in_channels
                     + self.cfg.cfm.embed_t_dim
-                    + self.cfg.data.mult_encoding_dim
+                    + self.cfg.data.mult_embedding_dim
                 )
                 self.cfg.model.net.out_shape = base_in_channels
 
                 if not self.cfg.cfm.unconditional:
                     self.cfg.model.net.in_shape += (
-                        base_in_channels + self.cfg.data.mult_encoding_dim
+                        base_in_channels + self.cfg.data.mult_embedding_dim
                     )
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_channels += base_in_channels
@@ -243,22 +243,22 @@ class JetKinematicsExperiment(BaseExperiment):
             )
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
-        mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+        mult_embedding = self.model.mult_embedding.to(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
+            mult_embedding=mult_embedding,
         )
         self.val_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
+            mult_embedding=mult_embedding,
         )
         self.test_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
+            mult_embedding=mult_embedding,
         )
 
         self.train_data.create_data_list(
@@ -388,7 +388,7 @@ class JetKinematicsExperiment(BaseExperiment):
             new_batch = batch.clone()
 
             if sampled_mults is not None:
-                new_batch.jet_scalars_gen = self.model.mult_encoding(
+                new_batch.jet_scalars_gen = self.model.mult_embedding(
                     sampled_mults[
                         self.cfg.evaluation.batchsize
                         * i : self.cfg.evaluation.batchsize
