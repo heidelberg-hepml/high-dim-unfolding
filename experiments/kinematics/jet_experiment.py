@@ -60,7 +60,7 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.data.pt_min = pt_min
             self.load_fn = load_fn
 
-            self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
+            self.cfg.cfm.mult_embedding_dim = self.cfg.data.mult_embedding_dim
 
             if self.cfg.modelname == "JetConditionalTransformer":
                 if self.cfg.cfm.transpose:

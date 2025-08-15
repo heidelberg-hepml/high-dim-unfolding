@@ -16,10 +16,10 @@ from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_je
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, pos_encoding, mult_encoding):
+    def __init__(self, dtype, pos_encoding, mult_embedding):
         self.dtype = dtype
         self.pos_encoding = pos_encoding
-        self.mult_embedding = mult_encoding
+        self.mult_embedding = mult_embedding
 
     def __len__(self):
         return len(self.data_list)
