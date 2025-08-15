@@ -119,7 +119,10 @@ class MultiplicityExperiment(BaseExperiment):
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
-        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        if self.cfg.data.pos_encoding_dim > 0:
+            pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        else:
+            pos_encoding = None
 
         self.train_data = Dataset(
             self.dtype,

@@ -16,7 +16,7 @@ from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_je
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, pos_encoding, mult_embedding):
+    def __init__(self, dtype, pos_encoding=None, mult_embedding=None):
         self.dtype = dtype
         self.pos_encoding = pos_encoding
         self.mult_embedding = mult_embedding
@@ -47,20 +47,20 @@ class Dataset(torch.utils.data.Dataset):
             gen_event = gen_particles[i, : gen_mults[i]]
             gen_event_scalars = gen_pids[i, : gen_mults[i]]
 
-            if hasattr(self, "pos_encoding"):
+            if self.pos_encoding is not None:
                 det_event_scalars = torch.cat(
                     [det_event_scalars, self.pos_encoding[: det_mults[i]]], dim=-1
                 )
                 gen_event_scalars = torch.cat(
                     [gen_event_scalars, self.pos_encoding[: gen_mults[i]]], dim=-1
                 )
-
-            jet_scalars_det = self.mult_embedding(
-                torch.tensor([[det_mults[i]]], dtype=self.dtype)
-            ).detach()
-            jet_scalars_gen = self.mult_embedding(
-                torch.tensor([[gen_mults[i]]], dtype=self.dtype)
-            ).detach()
+            if self.mult_embedding is not None:
+                jet_scalars_det = self.mult_embedding(
+                    torch.tensor([[det_mults[i]]], dtype=self.dtype)
+                ).detach()
+                jet_scalars_gen = self.mult_embedding(
+                    torch.tensor([[gen_mults[i]]], dtype=self.dtype)
+                ).detach()
 
             graph = Data(
                 x_det=det_event,
