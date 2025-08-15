@@ -220,7 +220,7 @@ class KinematicsExperiment(BaseExperiment):
 
         mult_embedding = self.model.mult_embedding
         if self.cfg.data.mult_embedding_dim > 0:
-            mult_embedding = mult_embedding.to(pos_encoding.device)
+            mult_embedding.to_(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
