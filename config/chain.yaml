@@ -6,9 +6,9 @@ use_mlflow: false
 # Paths to the three previous experiment directories
 # Each should contain config.yaml and models/model_run*.pt
 experiment_paths:
-  multiplicity: /remote/gpu04/petitjean/high-dim-unfolding/runs/clean_mult_long/lgatr_z_43782  # Path to multiplicity experiment directory
+  multiplicity: /remote/gpu04/petitjean/high-dim-unfolding/runs/chain_long/mult_z_lgatr  # Path to multiplicity experiment directory
   jets: /remote/gpu04/petitjean/high-dim-unfolding/runs/chain_long/jets_z  # Path to jets experiment directory
-  constituents: /remote/gpu04/petitjean/high-dim-unfolding/runs/gatr_long_c/z_44490  # Path to constituents experiment directory
+  constituents: /remote/gpu04/petitjean/high-dim-unfolding/runs/chain_long/constituents_z_lgatr  # Path to constituents experiment directory
 
 # Which run index to use for model loading from each experiment
 model_run_indices:

@@ -17,6 +17,8 @@ logs/
 notebooks/
 *~
 
+config/chain.yaml
+
 .claude/
 CLAUDE.md
 
