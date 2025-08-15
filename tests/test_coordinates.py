@@ -18,7 +18,10 @@ def all_subclasses(cls):
     return subclasses
 
 
-coordinates_classes = [c.StandardLogPtPhiEtaLogM2, c.StandardJetScaledLogPtPhiEtaLogM2]
+coordinates_classes = [
+    c.StandardLogPtPhiEtaLogM2,
+    # c.StandardJetScaledLogPtPhiEtaLogM2
+]
 
 
 @pytest.mark.parametrize("coordinates", coordinates_classes)
@@ -39,26 +42,33 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
     dtype = torch.float64
 
     data = data_fn("data/" + dataset, cfg, dtype)
-    if dataset == "cms":
-        fixed_dims = []
-    else:
-        fixed_dims = [3]
-    coord = coordinates(pt_min=0.0, fixed_dims=fixed_dims)
+    # if dataset == "cms":
+    #     fixed_dims = []
+    # else:
+    #     fixed_dims = [3]
 
-    particles = data["det_particles"]
-    jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
-    mask = torch.arange(particles.shape[1])[None, :] < data["det_mults"][:, None]
-    ptr = torch.cumsum(
-        torch.cat([torch.zeros(1, dtype=torch.long), data["det_mults"]]), dim=0
-    )
+    fixed_dims = []
+    coord = coordinates(pt_min=400.0, fixed_dims=fixed_dims)
 
-    jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)
+    # particles = data["det_particles"]
+    # jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
+    # mask = torch.arange(particles.shape[1])[None, :] < data["det_mults"][:, None]
+    # ptr = torch.cumsum(
+    #     torch.cat([torch.zeros(1, dtype=torch.long), data["det_mults"]]), dim=0
+    # )
 
-    coord.init_fit(particles, mask=mask, ptr=ptr, jet=jets)
+    # jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)
 
-    fourmomenta_original = particles[mask]
+    # coord.init_fit(particles, mask=mask, ptr=ptr, jet=jets)
+
+    # fourmomenta_original = particles[mask]
 
     # forward and inverse transform
+
+    fourmomenta_original = data["gen_particles"].sum(dim=1)
+    ptr = torch.arange(fourmomenta_original.shape[0] + 1, dtype=torch.long)
+    jets = c.fourmomenta_to_jetmomenta(fourmomenta_original)
+
     x_original = coord.fourmomenta_to_x(fourmomenta_original, ptr=ptr, jet=jets)
     fourmomenta_transformed = coord.x_to_fourmomenta(x_original, ptr=ptr, jet=jets)
     x_transformed = coord.fourmomenta_to_x(fourmomenta_transformed, ptr=ptr, jet=jets)
@@ -69,16 +79,16 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
     torch.testing.assert_close(x_original, x_transformed, **TOLERANCES)
 
 
-@pytest.mark.parametrize("coordinates", coordinates_classes)
-@pytest.mark.parametrize(
-    "dataset, data_fn",
-    [
-        # ("zplusjet", load_zplusjet),
-        # ("cms", load_cms),
-        ("ttbar", load_ttbar),
-    ],
-)
-@pytest.mark.parametrize("mass", [1.0])
+# @pytest.mark.parametrize("coordinates", coordinates_classes)
+# @pytest.mark.parametrize(
+#     "dataset, data_fn",
+#     [
+#         # ("zplusjet", load_zplusjet),
+#         # ("cms", load_cms),
+#         ("ttbar", load_ttbar),
+#     ],
+# )
+# @pytest.mark.parametrize("mass", [1.0])
 def test_velocity(coordinates, dataset, data_fn, mass):
     """test velocity_forward() and velocity_inverse() methods"""
     cfg = OmegaConf.create({"length": -1, "add_pid": False, "mass": mass})

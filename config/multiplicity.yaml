@@ -7,7 +7,7 @@ data:
  data_dir: data/
  dataset: zplusjet
  length: -1
- train_val_test: [0.65, 0.05, 0.3]
+ train_val_test: [0.8, 0.05, 0.15]
  max_num_particles: null
  diff: null
  max_constituents: -1

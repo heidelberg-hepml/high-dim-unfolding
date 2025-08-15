@@ -5,9 +5,9 @@ net:
 
   in_channels: null
   out_channels: null
-  hidden_channels: 32
+  hidden_channels: 64
 
-  num_blocks: 2
+  num_blocks: 4
   num_heads: 4
   dropout_prob: 0.1
 
@@ -16,8 +16,8 @@ net_condition:
 
   in_channels: null
   out_channels: null
-  hidden_channels: 32
+  hidden_channels: 64
 
-  num_blocks: 2
+  num_blocks: 4
   num_heads: 4
   dropout_prob: 0.1

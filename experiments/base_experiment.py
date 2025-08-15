@@ -561,66 +561,66 @@ class BaseExperiment:
 
         iterator = iter(cycle(self.train_loader))
 
-        with torch.profiler.profile(
-            activities=[
-                torch.profiler.ProfilerActivity.CPU,
-                torch.profiler.ProfilerActivity.CUDA,
-            ],
-            schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
-            on_trace_ready=torch.profiler.tensorboard_trace_handler(
-                os.path.join(self.cfg.run_dir, "profiler")
-            ),
-            record_shapes=True,
-            profile_memory=True,
-            with_stack=True,
-            with_modules=True,
-        ) as prof:
+        # with torch.profiler.profile(
+        #     activities=[
+        #         torch.profiler.ProfilerActivity.CPU,
+        #         torch.profiler.ProfilerActivity.CUDA,
+        #     ],
+        #     schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
+        #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
+        #         os.path.join(self.cfg.run_dir, "profiler")
+        #     ),
+        #     record_shapes=True,
+        #     profile_memory=True,
+        #     with_stack=True,
+        #     with_modules=True,
+        # ) as prof:
 
-            for step in range(self.cfg.training.iterations):
-                # training
-                self.model.train()
-                data = next(iterator)
-                self._step(data, step)
+        for step in range(self.cfg.training.iterations):
+            # training
+            self.model.train()
+            data = next(iterator)
+            self._step(data, step)
 
-                # validation (and early stopping)
-                if (step + 1) % self.cfg.training.validate_every_n_steps == 0:
-                    val_loss = self._validate(step)
-                    if val_loss < smallest_val_loss:
-                        smallest_val_loss = val_loss
-                        smallest_val_loss_step = step
-                        patience = 0
+            # validation (and early stopping)
+            if (step + 1) % self.cfg.training.validate_every_n_steps == 0:
+                val_loss = self._validate(step)
+                if val_loss < smallest_val_loss:
+                    smallest_val_loss = val_loss
+                    smallest_val_loss_step = step
+                    patience = 0
 
-                        # save best model
-                        if self.cfg.training.es_load_best_model:
-                            self._save_model(
-                                f"model_run{self.cfg.run_idx}_it{smallest_val_loss_step}.pt"
-                            )
-                    else:
-                        patience += 1
-                        if patience > self.cfg.training.es_patience:
-                            LOGGER.info(
-                                f"Early stopping in iteration {step} = epoch {step / len(self.train_loader):.1f}"
-                            )
-                            break  # early stopping
+                    # save best model
+                    if self.cfg.training.es_load_best_model:
+                        self._save_model(
+                            f"model_run{self.cfg.run_idx}_it{smallest_val_loss_step}.pt"
+                        )
+                else:
+                    patience += 1
+                    if patience > self.cfg.training.es_patience:
+                        LOGGER.info(
+                            f"Early stopping in iteration {step} = epoch {step / len(self.train_loader):.1f}"
+                        )
+                        break  # early stopping
 
-                    if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
-                        self.scheduler.step(val_loss)
+                if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
+                    self.scheduler.step(val_loss)
 
-                if (step + 1) % self.cfg.training.clear_every_n_steps == 0:
-                    gc.collect()
-                    if self.device == torch.device("cuda"):
-                        torch.cuda.empty_cache()
+            if (step + 1) % self.cfg.training.clear_every_n_steps == 0:
+                gc.collect()
+                if self.device == torch.device("cuda"):
+                    torch.cuda.empty_cache()
 
-                # output
-                dt = time.time() - self.training_start_time
-                if step in [0, 999]:
-                    dt_estimate = dt * self.cfg.training.iterations / (step + 1)
-                    LOGGER.info(
-                        f"Finished iteration {step+1} after {dt:.2f}s, "
-                        f"training time estimate: {dt_estimate/60:.2f}min "
-                        f"= {dt_estimate/60**2:.2f}h"
-                    )
-            prof.step()
+            # output
+            dt = time.time() - self.training_start_time
+            if step in [0, 999]:
+                dt_estimate = dt * self.cfg.training.iterations / (step + 1)
+                LOGGER.info(
+                    f"Finished iteration {step+1} after {dt:.2f}s, "
+                    f"training time estimate: {dt_estimate/60:.2f}min "
+                    f"= {dt_estimate/60**2:.2f}h"
+                )
+            # prof.step()
 
         dt = time.time() - self.training_start_time
         LOGGER.info(
