@@ -245,6 +245,15 @@ class ConditionalLGATrCFM(EventCFM):
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
 
+        LOGGER.info(
+            f"MV Error at: {(~torch.isfinite(v_fourmomenta).any(dim=1)).sum()} / {v_fourmomenta.shape[0]}"
+        )
+        LOGGER.info(
+            f"S Error at: {(~torch.isfinite(v_s).any(dim=1)).sum()} / {v_s.shape[0]}"
+        )
+
+        LOGGER.info(f"v: {v_fourmomenta[:50]}")
+
         assert torch.isfinite(v_fourmomenta).all()
         assert torch.isfinite(v_s).all()
 
