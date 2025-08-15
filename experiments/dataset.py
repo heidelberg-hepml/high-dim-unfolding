@@ -61,6 +61,9 @@ class Dataset(torch.utils.data.Dataset):
                 jet_scalars_gen = self.mult_embedding(
                     torch.tensor([[gen_mults[i]]], dtype=self.dtype)
                 ).detach()
+            else:
+                jet_scalars_det = torch.empty(1, 0, dtype=self.dtype)
+                jet_scalars_gen = torch.empty(1, 0, dtype=self.dtype)
 
             graph = Data(
                 x_det=det_event,
