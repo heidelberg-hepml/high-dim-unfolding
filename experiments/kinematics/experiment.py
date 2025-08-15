@@ -70,7 +70,7 @@ class KinematicsExperiment(BaseExperiment):
             self.cfg.cfm.masked_dims = masked_dims
             self.load_fn = load_fn
 
-            self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
+            self.cfg.cfm.mult_embedding_dim = self.cfg.data.mult_embedding_dim
 
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
@@ -218,22 +218,22 @@ class KinematicsExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
-        mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+        mult_embedding = self.model.mult_embedding.to(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
+            mult_embedding=mult_embedding,
         )
         self.val_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
+            mult_embedding=mult_embedding,
         )
         self.test_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
+            mult_embedding=mult_embedding,
         )
 
         self.train_data.create_data_list(
@@ -550,8 +550,25 @@ class KinematicsExperiment(BaseExperiment):
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
 
         self.data_raw["samples"].x_gen = fix_mass(self.data_raw["samples"].x_gen)
+        self.data_raw["samples"].x_det = fix_mass(self.data_raw["samples"].x_det)
         self.data_raw["truth"].x_gen = fix_mass(self.data_raw["truth"].x_gen)
         self.data_raw["truth"].x_det = fix_mass(self.data_raw["truth"].x_det)
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            self.data_raw["truth"].jet_gen,
+            self.data_raw["samples"].jet_gen,
+            fourmomenta_to_jetmomenta(
+                scatter(
+                    self.data_raw["samples"].x_gen,
+                    self.data_raw["samples"].x_gen_batch,
+                    dim=0,
+                    reduce="sum",
+                )
+            ),
+            f"kinematics_{self.cfg.run_idx}.pdf",
+            sqrt=True,
+        )
 
         if self.cfg.cfm.rescale:
             summed_sample_gen_jets = torch.repeat_interleave(

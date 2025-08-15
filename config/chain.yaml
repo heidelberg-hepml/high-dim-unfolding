@@ -6,22 +6,22 @@ use_mlflow: false
 # Paths to the three previous experiment directories
 # Each should contain config.yaml and models/model_run*.pt
 experiment_paths:
-  multiplicity: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/mult_z_1696555  # Path to multiplicity experiment directory
-  jets: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/jets_z_1696461  # Path to jets experiment directory
-  constituents: /work/classic/hd_iv329-hdu/high-dim-unfolding/runs/chain/const_z_1699793  # Path to constituents experiment directory
+  multiplicity: /remote/gpu04/petitjean/high-dim-unfolding/runs/clean_mult_long/lgatr_z_43782  # Path to multiplicity experiment directory
+  jets: /remote/gpu04/petitjean/high-dim-unfolding/runs/chain_long/jets_z  # Path to jets experiment directory
+  constituents: /remote/gpu04/petitjean/high-dim-unfolding/runs/gatr_long_c/z_44490  # Path to constituents experiment directory
 
 # Which run index to use for model loading from each experiment
 model_run_indices:
   multiplicity: 0
   jets: 0
-  constituents: 0
+  constituents: 4
 
 train: false  # No training in chain experiment
 training: null
 
 evaluate: true
 evaluation:
-  batchsize: 1024
+  batchsize: 4096
   sample: true
   n_batches: -1
   save_samples: true
