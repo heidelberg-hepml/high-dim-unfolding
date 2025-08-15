@@ -197,9 +197,15 @@ class ConditionalLGATrCFM(EventCFM):
             jet=gen_jets,
             ptr=ptr,
         )
+
+        assert torch.isfinite(fourmomenta).all()
+
         fourmomenta[~constituents_mask] = jetmomenta_to_fourmomenta(
             xt[~constituents_mask]
         )
+
+        assert torch.isfinite(fourmomenta).all()
+        assert torch.isfinite(batch.scalars_gen).all()
 
         condition_mv, condition_s = condition
         if self_condition is not None:
@@ -209,12 +215,17 @@ class ConditionalLGATrCFM(EventCFM):
         else:
             scalars = torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1)
 
+        assert torch.isfinite(scalars).all()
+
         mv, s, _, spurions_mask = embed_data_into_ga(
             fourmomenta,
             scalars,
             batch.x_gen_ptr,
             self.ga_cfg,
         )
+
+        assert torch.isfinite(mv).all()
+        assert torch.isfinite(s).all()
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),
@@ -233,6 +244,9 @@ class ConditionalLGATrCFM(EventCFM):
 
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
+
+        assert torch.isfinite(v_fourmomenta).all()
+        assert torch.isfinite(v_s).all()
 
         v_straight = torch.zeros_like(v_fourmomenta)
         v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(

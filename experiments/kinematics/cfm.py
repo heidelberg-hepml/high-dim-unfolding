@@ -630,10 +630,6 @@ class JetCFM(EventCFM):
                 **self.odeint,
             )[-1]
 
-        LOGGER.info(
-            f"x0 eta std: {x0[:, 2].std():.3f}, x1 eta std: {x1[:, 2].std():.3f}, true eta std: {batch.jet_gen[:, 2].std():.3f}"
-        )
-
         sample_batch.jet_gen = self.geometry._handle_periodic(x0)
 
         return sample_batch, x1

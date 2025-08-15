@@ -402,10 +402,6 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            LOGGER.info(
-                f"sample mass: {sample_batch.jet_gen[:,3].mean()}, gen mass: {batch.jet_gen[:,3].mean()}, det mass: {batch.jet_det[:,3].mean()}"
-            )
-
             sample_batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
                 sample_batch.jet_det
             )

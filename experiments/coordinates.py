@@ -44,7 +44,8 @@ class BaseCoordinates(torch.nn.Module):
         return a.to(dtype=a_in.dtype)
 
     def velocity_fourmomenta_to_x(self, v_in, a_in, **kwargs):
-        assert torch.isfinite(a_in).all() and torch.isfinite(v_in).all()
+        assert torch.isfinite(a_in).all()
+        assert torch.isfinite(v_in).all()
         v, a = v_in.to(dtype=DTYPE), a_in.to(dtype=DTYPE)
         for transform in self.transforms:
             b = transform.forward(a, **kwargs)
