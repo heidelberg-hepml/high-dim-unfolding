@@ -218,8 +218,9 @@ class KinematicsExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
+        mult_embedding = self.model.mult_embedding
         if self.cfg.data.mult_embedding_dim > 0:
-            mult_embedding = self.model.mult_embedding.to(pos_encoding.device)
+            mult_embedding = mult_embedding.to(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
