@@ -14,7 +14,7 @@ experiment_paths:
 model_run_indices:
   multiplicity: 0
   jets: 0
-  constituents: 4
+  constituents: 0
 
 train: false  # No training in chain experiment
 training: null

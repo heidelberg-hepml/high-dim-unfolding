@@ -70,7 +70,7 @@ class KinematicsExperiment(BaseExperiment):
             self.cfg.cfm.masked_dims = masked_dims
             self.load_fn = load_fn
 
-            self.cfg.cfm.mult_embedding_dim = self.cfg.data.mult_embedding_dim
+            self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
 
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
@@ -218,24 +218,24 @@ class KinematicsExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
-        mult_embedding = self.model.mult_embedding
-        if self.cfg.data.mult_embedding_dim > 0:
-            mult_embedding.to_(pos_encoding.device)
+        mult_encoding = self.model.mult_encoding
+        if self.cfg.data.mult_encoding_dim > 0:
+            mult_encoding.to_(pos_encoding.device)
 
         self.train_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_embedding=mult_embedding,
+            mult_encoding=mult_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_embedding=mult_embedding,
+            mult_encoding=mult_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_embedding=mult_embedding,
+            mult_encoding=mult_encoding,
         )
 
         self.train_data.create_data_list(

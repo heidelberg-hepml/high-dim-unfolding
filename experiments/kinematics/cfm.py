@@ -31,13 +31,13 @@ class CFM(nn.Module):
             ),
             nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
         )
-        if cfm.mult_embedding_dim > 0:
-            self.mult_embedding = nn.Sequential(
-                GaussianFourierProjection(embed_dim=cfm.mult_embedding_dim, scale=30.0),
-                nn.Linear(cfm.mult_embedding_dim, cfm.mult_embedding_dim),
+        if cfm.mult_encoding_dim > 0:
+            self.mult_encoding = nn.Sequential(
+                GaussianFourierProjection(embed_dim=cfm.mult_encoding_dim, scale=30.0),
+                nn.Linear(cfm.mult_encoding_dim, cfm.mult_encoding_dim),
             )
         else:
-            self.mult_embedding = lambda x: torch.empty(
+            self.mult_encoding = lambda x: torch.empty(
                 x.shape[0], 0, device=x.device, dtype=x.dtype
             )
         self.odeint = odeint

@@ -16,10 +16,10 @@ from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_je
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, pos_encoding=None, mult_embedding=None):
+    def __init__(self, dtype, pos_encoding=None, mult_encoding=None):
         self.dtype = dtype
         self.pos_encoding = pos_encoding
-        self.mult_embedding = mult_embedding
+        self.mult_encoding = mult_encoding
 
     def __len__(self):
         return len(self.data_list)
@@ -54,11 +54,11 @@ class Dataset(torch.utils.data.Dataset):
                 gen_event_scalars = torch.cat(
                     [gen_event_scalars, self.pos_encoding[: gen_mults[i]]], dim=-1
                 )
-            if self.mult_embedding is not None:
-                jet_scalars_det = self.mult_embedding(
+            if self.mult_encoding is not None:
+                jet_scalars_det = self.mult_encoding(
                     torch.tensor([[det_mults[i]]], dtype=self.dtype)
                 ).detach()
-                jet_scalars_gen = self.mult_embedding(
+                jet_scalars_gen = self.mult_encoding(
                     torch.tensor([[gen_mults[i]]], dtype=self.dtype)
                 ).detach()
             else:
