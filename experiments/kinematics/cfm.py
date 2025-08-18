@@ -37,9 +37,8 @@ class CFM(nn.Module):
                 nn.Linear(cfm.mult_encoding_dim, cfm.mult_encoding_dim),
             )
         else:
-            self.mult_encoding = lambda x: torch.empty(
-                x.shape[0], 0, device=x.device, dtype=x.dtype
-            )
+            self.mult_encoding = None
+
         self.odeint = odeint
         self.cfm = cfm
         self.scaling = torch.tensor([cfm.scaling])
