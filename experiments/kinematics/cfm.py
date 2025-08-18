@@ -68,7 +68,10 @@ class CFM(nn.Module):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
-        if self.coordinates.contains_phi:
+        if (
+            self.coordinates.contains_phi
+            and "JetScaled" not in self.cfm.coordinates.__class__.__name__
+        ):
             sample[..., 1] = (
                 torch.rand(
                     x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
