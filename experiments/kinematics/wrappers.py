@@ -256,9 +256,7 @@ class ConditionalLGATrCFM(EventCFM):
             LOGGER.info(
                 f"xt: {xt[batch.x_gen_ptr[event_idx]:batch.x_gen_ptr[event_idx + 1]]}"
             )
-
-        assert torch.isfinite(v_fourmomenta).all()
-        assert torch.isfinite(v_s).all()
+            raise ValueError("Non-finite values found in velocity outputs")
 
         v_straight = torch.zeros_like(v_fourmomenta)
         v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(
@@ -270,9 +268,8 @@ class ConditionalLGATrCFM(EventCFM):
 
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
-        v_straight[constituents_mask][..., self.scalar_dims] = v_s[constituents_mask][
-            ..., self.scalar_dims
-        ]
+        row_indices = torch.where(constituents_mask)[0].unsqueeze(-1)
+        v_straight[row_indices, self.scalar_dims] = v_s[row_indices, self.scalar_dims]
 
         return v_straight
 
