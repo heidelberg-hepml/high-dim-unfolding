@@ -295,6 +295,21 @@ class CFM(nn.Module):
                 self_condition=self_condition,
             )
 
+            # vt_aggregated = torch.repeat_interleave(
+            #     scatter(vt.norm(dim=-1), new_batch.x_gen_batch, dim=0, reduce="mean"),
+            #     new_batch.x_gen_ptr.diff(),
+            #     dim=0,
+            # )
+
+            # vt = (
+            #     vt
+            #     / vt_aggregated.unsqueeze(-1)
+            #     * torch.clamp(vt_aggregated, max=5).unsqueeze(-1)
+            # )
+
+            LOGGER.info(f"Velocity norm: {vt.norm(dim=-1).mean().item():.4f}")
+            LOGGER.info(f"xt norm: {xt.norm(dim=-1).mean().item():.4f}")
+
             vt[constituents_mask] = self.handle_velocity(vt[constituents_mask])
             vt[~constituents_mask] = 0.0
 

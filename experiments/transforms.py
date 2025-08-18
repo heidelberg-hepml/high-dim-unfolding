@@ -482,6 +482,22 @@ class StandardNormal(BaseTransform):
         detjac = detjac.unsqueeze(0).expand(x.shape[0], x.shape[1])
         return detjac
 
+    def velocity_forward(self, v_x, x, y, **kwargs):
+        # v_y = dy/dx * v_x
+        jac = self._jac_forward(x, y, **kwargs)
+        v_y = torch.einsum("...ij,...j->...i", jac, v_x)
+        v_y[..., self.fixed_dims] = 0.0
+        assert torch.isfinite(v_y).all(), self.__class__.__name__
+        return v_y
+
+    def velocity_inverse(self, v_y, y, x, **kwargs):
+        # v_x = dx/dy * v_y
+        jac = self._jac_inverse(y, x, **kwargs)
+        v_y[..., self.fixed_dims] = 0.0
+        v_x = torch.einsum("...ij,...j->...i", jac, v_y)
+        assert torch.isfinite(v_x).all(), self.__class__.__name__
+        return v_x
+
 
 class PtPhiEtaM2_to_JetScale(BaseTransform):
     def _forward(self, ptphietam2, jet, **kwargs):

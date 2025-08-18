@@ -198,14 +198,9 @@ class ConditionalLGATrCFM(EventCFM):
             ptr=ptr,
         )
 
-        assert torch.isfinite(fourmomenta).all()
-
         fourmomenta[~constituents_mask] = jetmomenta_to_fourmomenta(
             xt[~constituents_mask]
         )
-
-        assert torch.isfinite(fourmomenta).all()
-        assert torch.isfinite(batch.scalars_gen).all()
 
         condition_mv, condition_s = condition
         if self_condition is not None:
@@ -215,20 +210,12 @@ class ConditionalLGATrCFM(EventCFM):
         else:
             scalars = torch.cat([batch.scalars_gen, self.t_embedding(t)], dim=-1)
 
-        assert torch.isfinite(scalars).all()
-
         mv, s, _, spurions_mask = embed_data_into_ga(
             fourmomenta,
             scalars,
             batch.x_gen_ptr,
             self.ga_cfg,
         )
-
-        assert torch.isfinite(mv).all()
-        assert torch.isfinite(s).all()
-
-        assert torch.isfinite(condition_mv).all()
-        assert torch.isfinite(condition_s).all()
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),
@@ -248,22 +235,27 @@ class ConditionalLGATrCFM(EventCFM):
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
 
-        if not torch.isfinite(v_fourmomenta).all() or not torch.isfinite(v_s).all():
+        if not (torch.isfinite(v_fourmomenta).all() and torch.isfinite(v_s).all()):
 
+            event_idx = batch.x_gen_batch[
+                torch.nonzero(torch.isnan(v_fourmomenta).any(dim=-1))
+            ]
+
+            assert event_idx[0] == event_idx[-1]
+
+            event_idx = event_idx[0].item()
+
+            LOGGER.info(f"Event index: {event_idx}")
             LOGGER.info(
-                f"MV Error at: {(~torch.isfinite(v_fourmomenta).all(dim=1)).sum()} / {v_fourmomenta.shape[0]}"
+                f"time: {t[batch.x_gen_ptr[event_idx]]}, time embedding: {self.t_embedding(t[batch.x_gen_ptr[event_idx]]).squeeze()}"
             )
             LOGGER.info(
-                f"S Error at: {(~torch.isfinite(v_s).all(dim=1)).sum()} / {v_s.shape[0]}"
+                f"x0: {batch.x_gen[batch.x_gen_ptr[event_idx]:batch.x_gen_ptr[event_idx + 1]]}"
             )
-
-            LOGGER.info(f"v: {v_fourmomenta[(~torch.isfinite(v_s).all(dim=1))]}")
-            LOGGER.info(f"s: {v_s[(~torch.isfinite(v_s).all(dim=1))]}")
 
             LOGGER.info(
-                f"mv in: {mv[~spurions_mask][(~torch.isfinite(v_s).all(dim=1))]}"
+                f"xt: {xt[batch.x_gen_ptr[event_idx]:batch.x_gen_ptr[event_idx + 1]]}"
             )
-            LOGGER.info(f"s in: {s[~spurions_mask][(~torch.isfinite(v_s).all(dim=1))]}")
 
         assert torch.isfinite(v_fourmomenta).all()
         assert torch.isfinite(v_s).all()

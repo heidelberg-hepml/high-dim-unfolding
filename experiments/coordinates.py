@@ -313,7 +313,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, m^2)
     def __init__(self, **kwargs):
         super().__init__()
-        self.contains_phi = False
+        self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
@@ -326,7 +326,7 @@ class JetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (log(pt)-log(pt_jet), phi-phi_jet, eta-eta_jet, log(m^2) - log(m^2_jet)
     def __init__(self, pt_min, **kwargs):
         super().__init__()
-        self.contains_phi = False
+        self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
@@ -341,7 +341,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (log(pt)-log(pt_jet), phi-phi_jet, eta-eta_jet, log(m^2) - log(m^2_jet)
     def __init__(self, pt_min, fixed_dims=[], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
-        self.contains_phi = False
+        self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
@@ -357,7 +357,7 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
     def __init__(self, pt_min, fixed_dims=[], scaling=torch.ones(1, 4), **kwargs):
         super().__init__()
-        self.contains_phi = False
+        self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),

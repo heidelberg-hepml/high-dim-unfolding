@@ -6,6 +6,7 @@ import numpy as np
 import awkward as ak
 import os
 
+from experiments.logger import LOGGER
 from experiments.utils import (
     ensure_angle,
     fix_mass,
@@ -159,14 +160,6 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
-
-    # det_jets[..., [1, 2]] = det_jets[..., [2, 1]]
-    # gen_jets[..., [1, 2]] = gen_jets[..., [2, 1]]
-    # det_jets[..., 3] = det_jets[..., 3] ** 2
-    # gen_jets[..., 3] = gen_jets[..., 3] ** 2
-
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
@@ -264,9 +257,6 @@ def load_ttbar(data_path, cfg, dtype):
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
-
     det_jets[..., 3] = det_jets[..., 3] ** 2
     gen_jets[..., 3] = gen_jets[..., 3] ** 2
 
@@ -275,11 +265,93 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_particles = jetmomenta_to_fourmomenta(det_particles)
-    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+    particles_mask = (
+        (det_particles[..., 0] >= 0).all(dim=1)
+        & (gen_particles[..., 0] >= 0).all(dim=1)
+        & (det_particles[..., 0] <= 300).all(dim=1)
+        & (gen_particles[..., 0] <= 300).all(dim=1)
+        & (det_particles[..., 2] >= -3).all(dim=1)
+        & (gen_particles[..., 2] >= -3).all(dim=1)
+        & (det_particles[..., 2] <= 3).all(dim=1)
+        & (gen_particles[..., 2] <= 3).all(dim=1)
+    )
+
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+
+    particles_mask_f = (
+        (det_particles[..., 0] >= 0).all(dim=1)
+        & (gen_particles[..., 0] >= 0).all(dim=1)
+        & (det_particles[..., 0] <= 600).all(dim=1)
+        & (gen_particles[..., 0] <= 600).all(dim=1)
+        & (det_particles[..., 1] >= -200).all(dim=1)
+        & (gen_particles[..., 1] >= -200).all(dim=1)
+        & (det_particles[..., 1] <= 200).all(dim=1)
+        & (gen_particles[..., 1] <= 200).all(dim=1)
+        & (det_particles[..., 2] >= -200).all(dim=1)
+        & (gen_particles[..., 2] >= -200).all(dim=1)
+        & (det_particles[..., 2] <= 200).all(dim=1)
+        & (gen_particles[..., 2] <= 200).all(dim=1)
+        & (det_particles[..., 3] >= -500).all(dim=1)
+        & (gen_particles[..., 3] >= -500).all(dim=1)
+        & (det_particles[..., 3] <= 500).all(dim=1)
+        & (gen_particles[..., 3] <= 500).all(dim=1)
+    )
+
+    det_jets = fix_mass(det_particles).sum(dim=1)
+    gen_jets = fix_mass(gen_particles).sum(dim=1)
+
+    jet_mask_f = (
+        (det_jets[..., 0] >= 400)
+        & (gen_jets[..., 0] >= 400)
+        & (det_jets[..., 0] <= 2000)
+        & (gen_jets[..., 0] <= 2000)
+        & (det_jets[..., 1] >= -500)
+        & (gen_jets[..., 1] >= -500)
+        & (det_jets[..., 1] <= 500)
+        & (gen_jets[..., 1] <= 500)
+        & (det_jets[..., 2] >= -500)
+        & (gen_jets[..., 2] >= -500)
+        & (det_jets[..., 2] <= 500)
+        & (gen_jets[..., 2] <= 500)
+        & (det_jets[..., 3] >= -2000)
+        & (gen_jets[..., 3] >= -2000)
+        & (det_jets[..., 3] <= 2000)
+        & (gen_jets[..., 3] <= 2000)
+    )
 
     det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
     gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
+
+    jet_mask = (
+        (det_jets[..., 0] >= 400)
+        & (gen_jets[..., 0] >= 400)
+        & (det_jets[..., 0] <= 900)
+        & (gen_jets[..., 0] <= 900)
+        & (det_jets[..., 2] >= -3)
+        & (gen_jets[..., 2] >= -3)
+        & (det_jets[..., 2] <= 3)
+        & (gen_jets[..., 2] <= 3)
+        & (det_jets[..., 3] >= 14400)
+        & (gen_jets[..., 3] >= 14400)
+        & (det_jets[..., 3] <= 44100)
+        & (gen_jets[..., 3] <= 44100)
+    )
+
+    mult_mask = (
+        (det_mults >= 20) & (gen_mults >= 30) & (det_mults < 120) & (gen_mults < 120)
+    )
+
+    mask = particles_mask & jet_mask & mult_mask & jet_mask_f & particles_mask_f
+
+    det_jets = det_jets[mask]
+    det_particles = det_particles[mask]
+    det_mults = det_mults[mask]
+    det_pids = det_pids[mask]
+    gen_jets = gen_jets[mask]
+    gen_particles = gen_particles[mask]
+    gen_mults = gen_mults[mask]
+    gen_pids = gen_pids[mask]
 
     return {
         "det_particles": det_particles,
