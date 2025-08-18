@@ -18,6 +18,7 @@ from experiments.utils import (
     get_pt,
     GaussianFourierProjection,
 )
+import experiments.utils as utils
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
@@ -45,21 +46,14 @@ class KinematicsExperiment(BaseExperiment):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             self.cfg.cfm.run_dir = self.cfg.run_dir
 
+            utils.EPS1 = self.cfg.eps1
+            utils.EPS2 = self.cfg.eps2
+            utils.CUTOFF = self.cfg.cutoff
+
             if self.cfg.evaluation.load_samples:
                 self.cfg.train = False
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
-
-            if self.cfg.evaluation.overfit:
-                self.cfg.evaluation.sample = False
-                self.cfg.evaluation.load_samples = False
-                self.cfg.training.iterations = 100
-                self.cfg.training.validate_every_n_steps = (
-                    self.cfg.training.iterations + 1
-                )
-                self.cfg.data.length = 10000
-                self.cfg.plotting.jetscaled = True
-                self.cfg.evaluation.n_batches = 1
 
             max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
                 self.cfg.data.dataset
@@ -336,12 +330,6 @@ class KinematicsExperiment(BaseExperiment):
         elif self.cfg.evaluation.load_samples:
             self._load_samples()
             loaders["gen"] = self.sample_loader
-        elif self.cfg.evaluation.overfit:
-            t0 = time.time()
-            self._sample_events(loaders["train"])
-            loaders["gen"] = self.sample_loader
-            dt = time.time() - t0
-            LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
         else:
             LOGGER.info("Skip sampling")
 
@@ -636,11 +624,7 @@ class KinematicsExperiment(BaseExperiment):
 
         weights, mask_dict = None, None
 
-        if (
-            self.cfg.evaluation.sample
-            or self.cfg.evaluation.load_samples
-            or self.cfg.evaluation.overfit
-        ):
+        if self.cfg.evaluation.sample or self.cfg.evaluation.load_samples:
             if self.cfg.plotting.fourmomenta:
                 LOGGER.info("Plotting fourmomenta")
                 filename = os.path.join(path, "fourmomenta.pdf")

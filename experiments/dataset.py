@@ -167,8 +167,8 @@ def load_zplusjet(data_path, cfg, dtype):
     # det_jets[..., 3] = det_jets[..., 3] ** 2
     # gen_jets[..., 3] = gen_jets[..., 3] ** 2
 
-    det_particles = jetmomenta_to_fourmomenta(det_particles)
-    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
     det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
     gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
@@ -176,14 +176,16 @@ def load_zplusjet(data_path, cfg, dtype):
     if cfg.pt_cut > 0:
         det_mask = det_jets[..., 0] > cfg.pt_cut
         gen_mask = gen_jets[..., 0] > cfg.pt_cut
-        det_jets = det_jets[det_mask]
-        det_particles = det_particles[det_mask]
-        det_mults = det_mults[det_mask]
-        det_pids = det_pids[det_mask]
-        gen_jets = gen_jets[gen_mask]
-        gen_particles = gen_particles[gen_mask]
-        gen_mults = gen_mults[gen_mask]
-        gen_pids = gen_pids[gen_mask]
+        mask = det_mask & gen_mask
+
+        det_jets = det_jets[mask]
+        det_particles = det_particles[mask]
+        det_mults = det_mults[mask]
+        det_pids = det_pids[mask]
+        gen_jets = gen_jets[mask]
+        gen_particles = gen_particles[mask]
+        gen_mults = gen_mults[mask]
+        gen_pids = gen_pids[mask]
 
     return {
         "det_jets": det_jets,

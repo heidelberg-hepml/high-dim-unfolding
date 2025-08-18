@@ -374,13 +374,17 @@ ptphietam2 = PtPhiEtaM2()
 
 def fourmomenta_to_jetmomenta(fourmomenta):
     """
-    Convert four-momenta (E, px, py, pz) to jet momenta (pt, phi, eta, m^2).
+    Convert fourmomenta (E, px, py, pz) to jet momenta (pt, phi, eta, m^2).
     """
-    return ptphietam2.fourmomenta_to_x(fourmomenta)
+    in_dtype = fourmomenta.dtype
+    output = fourmomenta.to(dtype=DTYPE)
+    return ptphietam2.fourmomenta_to_x(output).to(in_dtype)
 
 
 def jetmomenta_to_fourmomenta(jetmomenta):
     """
-    Convert jet momenta (pt, phi, eta, m^2) to four-momenta (E, px, py, pz).
+    Convert jet momenta (pt, phi, eta, m^2) to fourmomenta (E, px, py, pz).
     """
-    return ptphietam2.x_to_fourmomenta(jetmomenta)
+    in_dtype = jetmomenta.dtype
+    output = jetmomenta.to(dtype=DTYPE)
+    return ptphietam2.x_to_fourmomenta(output).to(in_dtype)

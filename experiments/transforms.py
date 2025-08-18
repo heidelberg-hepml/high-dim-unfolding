@@ -455,9 +455,11 @@ class StandardNormal(BaseTransform):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
             x.device, dtype=x.dtype
         )
+        xunit[..., self.fixed_dims] = 0.0
         return xunit
 
     def _inverse(self, xunit, **kwargs):
+        xunit[..., self.fixed_dims] = 0.0
         x = xunit * self.std.to(xunit.device, dtype=xunit.dtype) + self.mean.to(
             xunit.device, dtype=xunit.dtype
         )
@@ -544,7 +546,7 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
-        logm2 = logm2 - torch.log(jet_m2 + EPS1)
+        logm2 = logm2  # - torch.log(jet_m2 + EPS1)
 
         return torch.stack((logpt, phi, eta, logm2), dim=-1)
 
@@ -556,7 +558,7 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
         phi = phi + jet_phi
         phi = ensure_angle(phi)
         eta = eta + jet_eta
-        logm2 = logm2 + torch.log(jet_m2 + EPS1)
+        logm2 = logm2  # + torch.log(jet_m2 + EPS1)
 
         return torch.stack((logpt, phi, eta, logm2), dim=-1)
 

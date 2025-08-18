@@ -41,16 +41,6 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
-            if self.cfg.evaluation.overfit:
-                self.cfg.evaluation.sample = False
-                self.cfg.evaluation.load_samples = False
-                self.cfg.training.iterations = 100
-                self.cfg.training.validate_every_n_steps = (
-                    self.cfg.training.iterations + 1
-                )
-                self.cfg.data.length = 10000
-                self.cfg.evaluation.n_batches = 1
-
             if self.cfg.data.dataset == "zplusjet":
                 pt_min = 0.0
                 load_fn = load_zplusjet
@@ -359,12 +349,6 @@ class JetKinematicsExperiment(BaseExperiment):
         elif self.cfg.evaluation.load_samples:
             self._load_samples()
             loaders["gen"] = self.sample_loader
-        elif self.cfg.evaluation.overfit:
-            t0 = time.time()
-            self._sample_events(loaders["train"])
-            loaders["gen"] = self.sample_loader
-            dt = time.time() - t0
-            LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
         else:
             LOGGER.info("Skip sampling")
 
@@ -522,11 +506,7 @@ class JetKinematicsExperiment(BaseExperiment):
 
         weights, mask_dict = None, None
 
-        if (
-            self.cfg.evaluation.sample
-            or self.cfg.evaluation.load_samples
-            or self.cfg.evaluation.overfit
-        ):
+        if self.cfg.evaluation.sample or self.cfg.evaluation.load_samples:
             if self.cfg.plotting.fourmomenta:
                 filename = os.path.join(path, "fourmomenta.pdf")
                 plotter.plot_fourmomenta(

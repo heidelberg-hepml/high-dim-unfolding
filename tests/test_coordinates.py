@@ -19,8 +19,8 @@ def all_subclasses(cls):
 
 
 coordinates_classes = [
-    c.StandardLogPtPhiEtaLogM2,
-    # c.StandardJetScaledLogPtPhiEtaLogM2
+    # c.StandardLogPtPhiEtaLogM2,
+    c.StandardJetScaledLogPtPhiEtaLogM2
 ]
 
 
@@ -42,32 +42,29 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
     dtype = torch.float64
 
     data = data_fn("data/" + dataset, cfg, dtype)
-    # if dataset == "cms":
-    #     fixed_dims = []
-    # else:
-    #     fixed_dims = [3]
+    if dataset == "cms":
+        fixed_dims = []
+    else:
+        fixed_dims = [3]
 
-    fixed_dims = []
-    coord = coordinates(pt_min=400.0, fixed_dims=fixed_dims)
+    coord = coordinates(pt_min=0.0, fixed_dims=fixed_dims)
 
-    # particles = data["det_particles"]
-    # jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
-    # mask = torch.arange(particles.shape[1])[None, :] < data["det_mults"][:, None]
-    # ptr = torch.cumsum(
-    #     torch.cat([torch.zeros(1, dtype=torch.long), data["det_mults"]]), dim=0
-    # )
+    particles = data["gen_particles"]
+    jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
+    mask = torch.arange(particles.shape[1])[None, :] < data["gen_mults"][:, None]
+    ptr = torch.cumsum(
+        torch.cat([torch.zeros(1, dtype=torch.long), data["gen_mults"]]), dim=0
+    )
 
-    # jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)
+    jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)
 
-    # coord.init_fit(particles, mask=mask, ptr=ptr, jet=jets)
+    coord.init_fit(particles, mask=mask, ptr=ptr, jet=jets)
 
-    # fourmomenta_original = particles[mask]
+    fourmomenta_original = particles[mask]
 
-    # forward and inverse transform
-
-    fourmomenta_original = data["gen_particles"].sum(dim=1)
-    ptr = torch.arange(fourmomenta_original.shape[0] + 1, dtype=torch.long)
-    jets = c.fourmomenta_to_jetmomenta(fourmomenta_original)
+    # fourmomenta_original = data["gen_particles"].sum(dim=1)
+    # ptr = torch.arange(fourmomenta_original.shape[0] + 1, dtype=torch.long)
+    # jets = c.fourmomenta_to_jetmomenta(fourmomenta_original)
 
     x_original = coord.fourmomenta_to_x(fourmomenta_original, ptr=ptr, jet=jets)
     fourmomenta_transformed = coord.x_to_fourmomenta(x_original, ptr=ptr, jet=jets)
@@ -79,16 +76,16 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
     torch.testing.assert_close(x_original, x_transformed, **TOLERANCES)
 
 
-# @pytest.mark.parametrize("coordinates", coordinates_classes)
-# @pytest.mark.parametrize(
-#     "dataset, data_fn",
-#     [
-#         # ("zplusjet", load_zplusjet),
-#         # ("cms", load_cms),
-#         ("ttbar", load_ttbar),
-#     ],
-# )
-# @pytest.mark.parametrize("mass", [1.0])
+@pytest.mark.parametrize("coordinates", coordinates_classes)
+@pytest.mark.parametrize(
+    "dataset, data_fn",
+    [
+        # ("zplusjet", load_zplusjet),
+        # ("cms", load_cms),
+        ("ttbar", load_ttbar),
+    ],
+)
+@pytest.mark.parametrize("mass", [1.0])
 def test_velocity(coordinates, dataset, data_fn, mass):
     """test velocity_forward() and velocity_inverse() methods"""
     cfg = OmegaConf.create({"length": -1, "add_pid": False, "mass": mass})
@@ -102,11 +99,11 @@ def test_velocity(coordinates, dataset, data_fn, mass):
         fixed_dims = [3]
     coord = coordinates(pt_min=0.0, fixed_dims=fixed_dims)
 
-    particles = data["det_particles"]
+    particles = data["gen_particles"]
     jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
-    mask = torch.arange(particles.shape[1])[None, :] < data["det_mults"][:, None]
+    mask = torch.arange(particles.shape[1])[None, :] < data["gen_mults"][:, None]
     ptr = torch.cumsum(
-        torch.cat([torch.zeros(1, dtype=torch.long), data["det_mults"]]), dim=0
+        torch.cat([torch.zeros(1, dtype=torch.long), data["gen_mults"]]), dim=0
     )
 
     jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)

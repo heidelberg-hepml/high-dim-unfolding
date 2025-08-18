@@ -134,7 +134,11 @@ def plot_fourmomenta(
     exp, filename, model_label, jet=False, weights=None, mask_dict=None
 ):
 
-    max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
 
     part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
     det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
@@ -238,19 +242,23 @@ def plot_jetmomenta(
     exp, filename, model_label, jet=False, weights=None, mask_dict=None
 ):
 
-    max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
 
-    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
-    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr[max_n]
+    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr  # [max_n]
+    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr  # [max_n]
+    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr  # [max_n]
 
-    part_batch_idx = exp.data_raw["truth"].x_gen_batch[:part_max_n_ptr]
-    det_batch_idx = exp.data_raw["truth"].x_det_batch[:det_max_n_ptr]
-    model_batch_idx = exp.data_raw["samples"].x_gen_batch[:model_max_n_ptr]
+    part_batch_idx = exp.data_raw["truth"].x_gen_batch  # [:part_max_n_ptr]
+    det_batch_idx = exp.data_raw["truth"].x_det_batch  # [:det_max_n_ptr]
+    model_batch_idx = exp.data_raw["samples"].x_gen_batch  # [:model_max_n_ptr]
 
-    part_x = exp.data_raw["truth"].x_gen[:part_max_n_ptr]
-    det_x = exp.data_raw["truth"].x_det[:det_max_n_ptr]
-    model_x = exp.data_raw["samples"].x_gen[:model_max_n_ptr]
+    part_x = exp.data_raw["truth"].x_gen  # [:part_max_n_ptr]
+    det_x = exp.data_raw["truth"].x_det  # [:det_max_n_ptr]
+    model_x = exp.data_raw["samples"].x_gen  # [:model_max_n_ptr]
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
@@ -260,19 +268,19 @@ def plot_jetmomenta(
                     det_x,
                     det_batch_idx,
                     part_batch_idx,
-                    exp.data_raw["truth"].jet_det[:max_n],
+                    exp.data_raw["truth"].jet_det,  # [:max_n],
                 )[0]
                 part_lvl = extract(
                     part_x,
                     part_batch_idx,
                     det_batch_idx,
-                    exp.data_raw["truth"].jet_gen[:max_n],
+                    exp.data_raw["truth"].jet_gen,  # [:max_n],
                 )[0][: len(det_lvl)]
                 model = extract(
                     model_x,
                     model_batch_idx,
                     det_batch_idx,
-                    exp.data_raw["samples"].jet_gen[:max_n],
+                    exp.data_raw["samples"].jet_gen,  # [:max_n],
                 )[0][: len(det_lvl)]
             else:
                 det_lvl = exp.data_raw["truth"].jet_det[:max_n]
@@ -341,7 +349,11 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
     coords = exp.model.coordinates
     det_lvl_coords = exp.model.condition_coordinates
 
-    max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
 
     part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
     det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
@@ -436,7 +448,11 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
     coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
     condition_coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
 
-    max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
 
     part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
     det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
@@ -635,7 +651,11 @@ def plot_observables(
     weights=None,
     mask_dict=None,
 ):
-    max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
 
     part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
     det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]

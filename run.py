@@ -11,7 +11,6 @@ import torch.distributed as dist
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
-from experiments.kinematics.simple_jet_experiment import SimpleJetKinematicsExperiment
 from experiments.chain.experiment import ChainExperiment
 
 
@@ -45,8 +44,6 @@ def ddp_worker(rank, cfg, world_size):
         constructor = KinematicsExperiment
     elif cfg.exp_type == "jets":
         constructor = JetKinematicsExperiment
-    elif cfg.exp_type == "simple_jets":
-        constructor = SimpleJetKinematicsExperiment
     elif cfg.exp_type == "chain":
         constructor = ChainExperiment
     else:
