@@ -85,14 +85,22 @@ class CFM(nn.Module):
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
         return sample
 
-    def get_velocity(self, xt, t):
-        """
-        Parameters
-        ----------
-        xt : torch.tensor with shape (batchsize, 4)
-        t : torch.tensor with shape (batchsize, 1)
-        """
-        # implemented by architecture-specific subclasses
+    def get_masks(self, batch):
+        raise NotImplementedError
+
+    def get_condition(self, batch, condition_attention_mask):
+        raise NotImplementedError
+
+    def get_velocity(
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
+    ):
         raise NotImplementedError
 
     def handle_velocity(self, v):
@@ -105,8 +113,7 @@ class CFM(nn.Module):
 
         Parameters
         ----------
-        batch : tuple of Batch graphs
-            Target space particles in fourmomenta space
+        batch
 
         Returns
         -------
@@ -298,21 +305,6 @@ class CFM(nn.Module):
                 self_condition=self_condition,
             )
 
-            # vt_aggregated = torch.repeat_interleave(
-            #     scatter(vt.norm(dim=-1), new_batch.x_gen_batch, dim=0, reduce="mean"),
-            #     new_batch.x_gen_ptr.diff(),
-            #     dim=0,
-            # )
-
-            # vt = (
-            #     vt
-            #     / vt_aggregated.unsqueeze(-1)
-            #     * torch.clamp(vt_aggregated, max=5).unsqueeze(-1)
-            # )
-
-            LOGGER.info(f"Velocity norm: {vt.norm(dim=-1).mean().item():.4f}")
-            LOGGER.info(f"xt norm: {xt.norm(dim=-1).mean().item():.4f}")
-
             vt[constituents_mask] = self.handle_velocity(vt[constituents_mask])
             vt[~constituents_mask] = 0.0
 
@@ -395,6 +387,10 @@ class EventCFM(CFM):
             coordinates = c.StandardPPPLogM2()
         elif coordinates_label == "EPhiPtPz":
             coordinates = c.EPhiPtPz()
+        elif coordinates_label == "StandardEPhiPtPz":
+            coordinates = c.StandardEPhiPtPz(
+                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
         elif coordinates_label == "PtPhiEtaE":
             coordinates = c.PtPhiEtaE()
         elif coordinates_label == "PtPhiEtaM2":
@@ -439,6 +435,10 @@ class EventCFM(CFM):
             coordinates = c.JetScaledLogPtPhiEtaLogM2(self.pt_min)
         elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
+                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
+        elif coordinates_label == "StandardJetScaledLogPtPhiEtaM2":
+            coordinates = c.StandardJetScaledLogPtPhiEtaM2(
                 self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
             )
         elif coordinates_label == "IndividualStandardJetScaledLogPtPhiEtaLogM2":

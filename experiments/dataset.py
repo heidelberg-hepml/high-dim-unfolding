@@ -180,6 +180,37 @@ def load_zplusjet(data_path, cfg, dtype):
         gen_mults = gen_mults[mask]
         gen_pids = gen_pids[mask]
 
+    jet_mask = (
+        (det_jets[..., 0] >= 400)
+        & (gen_jets[..., 0] >= 400)
+        & (det_jets[..., 0] <= 900)
+        & (gen_jets[..., 0] <= 900)
+        & (det_jets[..., 2] >= -3)
+        & (gen_jets[..., 2] >= -3)
+        & (det_jets[..., 2] <= 3)
+        & (gen_jets[..., 2] <= 3)
+        & (det_jets[..., 3] >= 14400)
+        & (gen_jets[..., 3] >= 14400)
+        & (det_jets[..., 3] <= 44100)
+        & (gen_jets[..., 3] <= 44100)
+    )
+
+    # mask = jet_mask
+
+    # det_jets = det_jets[mask]
+    # det_particles = det_particles[mask]
+    # det_mults = det_mults[mask]
+    # det_pids = det_pids[mask]
+    # gen_jets = gen_jets[mask]
+    # gen_particles = gen_particles[mask]
+    # gen_mults = gen_mults[mask]
+    # gen_pids = gen_pids[mask]
+
+    # det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
+    # det_mults = torch.ones(det_jets.shape[0], dtype=torch.int)
+    # gen_particles = jetmomenta_to_fourmomenta(gen_jets.unsqueeze(1))
+    # gen_mults = torch.ones(gen_jets.shape[0], dtype=torch.int)
+
     return {
         "det_jets": det_jets,
         "det_particles": det_particles,
@@ -266,8 +297,8 @@ def load_ttbar(data_path, cfg, dtype):
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
     particles_mask = (
-        (det_particles[..., 0] >= 0).all(dim=1)
-        & (gen_particles[..., 0] >= 0).all(dim=1)
+        (det_particles[..., :10, 0] >= 0.0001).all(dim=1)
+        & (gen_particles[..., :10, 0] >= 0.0001).all(dim=1)
         & (det_particles[..., 0] <= 300).all(dim=1)
         & (gen_particles[..., 0] <= 300).all(dim=1)
         & (det_particles[..., 2] >= -3).all(dim=1)
@@ -344,14 +375,14 @@ def load_ttbar(data_path, cfg, dtype):
 
     mask = particles_mask & jet_mask & mult_mask & jet_mask_f & particles_mask_f
 
-    det_jets = det_jets[mask]
-    det_particles = det_particles[mask]
-    det_mults = det_mults[mask]
-    det_pids = det_pids[mask]
-    gen_jets = gen_jets[mask]
-    gen_particles = gen_particles[mask]
-    gen_mults = gen_mults[mask]
-    gen_pids = gen_pids[mask]
+    # det_jets = det_jets[mask]
+    # det_particles = det_particles[mask]
+    # det_mults = det_mults[mask]
+    # det_pids = det_pids[mask]
+    # gen_jets = gen_jets[mask]
+    # gen_particles = gen_particles[mask]
+    # gen_mults = gen_mults[mask]
+    # gen_pids = gen_pids[mask]
 
     return {
         "det_particles": det_particles,

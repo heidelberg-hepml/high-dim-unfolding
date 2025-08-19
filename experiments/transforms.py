@@ -5,6 +5,7 @@ from experiments.utils import (
     unpack_last,
     EPS1,
     EPS2,
+    EPS3,
     CUTOFF,
     get_pt,
     get_phi,
@@ -176,11 +177,11 @@ class EPPP_to_EPhiPtPz(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_E = torch.stack((one, zero, zero, zero), dim=-1)
         jac_px = torch.stack(
-            (zero, -torch.sin(phi) / pt, torch.cos(phi), zero),
+            (zero, -torch.sin(phi) / (pt + EPS3), torch.cos(phi), zero),
             dim=-1,
         )
         jac_py = torch.stack(
-            (zero, torch.cos(phi) / pt, torch.sin(phi), zero),
+            (zero, torch.cos(phi) / (pt + EPS3), torch.sin(phi), zero),
             dim=-1,
         )
         jac_pz = torch.stack((zero, zero, zero, one), dim=-1)
@@ -206,7 +207,7 @@ class EPPP_to_EPhiPtPz(BaseTransform):
         E, phi, pt, pz = unpack_last(ephiptpz)
 
         # det (dephiptpz / dfourmomenta)
-        return 1 / pt
+        return 1 / (pt + EPS3)
 
 
 class EPPP_to_PtPhiEtaE(BaseTransform):
@@ -242,7 +243,7 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
             (
                 torch.cos(phi),
                 -torch.sin(phi) / pt,
-                -torch.cos(phi) * torch.tanh(eta) / pt,
+                -torch.cos(phi) * torch.tanh(eta) / (pt + EPS3),
                 zero,
             ),
             dim=-1,
@@ -250,13 +251,15 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
         jac_py = torch.stack(
             (
                 torch.sin(phi),
-                torch.cos(phi) / pt,
-                -torch.sin(phi) * torch.tanh(eta) / pt,
+                torch.cos(phi) / (pt + EPS3),
+                -torch.sin(phi) * torch.tanh(eta) / (pt + EPS3),
                 zero,
             ),
             dim=-1,
         )
-        jac_pz = torch.stack((zero, zero, 1 / (pt * torch.cosh(eta)), zero), dim=-1)
+        jac_pz = torch.stack(
+            (zero, zero, 1 / ((pt + EPS3) * torch.cosh(eta)), zero), dim=-1
+        )
 
         return torch.stack((jac_E, jac_px, jac_py, jac_pz), dim=-1)
 
@@ -282,7 +285,7 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
         pt, phi, eta, E = unpack_last(ptphietae)
 
         # det (dptphietae / dfourmomenta)
-        return 1 / (pt**2 * torch.cosh(eta))
+        return 1 / ((pt + EPS3) ** 2 * torch.cosh(eta))
 
 
 class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
@@ -437,18 +440,24 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4)):
+    def __init__(
+        self, fixed_dims=[], scaling=torch.ones(1, 4), contains_uniform_phi=False
+    ):
         super().__init__()
         self.fixed_dims = fixed_dims
         self.mean = torch.zeros(1, 4)
         self.std = torch.ones(1, 4)
         self.scaling = scaling
+        self.contains_uniform_phi = contains_uniform_phi
 
     def init_fit(self, x, mask, **kwargs):
         self.mean = torch.mean(x[mask], dim=0, keepdim=True)
         self.std = torch.std(x[mask], dim=0, keepdim=True)
         # self.mean[:, self.fixed_dims] = 0
         self.std[:, self.fixed_dims] = 1
+        if self.contains_uniform_phi:
+            self.mean[:, 1] = 0
+            self.std[:, 1] = 1
         self.std = self.std / self.scaling.to(x.device, dtype=x.dtype)
 
     def _forward(self, x, **kwargs):

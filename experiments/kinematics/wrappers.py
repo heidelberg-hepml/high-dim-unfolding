@@ -429,8 +429,7 @@ class JetConditionalLGATrCFM(JetCFM):
             odeint,
         )
         self.scalar_dims = scalar_dims
-        assert (np.array(scalar_dims) < 4).all() and (np.array(scalar_dims) >= 0).all()
-        self.ga_cfg = GA_config
+        self.ga_cfg = GA_config if self.cfm.gac else None
         self.net = net
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()

@@ -5,6 +5,9 @@ class BaseGeometry:
     def get_trajectory(self, x_target, x_base, t):
         raise NotImplementedError
 
+    def get_distance(self, x1, x2):
+        raise NotImplementedError
+
     def get_metric(self, y1, y2, x):
         raise NotImplementedError
 

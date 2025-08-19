@@ -19,6 +19,7 @@ from experiments.utils import (
     GaussianFourierProjection,
 )
 import experiments.utils as utils
+import experiments.transforms as transforms
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
@@ -48,6 +49,7 @@ class KinematicsExperiment(BaseExperiment):
 
             utils.EPS1 = self.cfg.eps1
             utils.EPS2 = self.cfg.eps2
+            utils.EPS3 = self.cfg.eps3
             utils.CUTOFF = self.cfg.cutoff
 
             if self.cfg.evaluation.load_samples:
@@ -61,7 +63,7 @@ class KinematicsExperiment(BaseExperiment):
 
             self.cfg.data.max_num_particles = max_num_particles
             self.cfg.data.pt_min = pt_min
-            self.cfg.cfm.masked_dims = masked_dims
+            # self.cfg.cfm.masked_dims = masked_dims
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim

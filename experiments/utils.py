@@ -30,6 +30,9 @@ EPS1 = 1e-5
 # generic numerical stability cutoff
 EPS2 = 1e-10
 
+# pt cutoff
+EPS3 = 1e-2
+
 # exp(x) -> exp(x.clamp(max=CUTOFF))
 CUTOFF = 15
 
