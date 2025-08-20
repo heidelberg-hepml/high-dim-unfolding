@@ -140,6 +140,7 @@ class BaseExperiment:
     def init_model(self):
         # initialize model
         self.model = instantiate(self.cfg.model)
+
         num_parameters = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
         )
@@ -182,6 +183,7 @@ class BaseExperiment:
                 )
 
         self.model.to(self.device, dtype=self.dtype)
+        self.model = torch.compile(self.model)
         if self.ema is not None:
             self.ema.to(self.device)
 
@@ -561,14 +563,19 @@ class BaseExperiment:
 
         iterator = iter(cycle(self.train_loader))
 
+        if self.cfg.training.mixed_precision:
+            self.scaler = torch.amp.GradScaler()
+
+        self.model.train()
+
         # with torch.profiler.profile(
         #     activities=[
         #         torch.profiler.ProfilerActivity.CPU,
         #         torch.profiler.ProfilerActivity.CUDA,
         #     ],
-        #     schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
-        #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
-        #         os.path.join(self.cfg.run_dir, "profiler")
+        #     schedule=torch.profiler.schedule(wait=3, warmup=3, active=3, repeat=1),
+        #     on_trace_ready=lambda prof: prof.export_chrome_trace(
+        #         os.path.join(self.cfg.run_dir, f"trace_{prof.step_num}.json")
         #     ),
         #     record_shapes=True,
         #     profile_memory=True,
@@ -578,12 +585,12 @@ class BaseExperiment:
 
         for step in range(self.cfg.training.iterations):
             # training
-            self.model.train()
             data = next(iterator)
             self._step(data, step)
 
             # validation (and early stopping)
             if (step + 1) % self.cfg.training.validate_every_n_steps == 0:
+                self.model.eval()
                 val_loss = self._validate(step)
                 if val_loss < smallest_val_loss:
                     smallest_val_loss = val_loss
@@ -605,6 +612,7 @@ class BaseExperiment:
 
                 if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
                     self.scheduler.step(val_loss)
+                self.model.train()
 
             if (step + 1) % self.cfg.training.clear_every_n_steps == 0:
                 gc.collect()
@@ -620,7 +628,7 @@ class BaseExperiment:
                     f"training time estimate: {dt_estimate/60:.2f}min "
                     f"= {dt_estimate/60**2:.2f}h"
                 )
-            # prof.step()
+                # prof.step()
 
         dt = time.time() - self.training_start_time
         LOGGER.info(
@@ -655,7 +663,12 @@ class BaseExperiment:
         # actual update step
         loss, metrics = self._batch_loss(data)
         self.optimizer.zero_grad()
-        loss.backward()
+
+        if self.cfg.training.mixed_precision:
+            self.scaler.scale(loss).backward()
+        else:
+            loss.backward()
+
         if self.cfg.training.clip_grad_value is not None:
             # clip gradients at a certain value (this is dangerous!)
             torch.nn.utils.clip_grad_value_(
@@ -683,7 +696,12 @@ class BaseExperiment:
                 )
                 return
 
-        self.optimizer.step()
+        if self.cfg.training.mixed_precision:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
         if self.ema is not None:
             self.ema.update()
 
