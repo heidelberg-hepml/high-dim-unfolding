@@ -367,9 +367,9 @@ class MultiplicityExperiment(BaseExperiment):
             nll = cross_entropy(predicted_dist, label).mean()
             sample = predicted_dist.sample().cpu().detach()
 
-        # sample = torch.clamp(
-        #     sample, min=self.cfg.data.min_mult, max=self.cfg.data.max_num_particles
-        # )
+        sample = torch.clamp(
+            sample, min=self.cfg.data.min_mult, max=self.cfg.data.max_num_particles
+        )
 
         sample_tensor = torch.stack(
             [sample, label.cpu().detach(), det_mult.cpu().detach()], dim=1

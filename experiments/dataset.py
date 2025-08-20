@@ -93,6 +93,7 @@ def load_dataset(dataset_name):
         max_num_particles = 3
         diff = [0, 0]
         pt_min = 30.0
+        jet_pt_min = 350.0
         masked_dim = []
         load_fn = load_cms
 

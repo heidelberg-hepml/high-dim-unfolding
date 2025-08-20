@@ -11,9 +11,7 @@ from omegaconf import open_dict
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
     Dataset,
-    load_zplusjet,
-    load_cms,
-    load_ttbar,
+    load_dataset,
     positional_encoding,
 )
 import experiments.kinematics.plotter as plotter
@@ -36,12 +34,10 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
-            if self.cfg.data.dataset == "zplusjet":
-                jet_pt_min = 0.0
-                load_fn = load_zplusjet
-            elif self.cfg.data.dataset == "ttbar":
-                jet_pt_min = 400.0
-                load_fn = load_ttbar
+            max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = (
+                load_dataset(self.cfg.data.dataset)
+            )
+
             if self.cfg.data.pt_min is None:
                 self.cfg.data.pt_min = jet_pt_min
             self.load_fn = load_fn
