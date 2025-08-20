@@ -283,6 +283,8 @@ class KinematicsExperiment(BaseExperiment):
             batch_size=self.cfg.training.batchsize // self.world_size,
             sampler=train_sampler,
             follow_batch=["x_gen", "x_det"],
+            num_workers=4,
+            pin_memory=True,
         )
         test_sampler = torch.utils.data.DistributedSampler(
             self.test_data,
@@ -295,6 +297,8 @@ class KinematicsExperiment(BaseExperiment):
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=test_sampler,
             follow_batch=["x_gen", "x_det"],
+            num_workers=4,
+            pin_memory=True,
         )
         val_sampler = torch.utils.data.DistributedSampler(
             self.val_data,
@@ -307,6 +311,8 @@ class KinematicsExperiment(BaseExperiment):
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=val_sampler,
             follow_batch=["x_gen", "x_det"],
+            num_workers=4,
+            pin_memory=True,
         )
 
         LOGGER.info(
@@ -607,7 +613,7 @@ class KinematicsExperiment(BaseExperiment):
         pass
 
     def _batch_loss(self, batch):
-        batch = batch.to(self.device)
+        batch = batch.to(self.device, non_blocking=True)
         loss, component_loss = self.model.batch_loss(batch)
         mse = loss.cpu().item()
         assert torch.isfinite(loss).all()

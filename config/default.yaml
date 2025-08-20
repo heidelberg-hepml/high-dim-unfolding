@@ -57,6 +57,7 @@ training:
  enable_math_sdp: true
  enable_mem_efficient_sdp: false
  force_xformers: false
+ mixed_precision: false
 
 evaluate: true
 evaluation:
