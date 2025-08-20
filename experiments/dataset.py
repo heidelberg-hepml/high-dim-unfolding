@@ -148,6 +148,9 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
     gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
 
+    det_particles[..., 3] = cfg.mass**2
+    gen_particles[..., 3] = cfg.mass**2
+
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
@@ -166,8 +169,8 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
-    det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
+    det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
 
     if cfg.pt_cut > 0:
         det_mask = det_jets[..., 0] > cfg.pt_cut
@@ -182,32 +185,6 @@ def load_zplusjet(data_path, cfg, dtype):
         gen_particles = gen_particles[mask]
         gen_mults = gen_mults[mask]
         gen_pids = gen_pids[mask]
-
-    jet_mask = (
-        (det_jets[..., 0] >= 400)
-        & (gen_jets[..., 0] >= 400)
-        & (det_jets[..., 0] <= 900)
-        & (gen_jets[..., 0] <= 900)
-        & (det_jets[..., 2] >= -3)
-        & (gen_jets[..., 2] >= -3)
-        & (det_jets[..., 2] <= 3)
-        & (gen_jets[..., 2] <= 3)
-        & (det_jets[..., 3] >= 14400)
-        & (gen_jets[..., 3] >= 14400)
-        & (det_jets[..., 3] <= 44100)
-        & (gen_jets[..., 3] <= 44100)
-    )
-
-    # mask = jet_mask
-
-    # det_jets = det_jets[mask]
-    # det_particles = det_particles[mask]
-    # det_mults = det_mults[mask]
-    # det_pids = det_pids[mask]
-    # gen_jets = gen_jets[mask]
-    # gen_particles = gen_particles[mask]
-    # gen_mults = gen_mults[mask]
-    # gen_pids = gen_pids[mask]
 
     if cfg.part_to_jet:
         det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
@@ -289,11 +266,11 @@ def load_ttbar(data_path, cfg, dtype):
     gen_jets = gen_jets[mult_mask]
     gen_mults = gen_mults[mult_mask]
 
+    det_particles[..., 3] = cfg.mass**2
+    gen_particles[..., 3] = cfg.mass**2
+
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
-
-    det_jets[..., 3] = det_jets[..., 3] ** 2
-    gen_jets[..., 3] = gen_jets[..., 3] ** 2
 
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
@@ -303,8 +280,8 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
-    det_jets = fourmomenta_to_jetmomenta(fix_mass(det_particles).sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta(fix_mass(gen_particles).sum(dim=1))
+    det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
 
     if cfg.part_to_jet:
         det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))

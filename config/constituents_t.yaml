@@ -48,8 +48,8 @@ odeint:
 
 train: true
 training:
- iterations: 100000
- batchsize: 1024
+ iterations: 200000
+ batchsize: 512
  lr: 1e-3
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
@@ -77,6 +77,6 @@ plotting:
  correlations: false
 
 defaults:
- - model: cond_tr_constituents
+ - model: cond_tr_constituents_t
  - default
  - _self_

@@ -1,6 +1,6 @@
 _target_: experiments.kinematics.wrappers.ConditionalLGATrCFM
 
-scalar_dims: [0, 3]
+scalar_dims: [0]
 
 GA_config:
  beam_spurion: xyplane

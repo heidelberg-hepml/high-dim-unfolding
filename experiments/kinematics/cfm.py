@@ -214,44 +214,44 @@ class CFM(nn.Module):
 
         loss = loss.mean()
 
-        if self.cfm.add_mass:
-            gen_jets = torch.repeat_interleave(
-                batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
-            )
+        # if self.cfm.add_mass:
+        #     gen_jets = torch.repeat_interleave(
+        #         batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
+        #     )
 
-            def get_mass(x, ptr):
-                y = self.coordinates.x_to_fourmomenta(x, ptr=ptr, jet=gen_jets)
-                new_jets = scatter(y, batch.x_gen_batch, dim=0, reduce="sum")
-                jet_mass = new_jets[..., 0] ** 2 - (new_jets[..., 1:] ** 2).sum(dim=-1)
-                jet_mass = torch.clamp(jet_mass, min=0.0).sqrt()
-                return jet_mass
+        #     def get_mass(x, ptr):
+        #         y = self.coordinates.x_to_fourmomenta(x, ptr=ptr, jet=gen_jets)
+        #         new_jets = scatter(y, batch.x_gen_batch, dim=0, reduce="sum")
+        #         jet_mass = new_jets[..., 0] ** 2 - (new_jets[..., 1:] ** 2).sum(dim=-1)
+        #         jet_mass = torch.clamp(jet_mass, min=0.0).sqrt()
+        #         return jet_mass
 
-            true_v_mass = get_mass(
-                fix_mass(x1[constituents_mask]), batch.x_gen_ptr
-            ) - get_mass(fix_mass(x0[constituents_mask]), batch.x_gen_ptr)
-            x = fix_mass(xt[constituents_mask])
-            x.requires_grad_(True)
-            deriv = torch.autograd.grad(
-                outputs=get_mass(x, batch.x_gen_ptr).sum(),
-                inputs=x,
-                retain_graph=True,
-            )[0]
-            pred_v_mass = torch.einsum("ij,ij->i", deriv, vp)
-            pred_v_mass = scatter(pred_v_mass, batch.x_gen_batch, dim=0, reduce="sum")
-            extra_loss = ((pred_v_mass - true_v_mass) ** 2).mean()
-            LOGGER.info(f"Mass loss: {extra_loss.item():.4f}, loss: {loss.item():.4f}")
-            LOGGER.info(
-                f"mass velocity: {pred_v_mass.mean().item():.4f}, "
-                f"true mass velocity: {true_v_mass.mean().item():.4f}"
-            )
-            LOGGER.info(
-                f"True mass: {get_mass(fix_mass(x1[constituents_mask]), batch.x_gen_ptr).mean().item():.4f}"
-            )
-            LOGGER.info(
-                f"Base mass: {get_mass(fix_mass(x0[constituents_mask]), batch.x_gen_ptr).mean().item():.4f}"
-            )
-            LOGGER.info(f"xt mass: {get_mass(x, batch.x_gen_ptr).mean().item():.4f}")
-            loss = loss + 1e-6 * extra_loss
+        #     true_v_mass = get_mass(
+        #         fix_mass(x1[constituents_mask]), batch.x_gen_ptr
+        #     ) - get_mass(fix_mass(x0[constituents_mask]), batch.x_gen_ptr)
+        #     x = fix_mass(xt[constituents_mask])
+        #     x.requires_grad_(True)
+        #     deriv = torch.autograd.grad(
+        #         outputs=get_mass(x, batch.x_gen_ptr).sum(),
+        #         inputs=x,
+        #         retain_graph=True,
+        #     )[0]
+        #     pred_v_mass = torch.einsum("ij,ij->i", deriv, vp)
+        #     pred_v_mass = scatter(pred_v_mass, batch.x_gen_batch, dim=0, reduce="sum")
+        #     extra_loss = ((pred_v_mass - true_v_mass) ** 2).mean()
+        #     LOGGER.info(f"Mass loss: {extra_loss.item():.4f}, loss: {loss.item():.4f}")
+        #     LOGGER.info(
+        #         f"mass velocity: {pred_v_mass.mean().item():.4f}, "
+        #         f"true mass velocity: {true_v_mass.mean().item():.4f}"
+        #     )
+        #     LOGGER.info(
+        #         f"True mass: {get_mass(fix_mass(x1[constituents_mask]), batch.x_gen_ptr).mean().item():.4f}"
+        #     )
+        #     LOGGER.info(
+        #         f"Base mass: {get_mass(fix_mass(x0[constituents_mask]), batch.x_gen_ptr).mean().item():.4f}"
+        #     )
+        #     LOGGER.info(f"xt mass: {get_mass(x, batch.x_gen_ptr).mean().item():.4f}")
+        #     loss = loss + 1e-6 * extra_loss
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
         return loss, distance_particlewise
@@ -341,7 +341,7 @@ class CFM(nn.Module):
             index_perm = torch.argsort(index, dim=0, stable=True)
             sample_batch.x_gen = sample_batch.x_gen.take_along_dim(index_perm, dim=0)
 
-        return sample_batch, x1
+        return sample_batch.detach(), x1.detach()
 
 
 class EventCFM(CFM):

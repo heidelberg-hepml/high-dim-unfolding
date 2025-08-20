@@ -50,7 +50,7 @@ odeint:
 train: true
 training:
  iterations: 100000
- batchsize: 4096
+ batchsize: 8192
  lr: 1e-3
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
@@ -58,7 +58,7 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 4096
+ batchsize: 8192
  classifier: false
  sample: true
  n_batches: -1
