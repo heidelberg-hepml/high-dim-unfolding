@@ -39,7 +39,9 @@ class ChainExperiment(BaseExperiment):
     def _init_multiplicity_config(self):
         """Load multiplicity experiment config from directory and set up for chaining"""
         mult_path = self.cfg.experiment_paths.multiplicity
-        mult_config_path = os.path.join(mult_path, "config.yaml")
+        mult_config_path = os.path.join(
+            mult_path, f"config_{self.cfg.model_run_indices.multiplicity}.yaml"
+        )
 
         LOGGER.info(f"Loading multiplicity config from {mult_config_path}")
         mult_cfg = OmegaConf.load(mult_config_path)
@@ -64,7 +66,9 @@ class ChainExperiment(BaseExperiment):
     def _init_jet_config(self):
         """Load jets experiment config from directory and set up for chaining"""
         jets_path = self.cfg.experiment_paths.jets
-        jets_config_path = os.path.join(jets_path, "config.yaml")
+        jets_config_path = os.path.join(
+            jets_path, f"config_{self.cfg.model_run_indices.jets}.yaml"
+        )
 
         LOGGER.info(f"Loading jets config from {jets_config_path}")
         jet_cfg = OmegaConf.load(jets_config_path)
@@ -87,7 +91,9 @@ class ChainExperiment(BaseExperiment):
     def _init_constituents_config(self):
         """Load constituents experiment config from directory and set up for chaining"""
         const_path = self.cfg.experiment_paths.constituents
-        const_config_path = os.path.join(const_path, "config.yaml")
+        const_config_path = os.path.join(
+            const_path, f"config_{self.cfg.model_run_indices.constituents}.yaml"
+        )
 
         LOGGER.info(f"Loading constituents config from {const_config_path}")
         const_cfg = OmegaConf.load(const_config_path)

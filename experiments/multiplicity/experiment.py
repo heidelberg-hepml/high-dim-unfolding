@@ -32,8 +32,8 @@ class MultiplicityExperiment(BaseExperiment):
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
 
-            max_num_particles, diff, pt_min, _, load_fn = load_dataset(
-                self.cfg.data.dataset
+            max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = (
+                load_dataset(self.cfg.data.dataset)
             )
 
             self.cfg.data.max_num_particles = max_num_particles
@@ -367,9 +367,9 @@ class MultiplicityExperiment(BaseExperiment):
             nll = cross_entropy(predicted_dist, label).mean()
             sample = predicted_dist.sample().cpu().detach()
 
-        sample = torch.clamp(
-            sample, min=self.cfg.data.min_mult, max=self.cfg.data.max_num_particles
-        )
+        # sample = torch.clamp(
+        #     sample, min=self.cfg.data.min_mult, max=self.cfg.data.max_num_particles
+        # )
 
         sample_tensor = torch.stack(
             [sample, label.cpu().detach(), det_mult.cpu().detach()], dim=1

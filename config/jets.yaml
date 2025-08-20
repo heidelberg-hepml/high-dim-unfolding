@@ -21,6 +21,8 @@ data:
  mass: 1.0
  pos_encoding_dim: 8
  mult_encoding_dim: 8
+ part_to_jet: false
+
 
 cfm:
  embed_t_dim: 8
@@ -39,6 +41,8 @@ cfm:
  weight: 0.0
  transpose: false
  unconditional: false
+ gac: true
+
 
 odeint:
  method: rk4

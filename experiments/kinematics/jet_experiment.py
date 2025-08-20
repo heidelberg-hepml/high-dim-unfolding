@@ -22,7 +22,6 @@ from experiments.logger import LOGGER
 from experiments.kinematics.observables import create_partial_jet
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 from experiments.utils import GaussianFourierProjection
-import experiments.utils as utils
 
 
 class JetKinematicsExperiment(BaseExperiment):
@@ -32,22 +31,19 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             self.cfg.cfm.run_dir = self.cfg.run_dir
 
-            utils.EPS1 = self.cfg.eps1
-            utils.EPS2 = self.cfg.eps2
-            utils.CUTOFF = self.cfg.cutoff
-
             if self.cfg.evaluation.load_samples:
                 self.cfg.train = False
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
             if self.cfg.data.dataset == "zplusjet":
-                pt_min = 0.0
+                jet_pt_min = 0.0
                 load_fn = load_zplusjet
             elif self.cfg.data.dataset == "ttbar":
-                pt_min = 400.0
+                jet_pt_min = 400.0
                 load_fn = load_ttbar
-            self.cfg.data.pt_min = pt_min
+            if self.cfg.data.pt_min is None:
+                self.cfg.data.pt_min = jet_pt_min
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
@@ -441,10 +437,8 @@ class JetKinematicsExperiment(BaseExperiment):
             path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
             os.makedirs(os.path.join(path), exist_ok=True)
             LOGGER.info(f"Saving samples in {path}")
-            t0 = time.time()
             torch.save(self.data_raw["samples"], os.path.join(path, "samples.pt"))
             torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
-            LOGGER.info(f"Saved samples in {time.time() - t0:.2f}s")
 
     def _load_samples(self):
         path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.warm_start_idx}")

@@ -18,8 +18,6 @@ from experiments.utils import (
     get_pt,
     GaussianFourierProjection,
 )
-import experiments.utils as utils
-import experiments.transforms as transforms
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
@@ -47,26 +45,28 @@ class KinematicsExperiment(BaseExperiment):
             self.cfg.modelname = self.cfg.model._target_.rsplit(".", 1)[-1][:-3]
             self.cfg.cfm.run_dir = self.cfg.run_dir
 
-            utils.EPS1 = self.cfg.eps1
-            utils.EPS2 = self.cfg.eps2
-            utils.EPS3 = self.cfg.eps3
-            utils.CUTOFF = self.cfg.cutoff
-
             if self.cfg.evaluation.load_samples:
                 self.cfg.train = False
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
-            max_num_particles, diff, pt_min, masked_dims, load_fn = load_dataset(
-                self.cfg.data.dataset
+            max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = (
+                load_dataset(self.cfg.data.dataset)
             )
 
             self.cfg.data.max_num_particles = max_num_particles
-            self.cfg.data.pt_min = pt_min
-            # self.cfg.cfm.masked_dims = masked_dims
+            if self.cfg.data.pt_min is None:
+                self.cfg.data.pt_min = pt_min
+            if self.cfg.cfm.masked_dims is None:
+                self.cfg.cfm.masked_dims = masked_dims
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
+
+            if self.cfg.data.part_to_jet:
+                self.cfg.cfm.masked_dims = []
+                self.cfg.cfm.add_jet = False
+                self.cfg.data.max_constituents = 1
 
             if self.cfg.data.max_constituents == -1:
                 self.cfg.data.max_constituents = self.cfg.data.max_num_particles
@@ -521,10 +521,8 @@ class KinematicsExperiment(BaseExperiment):
             path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
             os.makedirs(os.path.join(path), exist_ok=True)
             LOGGER.info(f"Saving samples in {path}")
-            t0 = time.time()
             torch.save(self.data_raw["samples"], os.path.join(path, "samples.pt"))
             torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
-            LOGGER.info(f"Saved samples in {time.time() - t0:.2f}s")
 
     def _load_samples(self):
         path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.warm_start_idx}")

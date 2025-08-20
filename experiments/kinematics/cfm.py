@@ -386,64 +386,82 @@ class EventCFM(CFM):
         elif coordinates_label == "StandardPPPLogM2":
             coordinates = c.StandardPPPLogM2()
         elif coordinates_label == "EPhiPtPz":
-            coordinates = c.EPhiPtPz()
+            coordinates = c.EPhiPtPz(pt_min=self.pt_min)
         elif coordinates_label == "StandardEPhiPtPz":
             coordinates = c.StandardEPhiPtPz(
                 self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
             )
         elif coordinates_label == "PtPhiEtaE":
-            coordinates = c.PtPhiEtaE()
+            coordinates = c.PtPhiEtaE(pt_min=self.pt_min)
         elif coordinates_label == "PtPhiEtaM2":
-            coordinates = c.PtPhiEtaM2()
+            coordinates = c.PtPhiEtaM2(pt_min=self.pt_min)
         elif coordinates_label == "StandardPtPhiEtaM2":
             coordinates = c.StandardPtPhiEtaM2(
-                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "StandardJetScaledPtPhiEtaM2":
             coordinates = c.StandardJetScaledPtPhiEtaM2(
-                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "LogPtPhiEtaE":
             coordinates = c.LogPtPhiEtaE(self.pt_min)
         elif coordinates_label == "LogPtPhiEtaM2":
             coordinates = c.LogPtPhiEtaM2(self.pt_min)
         elif coordinates_label == "PtPhiEtaLogM2":
-            coordinates = c.PtPhiEtaLogM2()
+            coordinates = c.PtPhiEtaLogM2(pt_min=self.pt_min)
         elif coordinates_label == "StandardPtPhiEtaLogM2":
             coordinates = c.StandardPtPhiEtaLogM2(
-                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "LogPtPhiEtaM2":
             coordinates = c.LogPtPhiEtaM2(self.pt_min)
         elif coordinates_label == "StandardLogPtPhiEtaM2":
             coordinates = c.StandardLogPtPhiEtaM2(
-                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "LogPtPhiEtaLogM2":
             coordinates = c.LogPtPhiEtaLogM2(self.pt_min)
         elif coordinates_label == "StandardLogPtPhiEtaLogM2":
             coordinates = c.StandardLogPtPhiEtaLogM2(
-                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "IndividualStandardLogPtPhiEtaLogM2":
             coordinates = c.IndividualStandardLogPtPhiEtaLogM2(
-                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "JetScaledPtPhiEtaM2":
-            coordinates = c.JetScaledPtPhiEtaM2()
+            coordinates = c.JetScaledPtPhiEtaM2(pt_min=self.pt_min)
         elif coordinates_label == "JetScaledLogPtPhiEtaLogM2":
-            coordinates = c.JetScaledLogPtPhiEtaLogM2(self.pt_min)
+            coordinates = c.JetScaledLogPtPhiEtaLogM2(pt_min=self.pt_min)
         elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
-                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "StandardJetScaledLogPtPhiEtaM2":
             coordinates = c.StandardJetScaledLogPtPhiEtaM2(
-                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         elif coordinates_label == "IndividualStandardJetScaledLogPtPhiEtaLogM2":
             coordinates = c.IndividualStandardJetScaledLogPtPhiEtaLogM2(
-                self.pt_min, self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
             )
         else:
             raise ValueError(f"coordinates={coordinates_label} not implemented")

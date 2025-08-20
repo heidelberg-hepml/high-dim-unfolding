@@ -22,6 +22,8 @@ data:
  mass: 1.0
  pos_encoding_dim: 8
  mult_encoding_dim: 0
+ part_to_jet: false
+
 
 cfm:
  embed_t_dim: 8
@@ -31,7 +33,7 @@ cfm:
   type: simple
   periodic: true
  transforms_float64: true
- masked_dims: []
+ masked_dims: null
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
  add_jet: true

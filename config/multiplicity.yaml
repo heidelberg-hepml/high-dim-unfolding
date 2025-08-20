@@ -14,9 +14,11 @@ data:
  min_mult: 2
  add_pid: false
  pt_min: null
+ pt_cut: 0.0
  mass: 0.001
  pos_encoding_dim: 0
  mult_encoding_dim: 0
+ part_to_jet: false
 
 dist: 
  type: GaussianMixture
