@@ -5,6 +5,7 @@ import matplotlib.colors as mcolors
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.utils import get_range
+from experiments.logger import LOGGER
 
 # load fonts
 import matplotlib.font_manager as font_manager
@@ -398,9 +399,11 @@ def simple_histogram(
 def plot_kinematics(
     path, true_reco, true_gen, true_model=None, filename="kinematics.pdf", sqrt=False
 ):
-    reco = true_reco.clone().detach()
-    gen = true_gen.clone().detach()
-    model = true_model.clone().detach() if true_model is not None else None
+    reco = true_reco.clone().detach().cpu().numpy()
+    gen = true_gen.clone().detach().cpu().numpy()
+    model = (
+        true_model.clone().detach().cpu().numpy() if true_model is not None else None
+    )
     if sqrt:
         reco[..., 3] = np.sqrt(reco[..., 3])
         gen[..., 3] = np.sqrt(gen[..., 3])
@@ -413,7 +416,7 @@ def plot_kinematics(
             xlims = np.array(get_range([reco[..., i], gen[..., i]]))
             bins = np.linspace(xlims[0], xlims[1], 40)
             ax.hist(
-                reco[:, i].cpu(),
+                reco[:, i],
                 bins=bins,
                 range=None,
                 label="reco",
@@ -421,7 +424,7 @@ def plot_kinematics(
                 histtype="step",
             )
             ax.hist(
-                gen[:, i].cpu(),
+                gen[:, i],
                 bins=bins,
                 range=None,
                 alpha=0.5,
@@ -431,7 +434,7 @@ def plot_kinematics(
             )
             if model is not None:
                 ax.hist(
-                    model[:, i].cpu(),
+                    model[:, i],
                     bins=bins,
                     range=None,
                     alpha=0.5,

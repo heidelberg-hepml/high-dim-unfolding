@@ -283,9 +283,9 @@ def plot_jetmomenta(
                     exp.data_raw["samples"].jet_gen,  # [:max_n],
                 )[0][: len(det_lvl)]
             else:
-                det_lvl = exp.data_raw["truth"].jet_det[:max_n]
-                part_lvl = exp.data_raw["truth"].jet_gen[:max_n]
-                model = exp.data_raw["samples"].jet_gen[:max_n]
+                det_lvl = exp.data_raw["truth"].jet_det.clone()  # [:max_n]
+                part_lvl = exp.data_raw["truth"].jet_gen.clone()  # [:max_n]
+                model = exp.data_raw["samples"].jet_gen.clone()  # [:max_n]
 
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
             det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()

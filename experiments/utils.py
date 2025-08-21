@@ -145,7 +145,10 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
 
 def get_range(input):
     if type(input) in [list, tuple]:
-        tensor = torch.cat(input, dim=0)
+        if isinstance(input[0], np.ndarray):
+            tensor = torch.cat([torch.from_numpy(element) for element in input], dim=0)
+        else:
+            tensor = torch.cat(input, dim=0)
     elif isinstance(input, np.ndarray):
         tensor = torch.from_numpy(input)
     elif isinstance(input, torch.Tensor):

@@ -14,7 +14,7 @@ data:
  pt_cut: 0.0
  add_pid: false
  pt_min: null
- mass: 1.0
+ mass: 0.1
  pos_encoding_dim: 8
  mult_encoding_dim: 8
  part_to_jet: false

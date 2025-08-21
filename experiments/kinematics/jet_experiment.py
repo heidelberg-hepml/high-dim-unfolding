@@ -475,11 +475,11 @@ class JetKinematicsExperiment(BaseExperiment):
         t0 = time.time()
 
         if self.cfg.modelname == "JetConditionalTransformer":
-            model_label = "JetCondTr"
+            model_label = "Transformer"
         elif self.cfg.modelname == "JetConditionalLGATr":
-            model_label = "JetCondLGATr"
+            model_label = "L-GATr"
         elif self.cfg.modelname == "JetMLP":
-            model_label = "JetMLP"
+            model_label = "MLP"
         else:
             model_label = self.cfg.modelname
         kwargs = {

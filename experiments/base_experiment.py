@@ -181,9 +181,9 @@ class BaseExperiment:
                 LOGGER.warning(
                     f"Cannot load model from {model_path}, training model from scratch"
                 )
-
+        self.model = torch.compile(self.model, fullgraph=True, dynamic=True)
         self.model.to(self.device, dtype=self.dtype)
-        self.model = torch.compile(self.model)
+
         if self.ema is not None:
             self.ema.to(self.device)
 
@@ -661,7 +661,11 @@ class BaseExperiment:
 
     def _step(self, data, step):
         # actual update step
-        loss, metrics = self._batch_loss(data)
+        if self.cfg.training.mixed_precision:
+            with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16):
+                loss, metrics = self._batch_loss(data)
+        else:
+            loss, metrics = self._batch_loss(data)
         self.optimizer.zero_grad()
 
         if self.cfg.training.mixed_precision:

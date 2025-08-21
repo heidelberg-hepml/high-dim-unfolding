@@ -148,9 +148,6 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles[..., [1, 2]] = det_particles[..., [2, 1]]
     gen_particles[..., [1, 2]] = gen_particles[..., [2, 1]]
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
-
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
@@ -166,8 +163,24 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
-    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+    det_particles[..., 3] = 0
+    gen_particles[..., 3] = 0
+
+    det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+
+    det_mask = torch.stack(
+        3 * [torch.zeros_like(det_mask, dtype=torch.bool)] + [det_mask], dim=-1
+    )
+    gen_mask = torch.stack(
+        3 * [torch.zeros_like(gen_mask, dtype=torch.bool)] + [gen_mask], dim=-1
+    )
+
+    det_particles[det_mask] = cfg.mass**2
+    gen_particles[gen_mask] = cfg.mass**2
+
+    det_particles = jetmomenta_to_fourmomenta(det_particles)
+    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
     det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
     gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
@@ -266,9 +279,6 @@ def load_ttbar(data_path, cfg, dtype):
     gen_jets = gen_jets[mult_mask]
     gen_mults = gen_mults[mult_mask]
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
-
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
@@ -277,8 +287,24 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
-    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+    det_particles[..., 3] = 0
+    gen_particles[..., 3] = 0
+
+    det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+
+    det_mask = torch.stack(
+        3 * [torch.zeros_like(det_mask, dtype=torch.bool)] + [det_mask], dim=-1
+    )
+    gen_mask = torch.stack(
+        3 * [torch.zeros_like(gen_mask, dtype=torch.bool)] + [gen_mask], dim=-1
+    )
+
+    det_particles[det_mask] = cfg.mass**2
+    gen_particles[gen_mask] = cfg.mass**2
+
+    det_particles = jetmomenta_to_fourmomenta(det_particles)
+    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
     det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
     gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))

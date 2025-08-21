@@ -558,9 +558,9 @@ class KinematicsExperiment(BaseExperiment):
         t0 = time.time()
 
         if self.cfg.modelname == "ConditionalTransformer":
-            model_label = "CondTr"
+            model_label = "Transformer"
         elif self.cfg.modelname == "ConditionalLGATr":
-            model_label = "CondLGATr"
+            model_label = "L-GATr"
         kwargs = {
             "exp": self,
             "model_label": model_label,
