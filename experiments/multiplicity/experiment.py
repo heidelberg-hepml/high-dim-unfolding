@@ -13,7 +13,6 @@ from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
     cross_entropy,
-    process_params,
 )
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
@@ -41,6 +40,12 @@ class MultiplicityExperiment(BaseExperiment):
             self.cfg.data.pt_min = pt_min
             self.load_fn = load_fn
 
+            self.cfg.model.distribution = self.cfg.dist.type
+            self.cfg.model.range = (
+                self.cfg.data.min_mult,
+                self.cfg.data.max_num_particles,
+            )
+
             if self.cfg.modelname == "Transformer":
                 self.cfg.model.net.in_channels = 4
                 if self.cfg.data.add_pid:
@@ -50,6 +55,9 @@ class MultiplicityExperiment(BaseExperiment):
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
+                    assert (
+                        self.cfg.dist.diff == False
+                    ), "GammaMixture requires non-negative integers"
                 elif self.cfg.dist.type == "GaussianMixture":
                     self.distribution = GaussianMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -59,13 +67,21 @@ class MultiplicityExperiment(BaseExperiment):
                         self.cfg.model.net.out_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
                         )
+                        self.cfg.model.range = self.cfg.data.diff
                     else:
                         self.cfg.model.net.out_channels = (
-                            self.cfg.data.max_num_particles + 1
+                            self.cfg.data.max_num_particles - self.cfg.data.min_mult + 1
+                        )
+                        self.cfg.model.range = (
+                            self.cfg.data.min_mult,
+                            self.cfg.data.max_num_particles,
                         )
             elif self.cfg.modelname == "LGATr":
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
+                    assert (
+                        self.cfg.dist.diff == False
+                    ), "GammaMixture requires non-negative integers"
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "GaussianMixture":
                     self.distribution = GaussianMixture
@@ -76,9 +92,14 @@ class MultiplicityExperiment(BaseExperiment):
                         self.cfg.model.net.out_mv_channels = (
                             self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
                         )
+                        self.cfg.model.range = self.cfg.data.diff
                     else:
                         self.cfg.model.net.out_mv_channels = (
                             self.cfg.data.max_num_particles + 1
+                        )
+                        self.cfg.model.range = (
+                            self.cfg.data.min_mult,
+                            self.cfg.data.max_num_particles,
                         )
 
                 # scalar channels
@@ -180,6 +201,8 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.training.batchsize // self.world_size,
             sampler=train_sampler,
             follow_batch=["x_gen", "x_det"],
+            num_workers=4,
+            pin_memory=True,
         )
         test_sampler = torch.utils.data.DistributedSampler(
             self.test_data,
@@ -192,6 +215,8 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=test_sampler,
             follow_batch=["x_gen", "x_det"],
+            num_workers=4,
+            pin_memory=True,
         )
         val_sampler = torch.utils.data.DistributedSampler(
             self.val_data,
@@ -204,6 +229,8 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=val_sampler,
             follow_batch=["x_gen", "x_det"],
+            num_workers=4,
+            pin_memory=True,
         )
 
         LOGGER.info(
@@ -287,99 +314,19 @@ class MultiplicityExperiment(BaseExperiment):
         plot_mixer(self.cfg, plot_path, plot_dict)
 
     def _batch_loss(self, batch):
-        batch = batch.to(self.device)
+        batch = batch.to(self.device, non_blocking=True)
 
-        output = self.model(batch)
-        params = process_params(output)
-        predicted_dist = self.distribution(params)  # batch of mixtures
-
-        label = batch.x_gen_ptr.diff()
-        det_mult = batch.x_det_ptr.diff()
-
-        label_0 = (label - det_mult == 0).sum()
-        label_1 = (label - det_mult == 1).sum()
-
-        if self.cfg.dist.diff:
-            if self.cfg.dist.type == "Categorical":
-                # Rescale to have only positive indices
-                loss = self.loss(
-                    predicted_dist,
-                    label - det_mult - self.cfg.data.diff[0],
-                )
-                # Rescale back to original range
-                sample = (
-                    (det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
-                    .cpu()
-                    .detach()
-                )
-            else:
-                loss = self.loss(predicted_dist, label - det_mult)
-                sample = (det_mult + predicted_dist.sample()).cpu().detach()
-        else:
-            loss = self.loss(predicted_dist, label)
-            sample = predicted_dist.sample().cpu().detach()
-
-        # sample_0 = (sample.to(det_mult.device) - det_mult == 0).sum()
-        # sample_1 = (sample.to(det_mult.device) - det_mult == 1).sum()
-        # if sample_1 < sample_0:
-        #     LOGGER.info(
-        #         f"Samples 1s ({sample_1.cpu().item()}) is less than 0s ({sample_0.cpu().item()})"
-        #     )
-        #     LOGGER.info(
-        #         f"True 1s {label_1.cpu().item()}, True 0s {label_0.cpu().item()}"
-        #     )
-        #     LOGGER.info(f"Loss: {loss.cpu().item()}")
-
-        assert torch.isfinite(loss).all()
-        metrics = {
-            "nll": loss.cpu().detach(),
-            "mse": torch.mean((sample - label.cpu().detach()) ** 2),
-        }
-        return loss, metrics
+        loss = self.model.batch_loss(batch, diff=self.cfg.dist.diff)
+        return loss, {"nll": loss.detach()}
 
     def sample(self, batch):
         batch = batch.to(self.device)
 
-        output = self.model(batch)
-        params = process_params(output)
-        predicted_dist = self.distribution(params)  # batch of mixtures
-
-        label = batch.x_gen_ptr.diff()
-        det_mult = batch.x_det_ptr.diff()
-
-        if self.cfg.dist.diff:
-            if self.cfg.dist.type == "Categorical":
-                # Rescale to have only positive indices
-                nll = cross_entropy(
-                    predicted_dist,
-                    label - det_mult - self.cfg.data.diff[0],
-                ).mean()
-                # Rescale back to original range
-                sample = (
-                    (det_mult + predicted_dist.sample() + self.cfg.data.diff[0])
-                    .cpu()
-                    .detach()
-                )
-            else:
-                nll = cross_entropy(predicted_dist, label - det_mult).mean()
-                sample = (det_mult + predicted_dist.sample()).cpu().detach()
-        else:
-            nll = cross_entropy(predicted_dist, label).mean()
-            sample = predicted_dist.sample().cpu().detach()
-
-        sample = torch.clamp(
-            sample, min=self.cfg.data.min_mult, max=self.cfg.data.max_num_particles
-        )
-
-        sample_tensor = torch.stack(
-            [sample, label.cpu().detach(), det_mult.cpu().detach()], dim=1
-        )
-
-        return (
-            sample_tensor,
-            params.cpu().detach(),
-            nll.cpu().detach(),
+        return self.model.sample(
+            batch,
+            range=(self.cfg.data.min_mult, self.cfg.data.max_num_particles),
+            diff=self.cfg.dist.diff,
         )
 
     def _init_metrics(self):
-        return {"nll": [], "mse": []}
+        return {"nll": []}

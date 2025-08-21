@@ -389,9 +389,13 @@ class KinematicsExperiment(BaseExperiment):
 
             if sampled_jets is not None:
                 slice = self.cfg.evaluation.batchsize * i
-                new_batch.jet_gen = sampled_jets[
+                new_gen_jets = sampled_jets[
                     slice : slice + self.cfg.evaluation.batchsize
                 ].to(self.device)
+                assert (
+                    new_batch.num_graphs == new_gen_jets.shape[0]
+                ), f"Expected {new_batch.num_graphs} jets, but got {new_gen_jets.shape[0]}."
+                new_batch.jet_gen = new_gen_jets
 
             sample_batch, base = self.model.sample(
                 new_batch,
@@ -712,15 +716,12 @@ class KinematicsExperiment(BaseExperiment):
                 )
             )
         if "sd_mass" in self.cfg.plotting.observables and FASTJET_AVAIL:
-
             self.obs[r"\log \rho"] = sd_mass
 
         if "momentum_fraction" in self.cfg.plotting.observables and FASTJET_AVAIL:
-
             self.obs[r"z_g"] = compute_zg
 
         if "jet_mass" in self.cfg.plotting.observables:
-
             self.obs[r"M_{jet}"] = jet_mass
 
         if "norm" in self.cfg.plotting.observables:

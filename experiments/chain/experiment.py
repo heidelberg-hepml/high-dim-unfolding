@@ -164,6 +164,7 @@ class ChainExperiment(BaseExperiment):
 
         LOGGER.info("Step 1: Sampling multiplicities...")
         self.multiplicity_exp.evaluate()
+        self.multiplicity_exp.plot()
 
         mult_samples_path = os.path.join(
             self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}"
@@ -174,6 +175,7 @@ class ChainExperiment(BaseExperiment):
         LOGGER.info("Step 2: Sampling jet kinematics...")
 
         self.jet_exp.evaluate(self.sampled_multiplicities)
+        self.jet_exp.plot()
 
         jet_samples_path = os.path.join(
             self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}"
@@ -187,6 +189,7 @@ class ChainExperiment(BaseExperiment):
         LOGGER.info("Step 3: Sampling constituents...")
 
         self.constituents_exp.evaluate(self.sampled_multiplicities, self.sampled_jets)
+        self.constituents_exp.plot()
 
         LOGGER.info("Chained sampling complete.")
 
@@ -197,14 +200,7 @@ class ChainExperiment(BaseExperiment):
 
     def plot(self):
         """Create plots for chained experiment"""
-
-        LOGGER.info("Plotting multiplicity...")
-        self.multiplicity_exp.plot()
-        LOGGER.info("Plotting jets...")
-        self.jet_exp.plot()
-        LOGGER.info("Plotting constituents...")
-        self.constituents_exp.plot()
-        LOGGER.info("Plotting complete.")
+        pass
 
     def _init_loss(self):
         """Not used in chained experiment"""
