@@ -233,3 +233,11 @@ def fix_mass(constituents, mass=0.0):
         torch.sum(new_constituents[..., 1:] ** 2, dim=-1) + mass**2
     )
     return new_constituents.to(constituents.dtype)
+
+
+def remove_prefix(state_dict, prefix="_orig_mod."):
+    # strip only if the key starts with the prefix
+    return {
+        k[len(prefix) :] if k.startswith(prefix) else k: v
+        for k, v in state_dict.items()
+    }

@@ -674,7 +674,7 @@ class KinematicsExperiment(BaseExperiment):
             # self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
             # self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "phi")
             self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            # self.obs[r"\Delta \phi_{2,4}"] = compute_angles(1, 2, 3, 4, "phi")
+            self.obs[r"\Delta \phi_{3,4}"] = compute_angles(2, 3, 3, 4, "phi")
             # self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "phi")
 
         if "dimass" in self.cfg.plotting.observables:

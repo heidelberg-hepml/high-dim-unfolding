@@ -1,3 +1,5 @@
+import torch
+
 from experiments.utils import ensure_angle
 
 
@@ -36,10 +38,11 @@ class SimplePossiblyPeriodicGeometry(SimpleGeometry):
         self.period_scale = scale
 
     def _handle_periodic(self, x):
-        x[..., self.periodic_components] = self.period_scale * ensure_angle(
-            x[..., self.periodic_components] / self.period_scale
+        idx = torch.as_tensor(self.periodic_components, device=x.device)
+        vals = self.period_scale * ensure_angle(
+            x.index_select(-1, idx) / self.period_scale
         )
-        return x
+        return x.index_copy(-1, idx, vals)
 
     def get_distance(self, x1, x2):
         diff = x1 - x2

@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from torchdiffeq import odeint
 from torch_geometric.utils import scatter
-from scipy.optimize import linear_sum_assignment
+import os
 
 from experiments.utils import GaussianFourierProjection, fix_mass
 import experiments.coordinates as c
@@ -293,7 +293,7 @@ class CFM(nn.Module):
 
         def velocity(t, xt, self_condition=None):
             xt = self.geometry._handle_periodic(xt)
-            t = t * torch.ones(xt.shape[0], 1, dtype=xt.dtype, device=xt.device)
+            t = t.view(1, 1).expand(xt.shape[0], -1)
 
             vt = self.get_velocity(
                 xt=xt,
@@ -305,8 +305,9 @@ class CFM(nn.Module):
                 self_condition=self_condition,
             )
 
-            vt[constituents_mask] = self.handle_velocity(vt[constituents_mask])
-            vt[~constituents_mask] = 0.0
+            vt = torch.where(
+                constituents_mask.unsqueeze(-1), self.handle_velocity(vt), 0.0
+            )
 
             return vt
 
@@ -326,7 +327,7 @@ class CFM(nn.Module):
             x0 = odeint(
                 velocity,
                 x1,
-                torch.tensor([1.0, 0.0], device=x1.device),
+                torch.tensor([1.0, 0.0], device=x1.device, dtype=x1.dtype),
                 **self.odeint,
             )[-1]
 
@@ -353,6 +354,9 @@ class EventCFM(CFM):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        velocity_mask = torch.ones(1, 4, dtype=torch.bool)
+        velocity_mask[:, self.cfm.masked_dims] = False
+        self.register_buffer("velocity_mask", velocity_mask, persistent=False)
 
     def init_physics(self, pt_min, mass):
         """
@@ -479,8 +483,7 @@ class EventCFM(CFM):
             raise ValueError(f"geometry={self.cfm.geometry} not implemented")
 
     def handle_velocity(self, v):
-        v[..., self.cfm.masked_dims] = 0.0
-        return v
+        return v * self.velocity_mask
 
 
 class JetCFM(EventCFM):

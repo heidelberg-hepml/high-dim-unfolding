@@ -19,7 +19,7 @@ import lgatr.layers.linear
 import lgatr.layers.mlp.geometric_bilinears
 import lgatr.layers.mlp.mlp
 import lgatr.primitives.linear
-from experiments.utils import get_device, flatten_dict
+from experiments.utils import get_device, flatten_dict, remove_prefix
 import experiments.logger
 from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER, RankFilter
 from experiments.mlflow import log_mlflow
@@ -170,12 +170,14 @@ class BaseExperiment:
                     model_path, map_location="cpu", weights_only=False
                 )["model"]
                 LOGGER.info(f"Loading model from {model_path}")
+                state_dict = remove_prefix(state_dict)
                 self.model.load_state_dict(state_dict)
                 if self.ema is not None:
                     LOGGER.info(f"Loading EMA from {model_path}")
                     state_dict = torch.load(
                         model_path, map_location="cpu", weights_only=False
                     )["ema"]
+                    state_dict = remove_prefix(state_dict)
                     self.ema.load_state_dict(state_dict)
             except FileNotFoundError:
                 LOGGER.warning(
@@ -233,6 +235,10 @@ class BaseExperiment:
         else:
             run_name = self.cfg.run_name
             run_idx = self.cfg.run_idx + 1
+            while os.path.isfile(
+                os.path.join(self.cfg.exp_name, run_name, f"config_{run_idx}.yaml")
+            ):
+                run_idx += 1
             LOGGER.info(
                 f"Warm-starting from existing experiment {self.cfg.exp_name}/{run_name} for run {run_idx}"
             )
