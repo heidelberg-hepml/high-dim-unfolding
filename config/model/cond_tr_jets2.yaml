@@ -1,0 +1,23 @@
+_target_: experiments.kinematics.wrappers.ConditionalTransformerCFM
+
+net:
+  _target_: experiments.baselines.ConditionalTransformer
+
+  in_channels: null
+  out_channels: null
+  hidden_channels: 64
+
+  num_blocks: 4
+  num_heads: 4
+  dropout_prob: 0.1
+
+net_condition:
+  _target_: experiments.baselines.Transformer
+
+  in_channels: null
+  out_channels: null
+  hidden_channels: 64
+
+  num_blocks: 4
+  num_heads: 4
+  dropout_prob: 0.1

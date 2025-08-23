@@ -201,7 +201,7 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.training.batchsize // self.world_size,
             sampler=train_sampler,
             follow_batch=["x_gen", "x_det"],
-            num_workers=4,
+            num_workers=2,
             pin_memory=True,
         )
         test_sampler = torch.utils.data.DistributedSampler(
@@ -215,7 +215,7 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=test_sampler,
             follow_batch=["x_gen", "x_det"],
-            num_workers=4,
+            num_workers=2,
             pin_memory=True,
         )
         val_sampler = torch.utils.data.DistributedSampler(
@@ -229,7 +229,7 @@ class MultiplicityExperiment(BaseExperiment):
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=val_sampler,
             follow_batch=["x_gen", "x_det"],
-            num_workers=4,
+            num_workers=2,
             pin_memory=True,
         )
 
