@@ -426,8 +426,13 @@ class KinematicsExperiment(BaseExperiment):
                 sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
             )
 
-            sample_batch.x_gen = fix_mass(sample_batch.x_gen, mass=self.cfg.data.mass)
-            sample_batch.x_det = fix_mass(sample_batch.x_det, mass=self.cfg.data.mass)
+            if not self.cfg.data.part_to_jet:
+                sample_batch.x_gen = fix_mass(
+                    sample_batch.x_gen, mass=self.cfg.data.mass
+                )
+                sample_batch.x_det = fix_mass(
+                    sample_batch.x_det, mass=self.cfg.data.mass
+                )
 
             if self.cfg.cfm.rescale:
                 summed_sample_gen_jets = torch.repeat_interleave(
@@ -452,8 +457,9 @@ class KinematicsExperiment(BaseExperiment):
                 batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
             )
 
-            batch.x_gen = fix_mass(batch.x_gen, mass=self.cfg.data.mass)
-            batch.x_det = fix_mass(batch.x_det, mass=self.cfg.data.mass)
+            if not self.cfg.data.part_to_jet:
+                batch.x_gen = fix_mass(batch.x_gen, mass=self.cfg.data.mass)
+                batch.x_det = fix_mass(batch.x_det, mass=self.cfg.data.mass)
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
@@ -502,17 +508,17 @@ class KinematicsExperiment(BaseExperiment):
         )
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
 
-        self.data_raw["samples"].x_gen = fix_mass(
-            self.data_raw["samples"].x_gen, mass=self.cfg.data.mass
+        self.data_raw["samples"].x_gen = self.data_raw["samples"].x_gen, mass = (
+            self.cfg.data.mass
         )
-        self.data_raw["samples"].x_det = fix_mass(
-            self.data_raw["samples"].x_det, mass=self.cfg.data.mass
+        self.data_raw["samples"].x_det = self.data_raw["samples"].x_det, mass = (
+            self.cfg.data.mass
         )
-        self.data_raw["truth"].x_gen = fix_mass(
-            self.data_raw["truth"].x_gen, mass=self.cfg.data.mass
+        self.data_raw["truth"].x_gen = self.data_raw["truth"].x_gen, mass = (
+            self.cfg.data.mass
         )
-        self.data_raw["truth"].x_det = fix_mass(
-            self.data_raw["truth"].x_det, mass=self.cfg.data.mass
+        self.data_raw["truth"].x_det = self.data_raw["truth"].x_det, mass = (
+            self.cfg.data.mass
         )
 
         if self.cfg.cfm.rescale:

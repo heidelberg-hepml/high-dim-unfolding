@@ -297,7 +297,10 @@ class JetConditionalTransformerCFM(JetCFM):
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
         if self.cfm.transpose:
-            self.pe = positional_encoding(seq_length=4, pe_dim=8)
+            if self.cfm.pe_dim > 0:
+                self.pe = positional_encoding(seq_length=4, pe_dim=self.cfm.pe_dim)
+            else:
+                self.pe = torch.empty(4, 0)
 
     def get_masks(self, batch):
         if self.cfm.transpose:
@@ -310,7 +313,7 @@ class JetConditionalTransformerCFM(JetCFM):
         else:
             gen_batch_idx = torch.arange(batch.num_graphs, device=batch.jet_gen.device)
             if self.cfm.add_constituents:
-                det_batch_idx = batch.x_det_ptr
+                det_batch_idx = batch.x_det_batch
             else:
                 det_batch_idx = torch.arange(
                     batch.num_graphs, device=batch.x_det.device
@@ -552,7 +555,6 @@ class JetConditionalLGATrCFM(JetCFM):
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
 
-        v_straight = torch.zeros_like(v_fourmomenta)
         v_straight = self.coordinates.velocity_fourmomenta_to_x(
             v_fourmomenta, fourmomenta
         )[0]

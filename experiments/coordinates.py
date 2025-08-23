@@ -101,7 +101,10 @@ class PPPM2(BaseCoordinates):
     def __init__(self, **kwargs):
         super().__init__()
         self.contains_mass = True
-        self.transforms = [tr.EPPP_to_PPPM2()]
+        self.transforms = [
+            tr.EPPP_to_PPPM2(),
+            tr.M2_to_ClampedM2(),
+        ]
 
 
 class StandardPPPM2(BaseCoordinates):
@@ -111,6 +114,7 @@ class StandardPPPM2(BaseCoordinates):
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PPPM2(),
+            tr.M2_to_ClampedM2(),
             tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
         ]
 
@@ -159,6 +163,7 @@ class PtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
         ]
 
@@ -171,6 +176,7 @@ class StandardPtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.StandardNormal(
                 fixed_dims=fixed_dims, scaling=scaling, contains_uniform_phi=True
@@ -186,6 +192,7 @@ class StandardJetScaledPtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.PtPhiEtaM2_to_JetScale(),
             tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
@@ -199,6 +206,7 @@ class PPPLogM2(BaseCoordinates):
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PPPM2(),
+            tr.M2_to_ClampedM2(),
             tr.M2_to_LogM2(),
         ]
 
@@ -210,6 +218,7 @@ class StandardPPPLogM2(BaseCoordinates):
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PPPM2(),
+            tr.M2_to_ClampedM2(),
             tr.M2_to_LogM2(),
             tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
         ]
@@ -236,6 +245,7 @@ class PtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.M2_to_LogM2(),
         ]
@@ -250,6 +260,7 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.M2_to_LogM2(),
             tr.StandardNormal(
@@ -267,6 +278,7 @@ class LogPtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
         ]
@@ -281,6 +293,7 @@ class LogPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_LogM2(),
@@ -296,6 +309,7 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_LogM2(),
@@ -312,6 +326,7 @@ class StandardLogPtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.StandardNormal(fixed_dims, scaling, contains_uniform_phi=True),
@@ -327,6 +342,7 @@ class IndividualStandardLogPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_LogM2(),
@@ -343,6 +359,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.PtPhiEtaM2_to_JetScale(),
         ]
@@ -357,6 +374,7 @@ class JetScaledLogPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
@@ -373,6 +391,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
@@ -390,6 +409,7 @@ class StandardJetScaledLogPtPhiEtaM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.LogPtPhiEtaLogM2_to_JetScale(),
@@ -406,6 +426,7 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
         self.transforms = [
             tr.EPPP_to_PtPhiEtaE(),
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),

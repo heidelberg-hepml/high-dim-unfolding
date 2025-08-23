@@ -43,6 +43,7 @@ class JetKinematicsExperiment(BaseExperiment):
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
+            self.cfg.cfm.pe_dim = self.cfg.data.pos_encoding_dim
 
             if self.cfg.modelname == "JetConditionalTransformer":
                 if self.cfg.cfm.transpose:
@@ -225,7 +226,11 @@ class JetKinematicsExperiment(BaseExperiment):
             )
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
-        mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+
+        if self.cfg.data.mult_encoding_dim > 0:
+            mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+        else:
+            mult_encoding = None
 
         self.train_data = Dataset(
             self.dtype,
