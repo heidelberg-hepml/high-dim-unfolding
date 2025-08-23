@@ -183,8 +183,9 @@ class BaseExperiment:
                 LOGGER.warning(
                     f"Cannot load model from {model_path}, training model from scratch"
                 )
-        self.model = torch.compile(self.model, fullgraph=True, dynamic=True)
+
         self.model.to(self.device, dtype=self.dtype)
+        self.model = torch.compile(self.model)
 
         if self.ema is not None:
             self.ema.to(self.device)
