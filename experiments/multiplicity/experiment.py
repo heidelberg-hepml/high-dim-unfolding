@@ -31,6 +31,11 @@ class MultiplicityExperiment(BaseExperiment):
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
 
+            if self.cfg.evaluation.load_samples:
+                self.cfg.train = False
+                self.cfg.evaluation.sample = False
+                self.cfg.evaluation.save_samples = False
+
             max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = (
                 load_dataset(self.cfg.data.dataset)
             )
@@ -123,6 +128,12 @@ class MultiplicityExperiment(BaseExperiment):
         LOGGER.info(f"Created MultiplicityDataset in {time.time() - t0:.2f} seconds")
 
     def _init_data(self, data_path):
+        if self.cfg.evaluation.load_samples:
+            # if we load samples, we do not need to initialize the data
+            self.train_data = None
+            self.val_data = None
+            self.test_data = None
+            return
 
         data = self.load_fn(data_path, self.cfg.data, self.dtype)
 
@@ -190,6 +201,12 @@ class MultiplicityExperiment(BaseExperiment):
         )
 
     def _init_dataloader(self):
+        if self.cfg.evaluation.load_samples:
+            self.train_loader = None
+            self.val_loader = None
+            self.test_loader = None
+            return
+
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
             num_replicas=self.world_size,
@@ -241,33 +258,40 @@ class MultiplicityExperiment(BaseExperiment):
 
     @torch.no_grad()
     def evaluate(self):
-        if self.ema is not None:
-            with self.ema.average_parameters():
-                self.results_train = self._evaluate_single(self.train_loader, "train")
-                self.results_val = self._evaluate_single(self.val_loader, "val")
-                self.results_test = self._evaluate_single(self.test_loader, "test")
-
-            # also evaluate without ema to see the effect
-            self._evaluate_single(self.train_loader, "train_noema")
-            self._evaluate_single(self.val_loader, "val_noema")
-            self._evaluate_single(self.test_loader, "test_noema")
-
+        if self.cfg.evaluation.load_samples:
+            self.results_test = self._load_samples()
         else:
-            self.results_train = self._evaluate_single(self.train_loader, "train")
-            self.results_val = self._evaluate_single(self.val_loader, "val")
-            self.results_test = self._evaluate_single(self.test_loader, "test")
-        if self.cfg.evaluation.save_samples:
-            tensor_path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
-            os.makedirs(tensor_path, exist_ok=True)
-            torch.save(
-                self.results_test["samples"],
-                f"{tensor_path}/samples.pt",
-            )
-        if self.cfg.evaluation.save_params > 0:
-            torch.save(
-                self.results_test["params"][: self.cfg.evaluation.save_params],
-                f"{tensor_path}/params.pt",
-            )
+            if self.ema is not None:
+                with self.ema.average_parameters():
+                    # self.results_train = self._evaluate_single(
+                    #     self.train_loader, "train"
+                    # )
+                    # self.results_val = self._evaluate_single(self.val_loader, "val")
+                    self.results_test = self._evaluate_single(self.test_loader, "test")
+
+                # also evaluate without ema to see the effect
+                # self._evaluate_single(self.train_loader, "train_noema")
+                # self._evaluate_single(self.val_loader, "val_noema")
+                self._evaluate_single(self.test_loader, "test_noema")
+
+            else:
+                # self.results_train = self._evaluate_single(self.train_loader, "train")
+                # self.results_val = self._evaluate_single(self.val_loader, "val")
+                self.results_test = self._evaluate_single(self.test_loader, "test")
+            if self.cfg.evaluation.save_samples:
+                tensor_path = os.path.join(
+                    self.cfg.run_dir, f"samples_{self.cfg.run_idx}"
+                )
+                os.makedirs(tensor_path, exist_ok=True)
+                torch.save(
+                    self.results_test["samples"],
+                    f"{tensor_path}/samples.pt",
+                )
+            if self.cfg.evaluation.save_params > 0:
+                torch.save(
+                    self.results_test["params"][: self.cfg.evaluation.save_params],
+                    f"{tensor_path}/params.pt",
+                )
 
     def _evaluate_single(self, loader, title, step=None):
         LOGGER.info(
@@ -297,6 +321,15 @@ class MultiplicityExperiment(BaseExperiment):
                 log_mlflow(f"{name}.{key}", value, step=step)
         return outputs
 
+    def _load_samples(self):
+        path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.warm_start_idx}")
+        LOGGER.info(f"Loading samples from {path}")
+        saved_samples = {}
+        saved_samples["samples"] = torch.load(f"{path}/samples.pt")
+        if os.path.isfile(f"{path}/params.pt"):
+            saved_samples["params"] = torch.load(f"{path}/params.pt")
+        return saved_samples
+
     def plot(self):
         plot_path = os.path.join(self.cfg.run_dir, f"plots_{self.cfg.run_idx}")
         os.makedirs(plot_path, exist_ok=True)
@@ -304,8 +337,8 @@ class MultiplicityExperiment(BaseExperiment):
 
         plot_dict = {}
         if self.cfg.evaluate:
-            plot_dict["results_train"] = self.results_train
-            plot_dict["results_val"] = self.results_val
+            # plot_dict["results_train"] = self.results_train
+            # plot_dict["results_val"] = self.results_val
             plot_dict["results_test"] = self.results_test
         if self.cfg.train:
             plot_dict["train_loss"] = self.train_loss

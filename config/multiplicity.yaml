@@ -37,6 +37,7 @@ evaluate: true
 evaluation:
  batchsize: 4096
  save_samples: false
+ load_samples: false
  save_params: 0
 
 plot: true

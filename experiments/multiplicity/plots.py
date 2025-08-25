@@ -17,13 +17,13 @@ plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
 plt.rcParams["text.latex.preamble"] = (
-    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath} \usepackage{siunitx}"
+    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"  # \usepackage{siunitx}"
 )
 
 FONTSIZE = 18
 FONTSIZE_LEGEND = FONTSIZE
 FONTSIZE_TICK = FONTSIZE
-TICKLABELSIZE = 14
+TICKLABELSIZE = 13
 
 colors = ["black", "#0343DE", "#A52A2A", "darkorange"]
 
@@ -140,7 +140,7 @@ def plot_histogram(
     xrange,
     model_label,
     logy=False,
-    error_range=[0.85, 1.15],
+    error_range=[0.8, 1.2],
     error_ticks=[0.9, 1.0, 1.1],
 ):
     """
@@ -161,8 +161,8 @@ def plot_histogram(
     # construct labels and colors
     labels = ["Truth", model_label]
     colors = ["black", "#A52A2A"]
-    steps = 2 if (xrange[1] - xrange[0]) > 50 else 1
-    bins = np.arange(int(xrange[0]), int(xrange[1]) + 1, 2)
+    step = 2 if (xrange[1] - xrange[0]) > 50 else 1
+    bins = np.arange(int(xrange[0]), int(xrange[1]) + 1, step=step)
 
     # construct histograms
     y_trn, _ = np.histogram(train, bins=bins, range=xrange)

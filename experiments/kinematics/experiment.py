@@ -291,6 +291,7 @@ class KinematicsExperiment(BaseExperiment):
             self.val_loader = None
             self.test_loader = None
             return
+
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
             num_replicas=self.world_size,
