@@ -15,7 +15,7 @@ data:
  add_pid: false
  pt_min: null
  pt_cut: 0.0
- mass: 0.001
+ mass: 0.1
  pos_encoding_dim: 0
  mult_encoding_dim: 0
  part_to_jet: false
@@ -28,14 +28,14 @@ dist:
 train: true
 training:
  iterations: 100000
- batchsize: 16384
+ batchsize: 4096
  lr: 1e-3
  validate_every_n_steps: 5000
  scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
- batchsize: 16384
+ batchsize: 4096
  save_samples: false
  save_params: 0
 
