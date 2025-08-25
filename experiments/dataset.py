@@ -163,27 +163,21 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = 0
-    gen_particles[..., 3] = 0
+    det_particles[..., 3] = cfg.mass**2
+    gen_particles[..., 3] = cfg.mass**2
 
-    det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-    gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-
-    det_mask = torch.stack(
-        3 * [torch.zeros_like(det_mask, dtype=torch.bool)] + [det_mask], dim=-1
-    )
-    gen_mask = torch.stack(
-        3 * [torch.zeros_like(gen_mask, dtype=torch.bool)] + [gen_mask], dim=-1
-    )
-
-    det_particles[det_mask] = cfg.mass**2
-    gen_particles[gen_mask] = cfg.mass**2
+    det_mask = (
+        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    ).unsqueeze(-1)
+    gen_mask = (
+        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+    ).unsqueeze(-1)
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
-    det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
+    det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
 
     if cfg.pt_cut > 0:
         det_mask = det_jets[..., 0] > cfg.pt_cut
@@ -287,27 +281,21 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_particles[..., 3] = 0
-    gen_particles[..., 3] = 0
+    det_particles[..., 3] = cfg.mass**2
+    gen_particles[..., 3] = cfg.mass**2
 
-    det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-    gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-
-    det_mask = torch.stack(
-        3 * [torch.zeros_like(det_mask, dtype=torch.bool)] + [det_mask], dim=-1
-    )
-    gen_mask = torch.stack(
-        3 * [torch.zeros_like(gen_mask, dtype=torch.bool)] + [gen_mask], dim=-1
-    )
-
-    det_particles[det_mask] = cfg.mass**2
-    gen_particles[gen_mask] = cfg.mass**2
+    det_mask = (
+        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    ).unsqueeze(-1)
+    gen_mask = (
+        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+    ).unsqueeze(-1)
 
     det_particles = jetmomenta_to_fourmomenta(det_particles)
     gen_particles = jetmomenta_to_fourmomenta(gen_particles)
 
-    det_jets = fourmomenta_to_jetmomenta(det_particles.sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta(gen_particles.sum(dim=1))
+    det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
 
     if cfg.part_to_jet:
         det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))

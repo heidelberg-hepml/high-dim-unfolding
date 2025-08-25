@@ -153,6 +153,25 @@ class KinematicsExperiment(BaseExperiment):
         gen_jets = data["gen_jets"]
         size = len(gen_particles)
 
+        LOGGER.info(f"particles shape: {det_particles.shape}")
+        LOGGER.info(f"jets shape: {det_jets.shape}")
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            fourmomenta_to_jetmomenta(det_particles),
+            fourmomenta_to_jetmomenta(gen_particles),
+            filename="particles.pdf",
+            sqrt=True,
+        )
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_jets,
+            gen_jets,
+            filename="jets.pdf",
+            sqrt=True,
+        )
+
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
         if self.cfg.data.max_constituents > 0:
@@ -426,6 +445,13 @@ class KinematicsExperiment(BaseExperiment):
                 sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
             )
 
+            batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+                batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
+            )
+            batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+                batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
+            )
+
             if not self.cfg.data.part_to_jet:
                 sample_batch.x_gen = fix_mass(
                     sample_batch.x_gen, mass=self.cfg.data.mass
@@ -433,6 +459,8 @@ class KinematicsExperiment(BaseExperiment):
                 sample_batch.x_det = fix_mass(
                     sample_batch.x_det, mass=self.cfg.data.mass
                 )
+                batch.x_gen = fix_mass(batch.x_gen, mass=self.cfg.data.mass)
+                batch.x_det = fix_mass(batch.x_det, mass=self.cfg.data.mass)
 
             if self.cfg.cfm.rescale:
                 summed_sample_gen_jets = torch.repeat_interleave(
@@ -449,17 +477,6 @@ class KinematicsExperiment(BaseExperiment):
                 sample_batch.x_gen = sample_batch.x_gen * (
                     true_sample_gen_jets / summed_sample_gen_jets
                 )
-
-            batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
-            )
-            batch.x_gen = self.model.coordinates.x_to_fourmomenta(
-                batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
-            )
-
-            if not self.cfg.data.part_to_jet:
-                batch.x_gen = fix_mass(batch.x_gen, mass=self.cfg.data.mass)
-                batch.x_det = fix_mass(batch.x_det, mass=self.cfg.data.mass)
 
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())

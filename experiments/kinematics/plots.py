@@ -399,10 +399,12 @@ def simple_histogram(
 def plot_kinematics(
     path, true_reco, true_gen, true_model=None, filename="kinematics.pdf", sqrt=False
 ):
-    reco = true_reco.clone().detach().cpu().numpy()
-    gen = true_gen.clone().detach().cpu().numpy()
+    reco = true_reco.clone().detach().cpu().view(-1, 4).numpy()
+    gen = true_gen.clone().detach().cpu().view(-1, 4).numpy()
     model = (
-        true_model.clone().detach().cpu().numpy() if true_model is not None else None
+        true_model.clone().detach().cpu().view(-1, 4).numpy()
+        if true_model is not None
+        else None
     )
     if sqrt:
         reco[..., 3] = np.sqrt(reco[..., 3])
