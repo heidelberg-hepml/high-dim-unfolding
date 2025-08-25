@@ -23,7 +23,7 @@ plt.rcParams["text.latex.preamble"] = (
 FONTSIZE = 18
 FONTSIZE_LEGEND = FONTSIZE
 FONTSIZE_TICK = FONTSIZE
-TICKLABELSIZE = 10
+TICKLABELSIZE = 14
 
 colors = ["black", "#0343DE", "#A52A2A", "darkorange"]
 
@@ -50,11 +50,11 @@ def plot_mixer(cfg, plot_path, plot_dict):
 
     if cfg.evaluate:
         if cfg.data.dataset == "zplusjet":
-            xrange = [0, 70]
+            xrange = [5, 60]
             diff_xrange = [-5, 30]
         elif cfg.data.dataset == "ttbar":
             xrange = [30, 130]
-            diff_xrange = [0, 50]
+            diff_xrange = [5, 40]
         if cfg.plotting.n_distributions > 0:
             file = f"{plot_path}/distributions.pdf"
             if cfg.dist.diff:
@@ -161,7 +161,8 @@ def plot_histogram(
     # construct labels and colors
     labels = ["Truth", model_label]
     colors = ["black", "#A52A2A"]
-    bins = np.arange(int(xrange[0]), int(xrange[1]) + 1)
+    steps = 2 if (xrange[1] - xrange[0]) > 50 else 1
+    bins = np.arange(int(xrange[0]), int(xrange[1]) + 1, 2)
 
     # construct histograms
     y_trn, _ = np.histogram(train, bins=bins, range=xrange)
@@ -263,7 +264,7 @@ def plot_histogram(
         )
 
     axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-    axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
+    axs[0].set_ylabel("Density", fontsize=FONTSIZE)
 
     if logy:
         axs[0].set_yscale("log")
