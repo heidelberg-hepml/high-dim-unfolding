@@ -143,7 +143,7 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
     return encoded
 
 
-def get_range(input):
+def get_range(input, quantile=5e-3, boundary_scale=5e-2):
     if type(input) in [list, tuple]:
         if isinstance(input[0], np.ndarray):
             tensor = torch.cat([torch.from_numpy(element) for element in input], dim=0)
@@ -155,15 +155,24 @@ def get_range(input):
         tensor = input
     else:
         raise ValueError("Input must be a list, tuple, numpy array, or torch tensor")
-    tensor = tensor.flatten()
+    dtype = tensor.dtype
+    tensor = tensor.flatten().to(torch.float32)
+
     if tensor.size(0) > 1000000:
         tensor = tensor[torch.randperm(tensor.size(0))][:1000000]
     quantiles = torch.quantile(
-        tensor, torch.tensor([0.005, 0.995], device=tensor.device, dtype=tensor.dtype)
+        tensor,
+        torch.tensor(
+            [quantile, 1 - quantile], device=tensor.device, dtype=tensor.dtype
+        ),
     )
-    scale = quantiles[1] - quantiles[0]
-    quantiles[0] -= 0.05 * scale
-    quantiles[1] += 0.05 * scale
+    quantile_range = quantiles[1] - quantiles[0]
+    quantiles[0] -= boundary_scale * quantile_range
+    quantiles[1] += boundary_scale * quantile_range
+
+    if dtype in [torch.int8, torch.int16, torch.int32, torch.int64]:
+        quantiles = quantiles.round().to(dtype)
+
     return quantiles
 
 

@@ -381,6 +381,10 @@ class EventCFM(CFM):
     def _init_coordinates(self, coordinates_label):
         if coordinates_label == "Fourmomenta":
             coordinates = c.Fourmomenta()
+        elif coordinates_label == "StandardFourmomenta":
+            coordinates = c.StandardFourmomenta(
+                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
+            )
         elif coordinates_label == "PPPM2":
             coordinates = c.PPPM2()
         elif coordinates_label == "StandardPPPM2":

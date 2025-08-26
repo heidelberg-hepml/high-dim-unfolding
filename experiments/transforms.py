@@ -416,11 +416,11 @@ class M2_to_LogM2(BaseTransform):
 class Pt_to_ClampedPt(BaseTransform):
     def __init__(self, pt_min, pt_pos=0):
         super().__init__()
-        self.pt_min = torch.tensor(pt_min)
-        self.pt_pos = torch.tensor(pt_pos)
+        self.pt_min = pt_min
+        self.pt_pos = pt_pos
 
     def get_dpt(self, pt):
-        return torch.clamp(pt - self.pt_min.to(pt.device), min=EPS2)
+        return torch.clamp(pt - self.pt_min, min=EPS2)
 
     def _forward(self, ptx, **kwargs):
         pt = ptx[..., self.pt_pos]
@@ -432,7 +432,7 @@ class Pt_to_ClampedPt(BaseTransform):
     def _inverse(self, dptx, **kwargs):
         dpt = dptx[..., self.pt_pos]
         dpt = torch.clamp(dpt, min=EPS2)
-        pt = dpt + self.pt_min.to(dpt.device)
+        pt = dpt + self.pt_min
         y = dptx.clone()
         y[..., self.pt_pos] = pt
         return y

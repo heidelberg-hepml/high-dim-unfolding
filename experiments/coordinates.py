@@ -97,6 +97,15 @@ class Fourmomenta(BaseCoordinates):
         self.transforms = [tr.EmptyTransform()]
 
 
+class StandardFourmomenta(BaseCoordinates):
+    # (E, px, py, pz)
+    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4), **kwargs):
+        super().__init__()
+        self.transforms = [
+            tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
+        ]
+
+
 class PPPM2(BaseCoordinates):
     def __init__(self, **kwargs):
         super().__init__()
@@ -126,7 +135,7 @@ class EPhiPtPz(BaseCoordinates):
         self.contains_phi = True
         self.transforms = [
             tr.EPPP_to_EPhiPtPz(),
-            tr.Pt_to_ClampedPt(pt_min),
+            tr.Pt_to_ClampedPt(pt_min, pt_pos=2),
         ]
 
 
