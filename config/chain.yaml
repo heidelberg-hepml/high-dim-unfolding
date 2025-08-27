@@ -16,26 +16,8 @@ model_run_indices:
   jets: 0
   constituents: 0
 
-train: false  # No training in chain experiment
-training: null
-
-evaluate: true
-evaluation:
-  batchsize: 4096
-  sample: true
-  n_batches: -1
-  save_samples: true
-  load_samples: false
-
-plot: true
-plotting:
-  fourmomenta: true
-  jetmomenta: true
-  jetscaled: false
-  preprocessed: false
-  observables: ["jet"]
-  n_pt: 3
-  correlations: false
+data:
+ pt_cut: 0.0
 
 defaults:
   - default

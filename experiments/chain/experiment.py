@@ -58,6 +58,7 @@ class ChainExperiment(BaseExperiment):
             mult_cfg.evaluation.save_samples = True
             mult_cfg.evaluation.load_samples = False
             mult_cfg.plot = True
+            mult_cfg.data.update(self.cfg.data)
 
         self.multiplicity_exp = MultiplicityExperiment(
             mult_cfg, self.rank, self.world_size
@@ -85,6 +86,7 @@ class ChainExperiment(BaseExperiment):
             jet_cfg.evaluation.save_samples = True
             jet_cfg.evaluation.load_samples = False
             jet_cfg.plot = True
+            jet_cfg.data.update(self.cfg.data)
 
         self.jet_exp = JetKinematicsExperiment(jet_cfg, self.rank, self.world_size)
 
@@ -111,6 +113,7 @@ class ChainExperiment(BaseExperiment):
             const_cfg.evaluation.save_samples = True
             const_cfg.evaluation.load_samples = False
             const_cfg.plot = True
+            const_cfg.data.update(self.cfg.data)
 
         self.constituents_exp = KinematicsExperiment(
             const_cfg, self.rank, self.world_size
