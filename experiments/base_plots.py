@@ -4,9 +4,9 @@ import numpy as np
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
-plt.rcParams[
-    "text.latex.preamble"
-] = r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath} \usepackage{siunitx}"
+plt.rcParams["text.latex.preamble"] = (
+    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"  # \usepackage{siunitx}"
+)
 
 FONTSIZE = 14
 FONTSIZE_LEGEND = 13
@@ -60,3 +60,170 @@ def plot_metric(file, metrics, metric_label, labels=None, logy=False):
     ax.legend(fontsize=FONTSIZE_LEGEND, frameon=False, loc="upper left")
     fig.savefig(file, format="pdf", bbox_inches="tight")
     plt.close()
+
+
+def plot_ratio_histogram(
+    data,
+    reference_key,
+    xlabel,
+    xrange,
+    logy=False,
+    n_bins=40,
+    error_range=[0.8, 1.2],
+    error_ticks=[0.9, 1.0, 1.1],
+    file=None,
+):
+    """
+    Plotting code used for all 1d distributions
+
+    Parameters:
+    file: str | None
+        Path to the output file, None to show()
+    data: dict
+        Contains keys with np.ndarray of shape (nevents)
+        Keys are used as labels
+    reference_key: str
+        Key of the data to use as the reference for ratio
+    xlabel: str
+    xrange: tuple with 2 floats
+    logy: bool
+    n_bins: int
+    error_range: tuple with 2 floats
+    error_ticks: tuple with 3 floats
+    """
+    # construct labels and colors
+    labels = data.keys()
+    if xrange.dtype in [torch.int32, torch.int64]:
+        step = (xrange[1] - xrange[0]) // 60 + 1
+        bins = np.arange(xrange[0], xrange[1] + 1, step)
+    else:
+        bins = np.linspace(xrange[0], xrange[1], n_bins)
+
+    # construct histograms
+    hists = []
+    for key in labels:
+        y, _ = np.histogram(data[key], bins=bins, range=xrange)
+        hists.append(y)
+    hist_errors = [np.sqrt(y) for y in hists]
+
+    integrals = [np.sum((bins[1:] - bins[:-1]) * y) for y in hists]
+    scales = [1 / integral if integral != 0.0 else 1.0 for integral in integrals]
+
+    dup_last = lambda a: np.append(a, a[-1])
+
+    fig, axs = plt.subplots(
+        2,
+        1,
+        sharex=True,
+        figsize=(6, 4),
+        gridspec_kw={"height_ratios": [3, 1], "hspace": 0.00},
+    )
+
+    for y, y_err, scale, label, color in zip(
+        hists, hist_errors, scales, labels, COLORS[: len(labels)]
+    ):
+
+        axs[0].step(
+            bins,
+            dup_last(y) * scale,
+            label=label,
+            color=color,
+            linewidth=1.0,
+            where="post",
+        )
+        axs[0].step(
+            bins,
+            dup_last(y + y_err) * scale,
+            color=color,
+            alpha=0.5,
+            linewidth=0.5,
+            where="post",
+        )
+        axs[0].step(
+            bins,
+            dup_last(y - y_err) * scale,
+            color=color,
+            alpha=0.5,
+            linewidth=0.5,
+            where="post",
+        )
+        axs[0].fill_between(
+            bins,
+            dup_last(y - y_err) * scale,
+            dup_last(y + y_err) * scale,
+            facecolor=color,
+            alpha=0.3,
+            step="post",
+        )
+
+        if label == reference_key:
+            axs[0].fill_between(
+                bins,
+                dup_last(y) * scale,
+                0.0 * dup_last(y),
+                facecolor=color,
+                alpha=0.1,
+                step="post",
+            )
+            continue
+
+        ratio = (y * scale) / (hists[0] * scales[0])
+        ratio_err = np.sqrt((y_err / y) ** 2 + (hist_errors[0] / hists[0]) ** 2)
+        ratio_isnan = np.isnan(ratio)
+        ratio[ratio_isnan] = 1.0
+        ratio_err[ratio_isnan] = 0.0
+
+        axs[1].step(bins, dup_last(ratio), linewidth=1.0, where="post", color=color)
+        axs[1].step(
+            bins,
+            dup_last(ratio + ratio_err),
+            color=color,
+            alpha=0.5,
+            linewidth=0.5,
+            where="post",
+        )
+        axs[1].step(
+            bins,
+            dup_last(ratio - ratio_err),
+            color=color,
+            alpha=0.5,
+            linewidth=0.5,
+            where="post",
+        )
+        axs[1].fill_between(
+            bins,
+            dup_last(ratio - ratio_err),
+            dup_last(ratio + ratio_err),
+            facecolor=color,
+            alpha=0.3,
+            step="post",
+        )
+
+    axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE)
+    axs[0].set_ylabel("Density", fontsize=FONTSIZE)
+
+    if logy:
+        axs[0].set_yscale("log")
+
+    _, ymax = axs[0].get_ylim()
+    axs[0].set_ylim(0.0, ymax)
+    axs[0].set_xlim(xrange)
+    axs[0].tick_params(axis="both", labelsize=FONTSIZE)
+    plt.xlabel(
+        r"${%s}$" % xlabel,
+        fontsize=FONTSIZE,
+    )
+
+    axs[1].set_ylabel("Ratio", fontsize=FONTSIZE)
+    axs[1].set_yticks(error_ticks)
+    axs[1].set_ylim(error_range)
+    axs[1].axhline(y=error_ticks[0], c="black", ls="dotted", lw=0.5)
+    axs[1].axhline(y=error_ticks[1], c="black", ls="--", lw=0.7)
+    axs[1].axhline(y=error_ticks[2], c="black", ls="dotted", lw=0.5)
+
+    axs[1].tick_params(axis="both", labelsize=FONTSIZE)
+    if file is None:
+        plt.show()
+    else:
+        plt.savefig(file, bbox_inches="tight", format="pdf")
+        plt.close()

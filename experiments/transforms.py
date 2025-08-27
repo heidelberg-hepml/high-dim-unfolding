@@ -499,6 +499,59 @@ class Pt_to_LogPt(BaseTransform):
         return 1 / (pt + EPS1 + EPS2)
 
 
+class Pt_to_AsinhPt(BaseTransform):
+    def __init__(self, center=200, scale=10):
+        super().__init__()
+        self.center = center
+        self.scale = scale
+
+    def _forward(self, ptx, **kwargs):
+        pt, x1, x2, x3 = unpack_last(ptx)
+        asinh_pt = self.scale * torch.asinh((pt - self.center) / self.scale)
+        return torch.stack((asinh_pt, x1, x2, x3), dim=-1)
+
+    def _inverse(self, asinh_ptx, **kwargs):
+        asinh_pt, x1, x2, x3 = unpack_last(asinh_ptx)
+        pt = self.center + self.scale * torch.sinh(asinh_pt / self.scale)
+        return torch.stack((pt, x1, x2, x3), dim=-1)
+
+    def _jac_forward(self, ptx, asinhptx, **kwargs):
+        pt, x1, x2, x3 = unpack_last(ptx)
+
+        zero, one = torch.zeros_like(pt), torch.ones_like(pt)
+        # d(asinhpt)/d(pt)
+        jac_pt = torch.stack(
+            (
+                torch.pow(1 + ((pt - self.center) / self.scale) ** 2, -1 / 2),
+                zero,
+                zero,
+                zero,
+            ),
+            dim=-1,
+        )
+        jac_x1 = torch.stack((zero, one, zero, zero), dim=-1)
+        jac_x2 = torch.stack((zero, zero, one, zero), dim=-1)
+        jac_x3 = torch.stack((zero, zero, zero, one), dim=-1)
+        return torch.stack((jac_pt, jac_x1, jac_x2, jac_x3), dim=-1)
+
+    def _jac_inverse(self, asinhptx, ptx, **kwargs):
+        asinhpt, x1, x2, x3 = unpack_last(asinhptx)
+
+        zero, one = torch.zeros_like(asinhpt), torch.ones_like(asinhpt)
+        # d(pt)/d(asinhpt)
+        jac_asinhpt = torch.stack(
+            (torch.cosh(asinhpt / self.scale), zero, zero, zero), dim=-1
+        )
+        jac_x1 = torch.stack((zero, one, zero, zero), dim=-1)
+        jac_x2 = torch.stack((zero, zero, one, zero), dim=-1)
+        jac_x3 = torch.stack((zero, zero, zero, one), dim=-1)
+        return torch.stack((jac_asinhpt, jac_x1, jac_x2, jac_x3), dim=-1)
+
+    def _detjac_forward(self, ptx, asinhptx, **kwargs):
+        pt, x1, x2, x3 = unpack_last(ptx)
+        return torch.pow(1 + ((pt - self.center) / self.scale) ** 2, -1 / 2)
+
+
 class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
