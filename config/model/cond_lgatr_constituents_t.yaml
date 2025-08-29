@@ -35,6 +35,9 @@ net:
   increase_hidden_channels: 1
   head_scale: false
 
+ mlp:
+  increase_hidden_channels: 1
+
 net_condition:
  _target_: lgatr.nets.LGATr
 
@@ -54,6 +57,9 @@ net_condition:
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
+
+ mlp:
+  increase_hidden_channels: 1
 
 defaults:
  - /base_attention@net.attention
