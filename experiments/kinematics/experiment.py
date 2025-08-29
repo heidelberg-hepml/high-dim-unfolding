@@ -6,12 +6,17 @@ from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
 import copy
 
-import os, time
+import os, time, glob
 from omegaconf import open_dict
 
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import Dataset, load_dataset, positional_encoding
+from experiments.dataset import (
+    Dataset,
+    load_dataset,
+    positional_encoding,
+    load_ttbar_file,
+)
 from experiments.utils import (
     fix_mass,
     get_batch_from_ptr,
@@ -135,7 +140,10 @@ class KinematicsExperiment(BaseExperiment):
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
-        self._init_data2(data_path)
+        if self.cfg.data.dataset == "ttbar":
+            self._init_data2(data_path)
+        else:
+            self.init_data(data_path)
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
         )
@@ -272,20 +280,21 @@ class KinematicsExperiment(BaseExperiment):
             files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
             data = {
                 "det_particles": torch.empty(0, 182, 4, dtype=self.dtype),
-                "det_mults": torch.empty(0, 1, dtype=torch.int64),
-                "det_pids": torch.empty(0, 1, dtype=self.dtype),
+                "det_mults": torch.empty(0, dtype=torch.int64),
+                "det_pids": torch.empty(0, 182, 0, dtype=self.dtype),
                 "det_jets": torch.empty(0, 4, dtype=self.dtype),
                 "gen_particles": torch.empty(0, 240, 4, dtype=self.dtype),
-                "gen_mults": torch.empty(0, 1, dtype=torch.int64),
-                "gen_pids": torch.empty(0, 1, dtype=self.dtype),
+                "gen_mults": torch.empty(0, dtype=torch.int64),
+                "gen_pids": torch.empty(0, 240, 0, dtype=self.dtype),
                 "gen_jets": torch.empty(0, 4, dtype=self.dtype),
             }
             for i in range(len(files)):
                 partial_data = self.process_one_file(files[i], init=(i == 0))
                 for key in data.keys():
+                    LOGGER.info(f"{key}: {data[key].shape}, {partial_data[key].shape}")
                     data[key] = torch.cat([data[key], partial_data[key]], dim=0)
                 if (
-                    data["det_mults"].shape[0] > self.cfg.data.length
+                    data["det_mults"].shape[0] >= self.cfg.data.length
                     and self.cfg.data.length > 0
                 ):
                     break
@@ -315,38 +324,43 @@ class KinematicsExperiment(BaseExperiment):
             mult_encoding=mult_encoding,
         )
 
+        size = data["det_particles"].shape[0]
+        split = self.cfg.data.train_val_test
+        train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
+
         self.train_data.create_data_list(
-            det_particles=det_particles[:train_idx],
-            det_pids=det_pids[:train_idx],
-            det_mults=det_mults[:train_idx],
-            det_jets=det_jets[:train_idx],
-            gen_particles=gen_particles[:train_idx],
-            gen_pids=gen_pids[:train_idx],
-            gen_mults=gen_mults[:train_idx],
-            gen_jets=gen_jets[:train_idx],
+            det_particles=data["det_particles"][:train_idx],
+            det_pids=data["det_pids"][:train_idx],
+            det_mults=data["det_mults"][:train_idx],
+            det_jets=data["det_jets"][:train_idx],
+            gen_particles=data["gen_particles"][:train_idx],
+            gen_pids=data["gen_pids"][:train_idx],
+            gen_mults=data["gen_mults"][:train_idx],
+            gen_jets=data["gen_jets"][:train_idx],
         )
         self.val_data.create_data_list(
-            det_particles=det_particles[train_idx:val_idx],
-            det_pids=det_pids[train_idx:val_idx],
-            det_mults=det_mults[train_idx:val_idx],
-            det_jets=det_jets[train_idx:val_idx],
-            gen_particles=gen_particles[train_idx:val_idx],
-            gen_pids=gen_pids[train_idx:val_idx],
-            gen_mults=gen_mults[train_idx:val_idx],
-            gen_jets=gen_jets[train_idx:val_idx],
+            det_particles=data["det_particles"][train_idx:val_idx],
+            det_pids=data["det_pids"][train_idx:val_idx],
+            det_mults=data["det_mults"][train_idx:val_idx],
+            det_jets=data["det_jets"][train_idx:val_idx],
+            gen_particles=data["gen_particles"][train_idx:val_idx],
+            gen_pids=data["gen_pids"][train_idx:val_idx],
+            gen_mults=data["gen_mults"][train_idx:val_idx],
+            gen_jets=data["gen_jets"][train_idx:val_idx],
         )
         self.test_data.create_data_list(
-            det_particles=det_particles[val_idx:test_idx],
-            det_pids=det_pids[val_idx:test_idx],
-            det_mults=det_mults[val_idx:test_idx],
-            det_jets=det_jets[val_idx:test_idx],
-            gen_particles=gen_particles[val_idx:test_idx],
-            gen_pids=gen_pids[val_idx:test_idx],
-            gen_mults=gen_mults[val_idx:test_idx],
-            gen_jets=gen_jets[val_idx:test_idx],
+            det_particles=data["det_particles"][val_idx:test_idx],
+            det_pids=data["det_pids"][val_idx:test_idx],
+            det_mults=data["det_mults"][val_idx:test_idx],
+            det_jets=data["det_jets"][val_idx:test_idx],
+            gen_particles=data["gen_particles"][val_idx:test_idx],
+            gen_pids=data["gen_pids"][val_idx:test_idx],
+            gen_mults=data["gen_mults"][val_idx:test_idx],
+            gen_jets=data["gen_jets"][val_idx:test_idx],
         )
 
     def process_one_file(self, file, init=False):
+        t0 = time.time()
         data = load_ttbar_file(file, self.cfg.data, self.dtype)
         det_particles = data["det_particles"]
         det_mults = data["det_mults"]

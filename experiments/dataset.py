@@ -311,10 +311,11 @@ def load_ttbar(data_path, cfg, dtype):
     }
 
 
-def load_ttbar_file(file_path, cfg, dtype):
+def load_ttbar_file(file, cfg, dtype):
     data = ak.from_parquet(file)
 
-    size = cfg.length if cfg.length > 0 else len(data)
+    size = cfg.length if cfg.length > 0 else len(data["rec_particles"])
+    data = data[:size]
     det_shape = (size, 182, 4)
     gen_shape = (size, 240, 4)
 
