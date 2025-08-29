@@ -242,7 +242,7 @@ def load_ttbar(data_path, cfg, dtype):
     data = ak.concatenate(data_parts, axis=0)[: cfg.length]
 
     size = cfg.length if cfg.length > 0 else len(data)
-    shape = (size, 238, 4)
+    shape = (size, 240, 4)
 
     det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
     det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)
@@ -257,6 +257,80 @@ def load_ttbar(data_path, cfg, dtype):
     gen_mults = ak.to_torch(ak.num(data["gen_particles"], axis=1))
     gen_jets = (ak.to_torch(data["gen_jets"])).to(dtype)
     gen_particles = torch.zeros(shape, dtype=dtype)
+    array = ak.to_torch(ak.flatten(data["gen_particles"], axis=1))
+    start = 0
+    for i, length in enumerate(gen_mults):
+        stop = start + length
+        gen_particles[i, :length] = array[start:stop]
+        start = stop
+
+    mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    det_particles = det_particles[mult_mask]
+    det_jets = det_jets[mult_mask]
+    det_mults = det_mults[mult_mask]
+    gen_particles = gen_particles[mult_mask]
+    gen_jets = gen_jets[mult_mask]
+    gen_mults = gen_mults[mult_mask]
+
+    det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
+    gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
+
+    det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
+    gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
+    det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
+    gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
+
+    det_mask = (
+        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    ).unsqueeze(-1)
+    gen_mask = (
+        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+    ).unsqueeze(-1)
+
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+
+    det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
+    gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
+
+    if cfg.part_to_jet:
+        det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
+        det_mults = torch.ones(det_jets.shape[0], dtype=torch.int)
+        gen_particles = jetmomenta_to_fourmomenta(gen_jets.unsqueeze(1))
+        gen_mults = torch.ones(gen_jets.shape[0], dtype=torch.int)
+
+    return {
+        "det_particles": det_particles,
+        "det_jets": det_jets,
+        "det_mults": det_mults,
+        "det_pids": det_pids,
+        "gen_particles": gen_particles,
+        "gen_jets": gen_jets,
+        "gen_mults": gen_mults,
+        "gen_pids": gen_pids,
+    }
+
+
+def load_ttbar_file(file_path, cfg, dtype):
+    data = ak.from_parquet(file)
+
+    size = cfg.length if cfg.length > 0 else len(data)
+    det_shape = (size, 182, 4)
+    gen_shape = (size, 240, 4)
+
+    det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
+    det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)
+    det_particles = torch.empty(det_shape, dtype=dtype)
+    array = ak.to_torch(ak.flatten(data["rec_particles"], axis=1))
+    start = 0
+    for i, length in enumerate(det_mults):
+        stop = start + length
+        det_particles[i, :length] = array[start:stop]
+        start = stop
+
+    gen_mults = ak.to_torch(ak.num(data["gen_particles"], axis=1))
+    gen_jets = (ak.to_torch(data["gen_jets"])).to(dtype)
+    gen_particles = torch.empty(gen_shape, dtype=dtype)
     array = ak.to_torch(ak.flatten(data["gen_particles"], axis=1))
     start = 0
     for i, length in enumerate(gen_mults):

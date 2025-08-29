@@ -135,7 +135,7 @@ class KinematicsExperiment(BaseExperiment):
         t0 = time.time()
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
-        self._init_data(data_path)
+        self._init_data2(data_path)
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
         )
@@ -265,6 +265,176 @@ class KinematicsExperiment(BaseExperiment):
             gen_mults=gen_mults[val_idx:test_idx],
             gen_jets=gen_jets[val_idx:test_idx],
         )
+
+    def _init_data2(self, data_path):
+        t0 = time.time()
+        if self.cfg.data.dataset == "ttbar":
+            files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
+            data = {
+                "det_particles": torch.empty(0, 182, 4, dtype=self.dtype),
+                "det_mults": torch.empty(0, 1, dtype=torch.int64),
+                "det_pids": torch.empty(0, 1, dtype=self.dtype),
+                "det_jets": torch.empty(0, 4, dtype=self.dtype),
+                "gen_particles": torch.empty(0, 240, 4, dtype=self.dtype),
+                "gen_mults": torch.empty(0, 1, dtype=torch.int64),
+                "gen_pids": torch.empty(0, 1, dtype=self.dtype),
+                "gen_jets": torch.empty(0, 4, dtype=self.dtype),
+            }
+            for i in range(len(files)):
+                partial_data = self.process_one_file(files[i], init=(i == 0))
+                for key in data.keys():
+                    data[key] = torch.cat([data[key], partial_data[key]], dim=0)
+                if (
+                    data["det_mults"].shape[0] > self.cfg.data.length
+                    and self.cfg.data.length > 0
+                ):
+                    break
+        if self.cfg.data.length > 0:
+            for key in data.keys():
+                data[key] = data[key][: self.cfg.data.length]
+
+        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+
+        mult_encoding = self.model.mult_encoding
+        if self.cfg.data.mult_encoding_dim > 0:
+            mult_encoding.to_(pos_encoding.device)
+
+        self.train_data = Dataset(
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
+        )
+        self.val_data = Dataset(
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
+        )
+        self.test_data = Dataset(
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
+        )
+
+        self.train_data.create_data_list(
+            det_particles=det_particles[:train_idx],
+            det_pids=det_pids[:train_idx],
+            det_mults=det_mults[:train_idx],
+            det_jets=det_jets[:train_idx],
+            gen_particles=gen_particles[:train_idx],
+            gen_pids=gen_pids[:train_idx],
+            gen_mults=gen_mults[:train_idx],
+            gen_jets=gen_jets[:train_idx],
+        )
+        self.val_data.create_data_list(
+            det_particles=det_particles[train_idx:val_idx],
+            det_pids=det_pids[train_idx:val_idx],
+            det_mults=det_mults[train_idx:val_idx],
+            det_jets=det_jets[train_idx:val_idx],
+            gen_particles=gen_particles[train_idx:val_idx],
+            gen_pids=gen_pids[train_idx:val_idx],
+            gen_mults=gen_mults[train_idx:val_idx],
+            gen_jets=gen_jets[train_idx:val_idx],
+        )
+        self.test_data.create_data_list(
+            det_particles=det_particles[val_idx:test_idx],
+            det_pids=det_pids[val_idx:test_idx],
+            det_mults=det_mults[val_idx:test_idx],
+            det_jets=det_jets[val_idx:test_idx],
+            gen_particles=gen_particles[val_idx:test_idx],
+            gen_pids=gen_pids[val_idx:test_idx],
+            gen_mults=gen_mults[val_idx:test_idx],
+            gen_jets=gen_jets[val_idx:test_idx],
+        )
+
+    def process_one_file(self, file, init=False):
+        data = load_ttbar_file(file, self.cfg.data, self.dtype)
+        det_particles = data["det_particles"]
+        det_mults = data["det_mults"]
+        det_pids = data["det_pids"]
+        det_jets = data["det_jets"]
+        gen_particles = data["gen_particles"]
+        gen_mults = data["gen_mults"]
+        gen_pids = data["gen_pids"]
+        gen_jets = data["gen_jets"]
+        size = len(gen_particles)
+
+        LOGGER.info(
+            f"Loaded {size} events from {file} in {time.time() - t0:.2f} seconds"
+        )
+
+        if self.cfg.data.max_constituents > 0:
+            det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
+            gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
+            size = len(gen_particles)
+
+        if init:
+            split = self.cfg.data.train_val_test
+            train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
+
+            # initialize cfm (might require data)
+            self.model.init_physics(
+                pt_min=self.cfg.data.pt_min,
+                mass=self.cfg.data.mass,
+            )
+            self.model.init_coordinates()
+
+            # initialize geometry
+            self.model.init_geometry()
+
+            train_gen_mask = (
+                torch.arange(gen_particles.shape[1])[None, :]
+                < gen_mults[:train_idx, None]
+            )
+            self.model.coordinates.init_fit(
+                gen_particles[:train_idx],
+                mask=train_gen_mask,
+                jet=torch.repeat_interleave(
+                    gen_jets[:train_idx], gen_mults[:train_idx], dim=0
+                ),
+            )
+
+            train_det_mask = (
+                torch.arange(det_particles.shape[1])[None, :]
+                < det_mults[:train_idx, None]
+            )
+            self.model.condition_coordinates.init_fit(
+                det_particles[:train_idx],
+                mask=train_det_mask,
+                jet=torch.repeat_interleave(
+                    det_jets[:train_idx], det_mults[:train_idx], dim=0
+                ),
+            )
+
+        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+        det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
+            det_particles[det_mask],
+            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0), dim=0
+            ),
+        )
+
+        gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+        gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
+            gen_particles[gen_mask],
+            jet=torch.repeat_interleave(gen_jets, gen_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), gen_mults], dim=0), dim=0
+            ),
+        )
+        LOGGER.info(
+            f"Preprocessed {size} events from {file} in {time.time() - t0:.2f} seconds"
+        )
+        return {
+            "det_particles": det_particles,
+            "det_mults": det_mults,
+            "det_pids": det_pids,
+            "det_jets": det_jets,
+            "gen_particles": gen_particles,
+            "gen_mults": gen_mults,
+            "gen_pids": gen_pids,
+            "gen_jets": gen_jets,
+        }
 
     def _init_dataloader(self):
         if self.cfg.evaluation.load_samples:
