@@ -153,25 +153,6 @@ class KinematicsExperiment(BaseExperiment):
         gen_jets = data["gen_jets"]
         size = len(gen_particles)
 
-        LOGGER.info(f"particles shape: {det_particles.shape}")
-        LOGGER.info(f"jets shape: {det_jets.shape}")
-
-        plot_kinematics(
-            self.cfg.run_dir,
-            fourmomenta_to_jetmomenta(det_particles),
-            fourmomenta_to_jetmomenta(gen_particles),
-            filename="particles.pdf",
-            sqrt=True,
-        )
-
-        plot_kinematics(
-            self.cfg.run_dir,
-            det_jets,
-            gen_jets,
-            filename="jets.pdf",
-            sqrt=True,
-        )
-
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
         if self.cfg.data.max_constituents > 0:

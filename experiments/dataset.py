@@ -5,11 +5,13 @@ import energyflow
 import numpy as np
 import awkward as ak
 import os
+import glob
 
 from experiments.logger import LOGGER
 from experiments.utils import (
     ensure_angle,
     fix_mass,
+    get_mass,
     pid_encoding,
     GaussianFourierProjection,
 )
@@ -163,9 +165,6 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
-
     det_mask = (
         torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
     ).unsqueeze(-1)
@@ -173,8 +172,8 @@ def load_zplusjet(data_path, cfg, dtype):
         torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
     ).unsqueeze(-1)
 
-    det_particles = jetmomenta_to_fourmomenta(det_particles)
-    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
     det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
     gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
@@ -238,9 +237,9 @@ def load_cms(data_path, cfg, dtype):
 
 
 def load_ttbar(data_path, cfg, dtype):
-    part1 = ak.from_parquet(os.path.join(data_path, "ttbar-t.parquet"))
-    part2 = ak.from_parquet(os.path.join(data_path, "ttbar-tbar.parquet"))
-    data = ak.concatenate([part1, part2], axis=0)[: cfg.length]
+    parquet_files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
+    data_parts = [ak.from_parquet(file) for file in parquet_files]
+    data = ak.concatenate(data_parts, axis=0)[: cfg.length]
 
     size = cfg.length if cfg.length > 0 else len(data)
     shape = (size, 238, 4)
@@ -281,9 +280,6 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
-
     det_mask = (
         torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
     ).unsqueeze(-1)
@@ -291,8 +287,8 @@ def load_ttbar(data_path, cfg, dtype):
         torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
     ).unsqueeze(-1)
 
-    det_particles = jetmomenta_to_fourmomenta(det_particles)
-    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
     det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
     gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))

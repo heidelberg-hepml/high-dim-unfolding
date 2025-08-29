@@ -1,5 +1,7 @@
 import matplotlib.pyplot as plt
+import matplotlib.colors as mcolors
 import numpy as np
+import torch
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -8,16 +10,18 @@ plt.rcParams["text.latex.preamble"] = (
     r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"  # \usepackage{siunitx}"
 )
 
-FONTSIZE = 14
-FONTSIZE_LEGEND = 13
-FONTSIZE_TICK = 12
+FONTSIZE = 18
+FONTSIZE_LEGEND = 18
+FONTSIZE_TICK = 18
+
+COLORS = ["#000000", "#0343DE", "#A52A2A", "#D2691E", "#87CA68", "#AF4BAA"]
 
 
 def plot_loss(file, losses, lr=None, labels=None, logy=True):
+    labels = [None for _ in range(len(losses))] if labels is None else labels
     if len(losses[1]) == 0:  # catch no-validations case
         losses = [losses[0]]
         labels = [labels[0]]
-    labels = [None for _ in range(len(losses))] if labels is None else labels
     iterations = range(1, len(losses[0]) + 1)
     fig, ax = plt.subplots()
     for i, loss, label in zip(range(len(losses)), losses, labels):
@@ -199,7 +203,7 @@ def plot_ratio_histogram(
             step="post",
         )
 
-    axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE)
+    axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     axs[0].set_ylabel("Density", fontsize=FONTSIZE)
 
     if logy:
@@ -208,7 +212,7 @@ def plot_ratio_histogram(
     _, ymax = axs[0].get_ylim()
     axs[0].set_ylim(0.0, ymax)
     axs[0].set_xlim(xrange)
-    axs[0].tick_params(axis="both", labelsize=FONTSIZE)
+    axs[0].tick_params(axis="both", labelsize=FONTSIZE_TICK)
     plt.xlabel(
         r"${%s}$" % xlabel,
         fontsize=FONTSIZE,
@@ -221,7 +225,77 @@ def plot_ratio_histogram(
     axs[1].axhline(y=error_ticks[1], c="black", ls="--", lw=0.7)
     axs[1].axhline(y=error_ticks[2], c="black", ls="dotted", lw=0.5)
 
-    axs[1].tick_params(axis="both", labelsize=FONTSIZE)
+    axs[1].tick_params(axis="both", labelsize=FONTSIZE_TICK)
+    if file is None:
+        plt.show()
+    else:
+        plt.savefig(file, bbox_inches="tight", format="pdf")
+        plt.close()
+
+
+def plot_2d_histogram(
+    file,
+    x1,
+    y1,
+    x2,
+    y2,
+    x1_label,
+    y1_label,
+    range,
+    first_label="Truth",
+    second_label="Model",
+    x2_label=None,
+    y2_label=None,
+):
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
+
+    if isinstance(range, tuple):
+        xrange = range[0]
+        yrange = range[1]
+    else:
+        xrange = range
+        yrange = range
+    if xrange.dtype in [torch.int32, torch.int64]:
+        step = (xrange[1] - xrange[0]) // 60 + 1
+        xbins = np.arange(xrange[0], xrange[1] + 1, step)
+    else:
+        xbins = np.linspace(xrange[0], xrange[1], 50)
+    if yrange.dtype in [torch.int32, torch.int64]:
+        step = (yrange[1] - yrange[0]) // 60 + 1
+        ybins = np.arange(yrange[0], yrange[1] + 1, step)
+    else:
+        ybins = np.linspace(yrange[0], yrange[1], 50)
+    bins = (
+        xbins,
+        ybins,
+    )
+    hist = ax1.hist2d(x1, y1, bins=bins, norm=mcolors.LogNorm(), rasterized=True)
+    vmin, vmax = hist[-1].get_clim()
+    ax1.set_xlabel(
+        r"${%s}$" % x1_label,
+        fontsize=FONTSIZE,
+    )
+    ax1.set_ylabel(
+        r"${%s}$" % y1_label,
+        fontsize=FONTSIZE,
+    )
+    ax1.set_title(first_label, fontsize=FONTSIZE)
+    ax1.grid(False)
+
+    ax2.hist2d(
+        x2, y2, bins=bins, norm=mcolors.LogNorm(vmax=vmax, vmin=vmin), rasterized=True
+    )
+    ax2.set_xlabel(
+        r"${%s}$" % (x2_label if x2_label is not None else x1_label),
+        fontsize=FONTSIZE,
+    )
+    ax2.set_ylabel(
+        r"${%s}$" % (y2_label if y2_label is not None else y1_label),
+        fontsize=FONTSIZE,
+    )
+    ax2.set_title(second_label, fontsize=FONTSIZE)
+    ax2.grid(False)
+
     if file is None:
         plt.show()
     else:
