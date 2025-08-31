@@ -4,7 +4,7 @@ from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 
-import os, time
+import os, time, glob
 from omegaconf import open_dict
 
 
@@ -13,6 +13,7 @@ from experiments.dataset import (
     Dataset,
     load_dataset,
     positional_encoding,
+    load_ttbar_file,
 )
 import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
@@ -287,9 +288,10 @@ class JetKinematicsExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
-        mult_encoding = self.model.mult_encoding
         if self.cfg.data.mult_encoding_dim > 0:
-            mult_encoding.to_(pos_encoding.device)
+            mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+        else:
+            mult_encoding = None
 
         self.train_data = Dataset(
             self.dtype,

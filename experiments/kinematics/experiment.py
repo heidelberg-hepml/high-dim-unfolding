@@ -223,9 +223,10 @@ class KinematicsExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
-        mult_encoding = self.model.mult_encoding
         if self.cfg.data.mult_encoding_dim > 0:
-            mult_encoding.to_(pos_encoding.device)
+            mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+        else:
+            mult_encoding = None
 
         self.train_data = Dataset(
             self.dtype,
@@ -279,9 +280,10 @@ class KinematicsExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
-        mult_encoding = self.model.mult_encoding
         if self.cfg.data.mult_encoding_dim > 0:
-            mult_encoding.to_(pos_encoding.device)
+            mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+        else:
+            mult_encoding = None
 
         self.train_data = Dataset(
             self.dtype,

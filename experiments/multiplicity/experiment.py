@@ -4,11 +4,16 @@ from torch_geometric.loader import DataLoader
 from torch.distributions import Categorical
 import numpy as np
 
-import os, time
+import os, time, glob
 from omegaconf import open_dict
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import Dataset, load_dataset, positional_encoding
+from experiments.dataset import (
+    Dataset,
+    load_dataset,
+    positional_encoding,
+    load_ttbar_file,
+)
 from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
@@ -204,24 +209,17 @@ class MultiplicityExperiment(BaseExperiment):
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
-        mult_encoding = self.model.mult_encoding
-        if self.cfg.data.mult_encoding_dim > 0:
-            mult_encoding.to_(pos_encoding.device)
-
         self.train_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
         )
         self.val_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
         )
         self.test_data = Dataset(
             self.dtype,
             pos_encoding=pos_encoding,
-            mult_encoding=mult_encoding,
         )
 
         files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
