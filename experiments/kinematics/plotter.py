@@ -14,7 +14,7 @@ from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
 from experiments.logger import LOGGER
 
-N_SAMPLES = -1
+N_SAMPLES = 100000
 
 
 def plot_losses(exp, filename, model_label):

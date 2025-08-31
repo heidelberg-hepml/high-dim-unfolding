@@ -23,6 +23,7 @@ class Dataset(torch.utils.data.Dataset):
         self.dtype = dtype
         self.pos_encoding = pos_encoding
         self.mult_encoding = mult_encoding
+        self.data_list = []
 
     def __len__(self):
         return len(self.data_list)
@@ -30,7 +31,7 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.data_list[idx]
 
-    def create_data_list(
+    def append(
         self,
         det_particles,
         det_pids,
@@ -42,7 +43,6 @@ class Dataset(torch.utils.data.Dataset):
         gen_jets,
     ):
 
-        self.data_list = []
         for i in range(det_particles.shape[0]):
 
             det_event = det_particles[i, : det_mults[i]]
@@ -311,7 +311,7 @@ def load_ttbar(data_path, cfg, dtype):
     }
 
 
-def load_ttbar_file(file, cfg, dtype):
+def load_ttbar_file(file, cfg, dtype, length):
     data = ak.from_parquet(file)
 
     size = (

@@ -169,7 +169,7 @@ class MultiplicityExperiment(BaseExperiment):
             pos_encoding=pos_encoding,
         )
 
-        self.train_data.create_data_list(
+        self.train_data.append(
             det_particles=det_particles[:train_idx],
             det_pids=det_pids[:train_idx],
             det_mults=det_mults[:train_idx],
@@ -179,7 +179,7 @@ class MultiplicityExperiment(BaseExperiment):
             gen_mults=gen_mults[:train_idx],
             gen_jets=gen_jets[:train_idx],
         )
-        self.val_data.create_data_list(
+        self.val_data.append(
             det_particles=det_particles[train_idx:val_idx],
             det_pids=det_pids[train_idx:val_idx],
             det_mults=det_mults[train_idx:val_idx],
@@ -189,7 +189,7 @@ class MultiplicityExperiment(BaseExperiment):
             gen_mults=gen_mults[train_idx:val_idx],
             gen_jets=gen_jets[train_idx:val_idx],
         )
-        self.test_data.create_data_list(
+        self.test_data.append(
             det_particles=det_particles[val_idx:test_idx],
             det_pids=det_pids[val_idx:test_idx],
             det_mults=det_mults[val_idx:test_idx],
