@@ -7,7 +7,7 @@ data:
  data_dir: data/
  dataset: zplusjet
  length: -1
- train_val_test: [0.8, 0.05, 0.15]
+ train_val_test: [0.9, 0.05, 0.05]
  max_num_particles: null
  max_constituents: -1
  min_mult: 2
@@ -49,8 +49,9 @@ odeint:
 train: true
 training:
  iterations: 200000
- batchsize: 1024
- lr: 1e-3
+ batchsize: 512
+ optimizer: Lion
+ lr: 2e-4
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
  clip_grad_norm: 5.
