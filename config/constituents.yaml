@@ -51,7 +51,8 @@ train: true
 training:
  iterations: 100000
  batchsize: 1024
- lr: 1e-3
+ optimizer: Lion
+ lr: 2e-4
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
  clip_grad_norm: 5.
