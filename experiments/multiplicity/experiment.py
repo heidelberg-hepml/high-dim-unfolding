@@ -138,14 +138,13 @@ class MultiplicityExperiment(BaseExperiment):
         data = self.load_fn(data_path, self.cfg.data, self.dtype)
 
         det_particles = data["det_particles"]
+        det_jets = data["det_jets"]
         det_pids = data["det_pids"]
         det_mults = data["det_mults"]
         gen_particles = data["gen_particles"]
+        gen_jets = data["gen_jets"]
         gen_pids = data["gen_pids"]
         gen_mults = data["gen_mults"]
-
-        det_jets = det_particles.sum(dim=1, keepdim=True)
-        gen_jets = gen_particles.sum(dim=1, keepdim=True)
 
         size = len(det_particles)
         split = self.cfg.data.train_val_test
@@ -199,6 +198,112 @@ class MultiplicityExperiment(BaseExperiment):
             gen_mults=gen_mults[val_idx:test_idx],
             gen_jets=gen_jets[val_idx:test_idx],
         )
+
+    def _init_data2(self, data_path):
+        t0 = time.time()
+
+        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+
+        mult_encoding = self.model.mult_encoding
+        if self.cfg.data.mult_encoding_dim > 0:
+            mult_encoding.to_(pos_encoding.device)
+
+        self.train_data = Dataset(
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
+        )
+        self.val_data = Dataset(
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
+        )
+        self.test_data = Dataset(
+            self.dtype,
+            pos_encoding=pos_encoding,
+            mult_encoding=mult_encoding,
+        )
+
+        files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
+        num_events = self.cfg.data.length
+        for i in range(len(files)):
+            data = self.process_one_file(files[i], init=(i == 0), num_events=num_events)
+
+            t0 = time.time()
+
+            size = data["det_particles"].shape[0]
+            split = self.cfg.data.train_val_test
+            train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
+
+            self.train_data.append(
+                det_particles=data["det_particles"][:train_idx],
+                det_pids=data["det_pids"][:train_idx],
+                det_mults=data["det_mults"][:train_idx],
+                det_jets=data["det_jets"][:train_idx],
+                gen_particles=data["gen_particles"][:train_idx],
+                gen_pids=data["gen_pids"][:train_idx],
+                gen_mults=data["gen_mults"][:train_idx],
+                gen_jets=data["gen_jets"][:train_idx],
+            )
+            self.val_data.append(
+                det_particles=data["det_particles"][train_idx:val_idx],
+                det_pids=data["det_pids"][train_idx:val_idx],
+                det_mults=data["det_mults"][train_idx:val_idx],
+                det_jets=data["det_jets"][train_idx:val_idx],
+                gen_particles=data["gen_particles"][train_idx:val_idx],
+                gen_pids=data["gen_pids"][train_idx:val_idx],
+                gen_mults=data["gen_mults"][train_idx:val_idx],
+                gen_jets=data["gen_jets"][train_idx:val_idx],
+            )
+            self.test_data.append(
+                det_particles=data["det_particles"][val_idx:test_idx],
+                det_pids=data["det_pids"][val_idx:test_idx],
+                det_mults=data["det_mults"][val_idx:test_idx],
+                det_jets=data["det_jets"][val_idx:test_idx],
+                gen_particles=data["gen_particles"][val_idx:test_idx],
+                gen_pids=data["gen_pids"][val_idx:test_idx],
+                gen_mults=data["gen_mults"][val_idx:test_idx],
+                gen_jets=data["gen_jets"][val_idx:test_idx],
+            )
+            if num_events > 0:
+                num_events -= data["det_particles"].shape[0]
+                if num_events <= 0:
+                    break
+            LOGGER.info(
+                f"Created {train_idx} training graphs, {val_idx - train_idx} validation graphs, {test_idx - val_idx} test graphs in {time.time() - t0:.2f} seconds"
+            )
+
+    def process_one_file(self, file, num_events, init=False):
+        t0 = time.time()
+        data = load_ttbar_file(file, self.cfg.data, self.dtype, num_events)
+        det_particles = data["det_particles"]
+        det_mults = data["det_mults"]
+        det_pids = data["det_pids"]
+        det_jets = data["det_jets"]
+        gen_particles = data["gen_particles"]
+        gen_mults = data["gen_mults"]
+        gen_pids = data["gen_pids"]
+        gen_jets = data["gen_jets"]
+        size = len(gen_particles)
+
+        LOGGER.info(
+            f"Loaded {size} events from {file} in {time.time() - t0:.2f} seconds"
+        )
+        t1 = time.time()
+
+        LOGGER.info(
+            f"Preprocessed {size} events from {file} in {time.time() - t1:.2f} seconds"
+        )
+        return {
+            "det_particles": det_particles,
+            "det_mults": det_mults,
+            "det_pids": det_pids,
+            "det_jets": det_jets,
+            "gen_particles": gen_particles,
+            "gen_mults": gen_mults,
+            "gen_pids": gen_pids,
+            "gen_jets": gen_jets,
+        }
 
     def _init_dataloader(self):
         if self.cfg.evaluation.load_samples:
