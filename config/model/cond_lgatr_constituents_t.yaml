@@ -36,7 +36,7 @@ net:
   head_scale: false
 
  mlp:
-  increase_hidden_channels: 1
+  increase_hidden_channels: 2
 
 net_condition:
  _target_: lgatr.nets.LGATr

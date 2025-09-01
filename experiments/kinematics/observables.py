@@ -16,11 +16,12 @@ except ImportError:
 import torch
 import numpy as np
 
-from experiments.utils import get_ptr_from_batch, ensure_angle
+from experiments.utils import get_ptr_from_batch, ensure_angle, fix_mass
 from experiments.coordinates import fourmomenta_to_jetmomenta
 
 R0 = None
 R0SoftDrop = None
+MASS = 0.0
 
 
 def create_partial_jet(start, end):
@@ -173,22 +174,26 @@ def deltaR(i, j):
     return deltaR_ij
 
 
-def tau1(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents.detach().cpu())
-    batch_ptr = get_ptr_from_batch(batch_idx)
+def tau1(constituents, batch_idx, other_batch_idx=None, R0=R0, **kwargs):
+    constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
+    batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     taus = []
     for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         tau = compute_nsubjettiness(
-            event[..., [1, 2, 3, 0]], N=1, beta=1.0, R0=R0, axis_mode=3
+            jet=event[..., [1, 2, 3, 0]],
+            N=1,
+            beta=1.0,
+            R0=R0,
+            axis_mode=3,
         )
         taus.append(tau)
     return torch.tensor(taus)
 
 
-def tau2(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents.detach().cpu())
-    batch_ptr = get_ptr_from_batch(batch_idx)
+def tau2(constituents, batch_idx, other_batch_idx=None, R0=R0, **kwargs):
+    constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
+    batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     taus = []
     for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
@@ -199,38 +204,35 @@ def tau2(constituents, batch_idx, other_batch_idx, **kwargs):
     return torch.tensor(taus)
 
 
-def sd_mass(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents.detach().cpu())
-    batch_ptr = get_ptr_from_batch(batch_idx)
+def sd_mass(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **kwargs):
+    constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
+    batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     log_rhos = []
     for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         sd_fourm = np.array(
-            apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0SoftDrop, beta=0.0, zcut=0.1)
+            apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)
         )
         mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
         pt2 = np.sum(np.sum(event[..., 1:3], axis=0) ** 2)
-        log_rho = np.log(mass2 / pt2)
+        log_rho = np.log(np.clip(mass2 / pt2, a_min=1e-10, a_max=None))
         log_rhos.append(log_rho)
     return torch.tensor(log_rhos)
 
 
-def compute_zg(constituents, batch_idx, other_batch_idx, **kwargs):
-    constituents = np.array(constituents.detach().cpu())
-    batch_ptr = get_ptr_from_batch(batch_idx)
+def compute_zg(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **kwargs):
+    constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
+    batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     zgs = []
     for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-        zg = apply_soft_drop(
-            event[..., [1, 2, 3, 0]], R0=R0SoftDrop, beta=0.0, zcut=0.1
-        )[-1]
+        zg = apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)[-1]
         zgs.append(zg)
     return torch.tensor(zgs)
 
 
-def jet_mass(constituents, batch_idx, other_batch_idx, **kwargs):
+def jet_mass(constituents, batch_idx, other_batch_idx=None, **kwargs):
     batch_ptr = get_ptr_from_batch(batch_idx)
-    other_batch_ptr = get_ptr_from_batch(other_batch_idx)
     jet_masses = []
     for n in range(len(batch_ptr) - 1):
         jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)

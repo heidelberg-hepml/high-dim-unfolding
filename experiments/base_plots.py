@@ -1,5 +1,6 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import torch
 
@@ -14,16 +15,17 @@ FONTSIZE = 18
 FONTSIZE_LEGEND = 18
 FONTSIZE_TICK = 18
 
-COLORS = [
-    "#000000",
-    "#E69F00",
-    "#56B4E9",
-    "#009E73",
-    "#F0E442",
-    "#0072B2",
-    "#D55E00",
-    "#CC79A7",
-]
+COLORS = {
+    "part": "#000000",
+    "reco": "#E69F00",
+    "Transformer": "#B1AFD4",
+    "Transf": "#B1AFD4",
+    "L-GATr": "#419108",
+    # "#F0E442",
+    # "#0072B2",
+    # "#D55E00",
+    # "#CC79A7",
+}
 
 
 def plot_loss(file, losses, lr=None, labels=None, logy=True):
@@ -79,12 +81,17 @@ def plot_ratio_histogram(
     data,
     reference_key,
     xlabel,
-    xrange,
+    bins_range,
     logy=False,
     n_bins=40,
-    error_range=[0.8, 1.2],
-    error_ticks=[0.9, 1.0, 1.1],
+    error_range=None,
+    error_ticks=[0.95, 1.0, 1.05],
     file=None,
+    legend_loc="upper right",
+    no_ratio_keys=[],
+    n_int_per_bin=1,
+    xrange=None,
+    yrange=None,
 ):
     """
     Plotting code used for all 1d distributions
@@ -105,22 +112,26 @@ def plot_ratio_histogram(
     error_ticks: tuple with 3 floats
     """
     # construct labels and colors
+    no_ratio_keys.append(reference_key)
+
     labels = data.keys()
-    if xrange.dtype in [torch.int32, torch.int64]:
-        step = (xrange[1] - xrange[0]) // 60 + 1
-        bins = np.arange(xrange[0], xrange[1] + 1, step)
+    if bins_range.dtype in [torch.int32, torch.int64]:
+        bins = np.arange(bins_range[0] - 0.5, bins_range[1] + 0.5, n_int_per_bin)
     else:
-        bins = np.linspace(xrange[0], xrange[1], n_bins)
+        bins = np.linspace(bins_range[0], bins_range[1], n_bins)
 
     # construct histograms
-    hists = []
+    hists = {}
     for key in labels:
-        y, _ = np.histogram(data[key], bins=bins, range=xrange)
-        hists.append(y)
-    hist_errors = [np.sqrt(y) for y in hists]
+        y, _ = np.histogram(data[key], bins=bins, range=bins_range)
+        hists[key] = y
+    hist_errors = {key: np.sqrt(y) for key, y in hists.items()}
 
-    integrals = [np.sum((bins[1:] - bins[:-1]) * y) for y in hists]
-    scales = [1 / integral if integral != 0.0 else 1.0 for integral in integrals]
+    integrals = {key: np.sum((bins[1:] - bins[:-1]) * y) for key, y in hists.items()}
+    scales = {
+        key: 1 / integral if integral != 0.0 else 1.0
+        for key, integral in integrals.items()
+    }
 
     dup_last = lambda a: np.append(a, a[-1])
 
@@ -132,9 +143,12 @@ def plot_ratio_histogram(
         gridspec_kw={"height_ratios": [3, 1], "hspace": 0.00},
     )
 
-    for y, y_err, scale, label, color in zip(
-        hists, hist_errors, scales, labels, COLORS[: len(labels)]
-    ):
+    for key in data.keys():
+        y = hists[key]
+        y_err = hist_errors[key]
+        scale = scales[key]
+        label = key
+        color = COLORS.get(key, "#000000")
 
         axs[0].step(
             bins,
@@ -169,19 +183,45 @@ def plot_ratio_histogram(
             step="post",
         )
 
-        if label == reference_key:
-            axs[0].fill_between(
-                bins,
-                dup_last(y) * scale,
-                0.0 * dup_last(y),
-                facecolor=color,
-                alpha=0.1,
-                step="post",
-            )
+        # vertical lines at lower and upper bin edges
+        left, right = bins[0], bins[-1]
+
+        # lower bound
+        axs[0].vlines(
+            left,
+            0,
+            y[0] * scale,
+            colors=color,
+            linewidth=1.0,
+        )
+
+        # upper bound
+        axs[0].vlines(
+            right,
+            0,
+            y[-1] * scale,
+            colors=color,
+            linewidth=1.0,
+        )
+
+        # if label == reference_key:
+        #     # axs[0].fill_between(
+        #     #     bins,
+        #     #     dup_last(y) * scale,
+        #     #     0.0 * dup_last(y),
+        #     #     facecolor=color,
+        #     #     alpha=0.1,
+        #     #     step="post",
+        #     # )
+        #     continue
+
+        if label in no_ratio_keys:
             continue
 
-        ratio = (y * scale) / (hists[0] * scales[0])
-        ratio_err = np.sqrt((y_err / y) ** 2 + (hist_errors[0] / hists[0]) ** 2)
+        ratio = (y * scale) / (hists[reference_key] * scales[reference_key])
+        ratio_err = np.sqrt(
+            (y_err / y) ** 2 + (hist_errors[reference_key] / hists[reference_key]) ** 2
+        )
         ratio_isnan = np.isnan(ratio)
         ratio[ratio_isnan] = 1.0
         ratio_err[ratio_isnan] = 0.0
@@ -212,34 +252,56 @@ def plot_ratio_histogram(
             step="post",
         )
 
-    axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-    axs[0].set_ylabel("Density", fontsize=FONTSIZE)
+    if isinstance(legend_loc, dict):
+        axs[0].legend(
+            **legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0
+        )
+    elif legend_loc is not None:
+        axs[0].legend(
+            loc=legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0
+        )
 
+    axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
     if logy:
         axs[0].set_yscale("log")
 
-    _, ymax = axs[0].get_ylim()
-    axs[0].set_ylim(0.0, ymax)
-    axs[0].set_xlim(xrange)
+    if yrange is None:
+        _, ymax = axs[0].get_ylim()
+        axs[0].set_ylim(0.0, ymax)
+    else:
+        axs[0].set_ylim(yrange)
+
+    if xrange is not None:
+        axs[0].set_xlim(xrange)
+    else:
+        axs[0].set_xlim(bins_range)
+
     axs[0].tick_params(axis="both", labelsize=FONTSIZE_TICK)
     plt.xlabel(
         r"${%s}$" % xlabel,
         fontsize=FONTSIZE,
     )
 
-    axs[1].set_ylabel("Ratio", fontsize=FONTSIZE)
+    axs[1].set_ylabel(r"$\frac{\text{Model}}{\text{Truth}}$", fontsize=FONTSIZE)
     axs[1].set_yticks(error_ticks)
+    if error_range is None:
+        error_range = [
+            1.0 - (1.0 - error_ticks[0]) * 2,
+            1.0 + (error_ticks[2] - 1.0) * 2,
+        ]
     axs[1].set_ylim(error_range)
     axs[1].axhline(y=error_ticks[0], c="black", ls="dotted", lw=0.5)
     axs[1].axhline(y=error_ticks[1], c="black", ls="--", lw=0.7)
     axs[1].axhline(y=error_ticks[2], c="black", ls="dotted", lw=0.5)
 
     axs[1].tick_params(axis="both", labelsize=FONTSIZE_TICK)
-    if file is None:
-        plt.show()
-    else:
-        plt.savefig(file, bbox_inches="tight", format="pdf")
-        plt.close()
+    if isinstance(file, PdfPages):
+        file.savefig(fig, bbox_inches="tight")
+    elif file is not None:
+        with PdfPages(file) as pdf:
+            pdf.savefig(fig, bbox_inches="tight")
+    # plt.show()
+    plt.close()
 
 
 def plot_2d_histogram(
