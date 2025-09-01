@@ -129,7 +129,10 @@ class MultiplicityExperiment(BaseExperiment):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating MultiplicityDataset from {data_path}")
         t0 = time.time()
-        self._init_data(data_path)
+        if self.cfg.data.dataset == "ttbar":
+            self._init_data2(data_path)
+        else:
+            self._init_data(data_path)
         LOGGER.info(f"Created MultiplicityDataset in {time.time() - t0:.2f} seconds")
 
     def _init_data(self, data_path):

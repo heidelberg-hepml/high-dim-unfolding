@@ -143,7 +143,7 @@ class KinematicsExperiment(BaseExperiment):
         if self.cfg.data.dataset == "ttbar":
             self._init_data2(data_path)
         else:
-            self.init_data(data_path)
+            self._init_data(data_path)
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
         )
