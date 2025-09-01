@@ -24,13 +24,13 @@ net:
  dropout_prob: null
 
  attention:
-  num_heads: 4
+  num_heads: 8
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
 
  crossattention:
-  num_heads: 4
+  num_heads: 8
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
@@ -53,13 +53,13 @@ net_condition:
  dropout_prob: null
 
  attention:
-  num_heads: 4
+  num_heads: 8
   multi_query: false
   increase_hidden_channels: 1
   head_scale: false
 
  mlp:
-  increase_hidden_channels: 1
+  increase_hidden_channels: 2
 
 defaults:
  - /base_attention@net.attention
