@@ -707,11 +707,11 @@ class BaseExperiment:
             ),
             self.cfg.training.grad_norm_avg,
         ):
-            if grad_norm > 10 * np.mean(
+            if grad_norm > 100 * np.mean(
                 self.train_grad_norm[-self.cfg.training.grad_norm_avg :]
             ):
                 LOGGER.warning(
-                    f"Skipping update at {step +1}, gradient norm {grad_norm:.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(self.train_grad_norm[-self.cfg.training.grad_norm_avg:]):.2f} * 10"
+                    f"Skipping update at {step +1}, gradient norm {grad_norm:.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(self.train_grad_norm[-self.cfg.training.grad_norm_avg:]):.2f} * 100"
                 )
                 # self.scheduler.step()  # ensure correct total steps
                 return

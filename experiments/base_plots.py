@@ -14,7 +14,16 @@ FONTSIZE = 18
 FONTSIZE_LEGEND = 18
 FONTSIZE_TICK = 18
 
-COLORS = ["#000000", "#0343DE", "#A52A2A", "#D2691E", "#87CA68", "#AF4BAA"]
+COLORS = [
+    "#000000",
+    "#E69F00",
+    "#56B4E9",
+    "#009E73",
+    "#F0E442",
+    "#0072B2",
+    "#D55E00",
+    "#CC79A7",
+]
 
 
 def plot_loss(file, losses, lr=None, labels=None, logy=True):
