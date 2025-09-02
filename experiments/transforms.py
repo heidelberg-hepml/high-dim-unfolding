@@ -361,11 +361,11 @@ class M2_to_ClampedM2(BaseTransform):
         y[..., self.m2_pos] = m2
         return y
 
-    def forward(self, x, **kwargs):
-        return x
+    # def forward(self, x, **kwargs):
+    #     return x
 
-    def inverse(self, y, **kwargs):
-        return y
+    # def inverse(self, y, **kwargs):
+    #     return y
 
     def velocity_forward(self, v, x, y, **kwargs):
         return v

@@ -47,6 +47,7 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.cfm.pe_dim = self.cfg.data.pos_encoding_dim
 
             if self.cfg.modelname == "JetConditionalTransformer":
+                self.cfg.cfm.transpose = True
                 if self.cfg.cfm.transpose:
                     base_in_channels = 1
                 else:
@@ -79,6 +80,7 @@ class JetKinematicsExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += base_in_channels
 
             elif self.cfg.modelname == "JetConditionalLGATr":
+                self.cfg.cfm.transpose = False
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
                 )
@@ -194,6 +196,14 @@ class JetKinematicsExperiment(BaseExperiment):
             det_jets[:train_idx].unsqueeze(1),
             mask=jet_train_det_mask,
             jet=det_jets[:train_idx],
+        )
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            fourmomenta_to_jetmomenta(det_jets[val_idx:test_idx]),
+            fourmomenta_to_jetmomenta(gen_jets[val_idx:test_idx]),
+            filename="pre_jets.pdf",
+            sqrt=True,
         )
 
         det_jets = self.model.condition_coordinates.fourmomenta_to_x(det_jets)
@@ -571,6 +581,23 @@ class JetKinematicsExperiment(BaseExperiment):
 
         self.data_raw["truth"] = Batch.from_data_list(
             targets, follow_batch=["x_gen", "x_det"]
+        )
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            fourmomenta_to_jetmomenta(self.data_raw["truth"].jet_det),
+            fourmomenta_to_jetmomenta(self.data_raw["truth"].jet_gen),
+            fourmomenta_to_jetmomenta(self.data_raw["samples"].jet_det),
+            filename="true_post_jets.pdf",
+            sqrt=True,
+        )
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            fourmomenta_to_jetmomenta(self.data_raw["samples"].jet_det),
+            fourmomenta_to_jetmomenta(self.data_raw["samples"].jet_gen),
+            filename="sample_post_jets.pdf",
+            sqrt=True,
         )
 
         # convert the list into a dataloader

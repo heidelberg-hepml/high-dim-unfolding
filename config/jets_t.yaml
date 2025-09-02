@@ -1,4 +1,4 @@
-exp_type: constituents
+exp_type: jets
 exp_name: simplecondtest
 
 use_mlflow: false
@@ -7,7 +7,7 @@ data:
  data_dir: data/
  dataset: ttbar
  length: -1
- train_val_test: [0.9, 0.05, 0.05]
+ train_val_test: [0.8, 0.05, 0.15]
  max_num_particles: null
  max_constituents: -1
  min_mult: 2
@@ -16,28 +16,29 @@ data:
  pt_min: null
  mass: 0.1
  pos_encoding_dim: 8
- mult_encoding_dim: 0
+ mult_encoding_dim: 8
  part_to_jet: false
 
 
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
- coordinates: StandardJetScaledLogPtPhiEtaLogM2
+ coordinates: StandardLogPtPhiEtaLogM2
  geometry:
   type: simple
   periodic: true
  transforms_float64: true
- masked_dims: null
+ masked_dims: []
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
- add_jet: true
+ add_constituents: false
  add_mass: false
  scaling: [1.0, 1.0, 1.0, 1.0]
- gac: true
  weight: 0.0
- sort: true
- rescale: false
+ transpose: false
+ unconditional: false
+ gac: true
+
 
 odeint:
  method: rk4
@@ -48,17 +49,16 @@ odeint:
 
 train: true
 training:
- iterations: 200000
- batchsize: 512
- optimizer: Lion
- lr: 2e-4
+ iterations: 100000
+ batchsize: 8192
+ lr: 1e-3
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
  clip_grad_norm: 5.
 
 evaluate: true
 evaluation:
- batchsize: 4096
+ batchsize: 8192
  classifier: false
  sample: true
  n_batches: -1
@@ -73,11 +73,11 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["jet"]
+ observables: []
  n_pt: 3
  correlations: false
 
 defaults:
- - model: cond_tr_constituents_t
+ - model: cond_tr_jets
  - default
  - _self_

@@ -23,7 +23,7 @@ data:
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
- coordinates: StandardLogPtPhiEtaLogM2
+ coordinates: StandardAsinhPtPhiEtaLogM2
  geometry:
   type: simple
   periodic: true
