@@ -313,6 +313,10 @@ def load_ttbar(data_path, cfg, dtype):
 
 def load_ttbar_file(file, cfg, dtype, length):
     data = ak.from_parquet(file)
+    mult_mask = (ak.num(data["rec_particles"], axis=1) >= cfg.min_mult) * (
+        ak.num(data["gen_particles"], axis=1) >= cfg.min_mult
+    )
+    data = data[mult_mask]
 
     size = (
         min(cfg.length, len(data["rec_particles"]))
@@ -343,13 +347,13 @@ def load_ttbar_file(file, cfg, dtype, length):
         gen_particles[i, :length] = array[start:stop]
         start = stop
 
-    mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
-    det_particles = det_particles[mult_mask]
-    det_jets = det_jets[mult_mask]
-    det_mults = det_mults[mult_mask]
-    gen_particles = gen_particles[mult_mask]
-    gen_jets = gen_jets[mult_mask]
-    gen_mults = gen_mults[mult_mask]
+    # mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    # det_particles = det_particles[mult_mask]
+    # det_jets = det_jets[mult_mask]
+    # det_mults = det_mults[mult_mask]
+    # gen_particles = gen_particles[mult_mask]
+    # gen_jets = gen_jets[mult_mask]
+    # gen_mults = gen_mults[mult_mask]
 
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)

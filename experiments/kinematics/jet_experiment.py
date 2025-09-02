@@ -198,14 +198,6 @@ class JetKinematicsExperiment(BaseExperiment):
             jet=det_jets[:train_idx],
         )
 
-        plot_kinematics(
-            self.cfg.run_dir,
-            fourmomenta_to_jetmomenta(det_jets[val_idx:test_idx]),
-            fourmomenta_to_jetmomenta(gen_jets[val_idx:test_idx]),
-            filename="pre_jets.pdf",
-            sqrt=True,
-        )
-
         det_jets = self.model.condition_coordinates.fourmomenta_to_x(det_jets)
 
         gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
@@ -319,6 +311,16 @@ class JetKinematicsExperiment(BaseExperiment):
             mult_encoding=mult_encoding,
         )
 
+        # initialize cfm (requires data)
+        self.model.init_physics(
+            pt_min=self.cfg.data.pt_min,
+            mass=self.cfg.data.mass,
+        )
+        self.model.init_coordinates()
+
+        # initialize geometry
+        self.model.init_geometry()
+
         files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
         num_events = self.cfg.data.length
         for i in range(len(files)):
@@ -360,6 +362,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 gen_mults=data["gen_mults"][val_idx:test_idx],
                 gen_jets=data["gen_jets"][val_idx:test_idx],
             )
+
             if num_events > 0:
                 num_events -= data["det_particles"].shape[0]
                 if num_events <= 0:
@@ -389,23 +392,14 @@ class JetKinematicsExperiment(BaseExperiment):
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
-            size = len(gen_particles)
+
+        size = len(gen_particles)
 
         det_jets = jetmomenta_to_fourmomenta(det_jets)
         gen_jets = jetmomenta_to_fourmomenta(gen_jets)
 
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
-
-        # initialize cfm (requires data)
-        self.model.init_physics(
-            pt_min=self.cfg.data.pt_min,
-            mass=self.cfg.data.mass,
-        )
-        self.model.init_coordinates()
-
-        # initialize geometry
-        self.model.init_geometry()
 
         if init:
             # For jet-level learning, we fit on the jet momenta directly
@@ -443,6 +437,7 @@ class JetKinematicsExperiment(BaseExperiment):
         }
 
     def _init_dataloader(self):
+
         if self.cfg.evaluation.load_samples:
             self.train_loader = None
             self.val_loader = None
@@ -541,7 +536,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 ).to(self.device)
 
             sample_batch, base = self.model.sample(
-                batch,
+                new_batch,
                 self.device,
                 self.dtype,
             )
@@ -581,23 +576,6 @@ class JetKinematicsExperiment(BaseExperiment):
 
         self.data_raw["truth"] = Batch.from_data_list(
             targets, follow_batch=["x_gen", "x_det"]
-        )
-
-        plot_kinematics(
-            self.cfg.run_dir,
-            fourmomenta_to_jetmomenta(self.data_raw["truth"].jet_det),
-            fourmomenta_to_jetmomenta(self.data_raw["truth"].jet_gen),
-            fourmomenta_to_jetmomenta(self.data_raw["samples"].jet_det),
-            filename="true_post_jets.pdf",
-            sqrt=True,
-        )
-
-        plot_kinematics(
-            self.cfg.run_dir,
-            fourmomenta_to_jetmomenta(self.data_raw["samples"].jet_det),
-            fourmomenta_to_jetmomenta(self.data_raw["samples"].jet_gen),
-            filename="sample_post_jets.pdf",
-            sqrt=True,
         )
 
         # convert the list into a dataloader

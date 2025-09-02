@@ -301,6 +301,16 @@ class KinematicsExperiment(BaseExperiment):
             mult_encoding=mult_encoding,
         )
 
+        # initialize cfm
+        self.model.init_physics(
+            pt_min=self.cfg.data.pt_min,
+            mass=self.cfg.data.mass,
+        )
+        self.model.init_coordinates()
+
+        # initialize geometry
+        self.model.init_geometry()
+
         files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
         num_events = self.cfg.data.length
         for i in range(len(files)):
@@ -376,16 +386,6 @@ class KinematicsExperiment(BaseExperiment):
         if init:
             split = self.cfg.data.train_val_test
             train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
-
-            # initialize cfm (might require data)
-            self.model.init_physics(
-                pt_min=self.cfg.data.pt_min,
-                mass=self.cfg.data.mass,
-            )
-            self.model.init_coordinates()
-
-            # initialize geometry
-            self.model.init_geometry()
 
             train_gen_mask = (
                 torch.arange(gen_particles.shape[1])[None, :]

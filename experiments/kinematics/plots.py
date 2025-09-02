@@ -365,7 +365,7 @@ def plot_kinematics(
     with PdfPages(os.path.join(path, filename)) as pdf:
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
         for i, ax in enumerate(axs.flatten()):
-            xlims = np.array(get_range([reco[..., i], gen[..., i]]))
+            xlims = np.array(get_range([reco[..., i]]))
             bins = np.linspace(xlims[0], xlims[1], 40)
             ax.hist(
                 reco[:, i],
