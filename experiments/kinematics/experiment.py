@@ -580,6 +580,8 @@ class KinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
+            # sample_batch = batch.clone()
+
             # Compute jets for sample_batch
             sample_gen_jets = torch.repeat_interleave(
                 sample_batch.jet_gen, sample_batch.x_gen_ptr.diff(), dim=0

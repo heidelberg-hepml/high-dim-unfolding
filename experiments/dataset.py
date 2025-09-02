@@ -237,7 +237,7 @@ def load_cms(data_path, cfg, dtype):
 
 
 def load_ttbar(data_path, cfg, dtype):
-    parquet_files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
+    parquet_files = sorted(glob.glob(os.path.join(data_path, "ttbar*.parquet")))
     data_parts = [ak.from_parquet(file) for file in parquet_files]
     data = ak.concatenate(data_parts, axis=0)[: cfg.length]
 

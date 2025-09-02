@@ -276,7 +276,7 @@ class CFM(nn.Module):
         if self.cfm.add_jet:
             new_batch, constituents_mask = add_jet_to_sequence(batch)
         else:
-            new_batch = batch
+            new_batch = batch.clone()
             constituents_mask = torch.ones(
                 new_batch.x_gen.shape[0],
                 device=new_batch.x_gen.device,
