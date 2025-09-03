@@ -361,12 +361,6 @@ class M2_to_ClampedM2(BaseTransform):
         y[..., self.m2_pos] = m2
         return y
 
-    # def forward(self, x, **kwargs):
-    #     return x
-
-    # def inverse(self, y, **kwargs):
-    #     return y
-
     def velocity_forward(self, v, x, y, **kwargs):
         return v
 
@@ -518,6 +512,7 @@ class Pt_to_AsinhPt(BaseTransform):
 
     def _inverse(self, asinh_ptx, **kwargs):
         asinh_pt, x1, x2, x3 = unpack_last(asinh_ptx)
+        asinh_pt = asinh_pt.clamp(min=-CUTOFF * self.scale, max=CUTOFF * self.scale)
         pt = self.center + self.scale * torch.sinh(asinh_pt / self.scale)
         return torch.stack((pt, x1, x2, x3), dim=-1)
 
@@ -542,6 +537,8 @@ class Pt_to_AsinhPt(BaseTransform):
 
     def _jac_inverse(self, asinhptx, ptx, **kwargs):
         asinhpt, x1, x2, x3 = unpack_last(asinhptx)
+
+        asinhpt = asinhpt.clamp(min=-CUTOFF * self.scale, max=CUTOFF * self.scale)
 
         zero, one = torch.zeros_like(asinhpt), torch.ones_like(asinhpt)
         # d(pt)/d(asinhpt)
