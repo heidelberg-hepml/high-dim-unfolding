@@ -6,6 +6,7 @@ import numpy as np
 
 import os, time, glob
 from omegaconf import open_dict
+from itertools import chain
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
@@ -400,6 +401,7 @@ class MultiplicityExperiment(BaseExperiment):
                 )
 
     def _evaluate_single(self, loader, title, step=None):
+        loader = chain(self.val_loader, self.test_loader)
         LOGGER.info(
             f"### Starting to evaluate model on {title} dataset with "
             f"{len(loader.dataset)} elements, batchsize {loader.batch_size} ###"

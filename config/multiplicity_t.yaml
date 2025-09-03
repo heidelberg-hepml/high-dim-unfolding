@@ -1,13 +1,13 @@
 exp_type: multiplicity
-exp_name: mult_z
+exp_name: mult_t
 
 use_mlflow: false
 
 data:
  data_dir: data/
- dataset: zplusjet
+ dataset: ttbar
  length: -1
- train_val_test: [0.8, 0.05, 0.15]
+ train_val_test: [0.9, 0.05, 0.05]
  max_num_particles: null
  diff: null
  max_constituents: -1
@@ -28,8 +28,9 @@ dist:
 train: true
 training:
  iterations: 100000
- batchsize: 4096
- lr: 1e-3
+ batchsize: 512
+ optimizer: Lion
+ lr: 2e-4
  validate_every_n_steps: 5000
  scheduler: CosineAnnealingLR
 

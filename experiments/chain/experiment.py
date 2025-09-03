@@ -177,6 +177,9 @@ class ChainExperiment(BaseExperiment):
 
         LOGGER.info("Step 2: Sampling jet kinematics...")
 
+        if self.cfg.use_true_mult:
+            self.sampled_multiplicities = None
+
         self.jet_exp.evaluate(self.sampled_multiplicities)
         self.jet_exp.plot()
 
@@ -190,6 +193,9 @@ class ChainExperiment(BaseExperiment):
         )
 
         LOGGER.info("Step 3: Sampling constituents...")
+
+        if self.cfg.use_true_jet:
+            self.sampled_jets = None
 
         self.constituents_exp.evaluate(self.sampled_multiplicities, self.sampled_jets)
         self.constituents_exp.plot()

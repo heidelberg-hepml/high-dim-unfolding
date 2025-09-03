@@ -6,7 +6,7 @@ from torch_geometric.data import Batch
 
 import os, time, glob
 from omegaconf import open_dict
-
+from itertools import chain
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
@@ -508,6 +508,7 @@ class JetKinematicsExperiment(BaseExperiment):
             LOGGER.info("Skip sampling")
 
     def _sample_events(self, loader, sampled_mults=None):
+        loader = chain(self.val_loader, self.test_loader)
         samples = []
         targets = []
         self.data_raw = {}

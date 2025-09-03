@@ -8,7 +8,7 @@ import copy
 
 import os, time, glob
 from omegaconf import open_dict
-
+from itertools import chain
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
@@ -520,6 +520,7 @@ class KinematicsExperiment(BaseExperiment):
             LOGGER.info("Skip sampling")
 
     def _sample_events(self, loader, sampled_mults=None, sampled_jets=None):
+        loader = chain(self.val_loader, self.test_loader)
         samples = []
         targets = []
         self.data_raw = {}
