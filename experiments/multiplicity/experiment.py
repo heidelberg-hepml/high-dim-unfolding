@@ -27,8 +27,6 @@ from experiments.utils import GaussianFourierProjection
 
 MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
-ADD_VAL = True
-
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):
@@ -407,8 +405,6 @@ class MultiplicityExperiment(BaseExperiment):
             f"### Starting to evaluate model on {title} dataset with "
             f"{len(loader.dataset)} elements, batchsize {loader.batch_size} ###"
         )
-        if ADD_VAL:
-            loader = chain(self.val_loader, self.test_loader)
         outputs = {}
         self.model.eval()
         nll = []

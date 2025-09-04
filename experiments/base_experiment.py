@@ -35,7 +35,7 @@ cs.store(name="base_mlp", node=MLPConfig)
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
 
-GRAD_AVG_SCALE = 30
+GRAD_AVG_SCALE = 4
 
 
 class BaseExperiment:
@@ -709,11 +709,13 @@ class BaseExperiment:
             ),
             self.cfg.training.grad_norm_avg,
         ):
-            if grad_norm > GRAD_AVG_SCALE * np.mean(
+            if grad_norm > np.mean(
+                self.train_grad_norm[-self.cfg.training.grad_norm_avg :]
+            ) + GRAD_AVG_SCALE * np.std(
                 self.train_grad_norm[-self.cfg.training.grad_norm_avg :]
             ):
                 LOGGER.warning(
-                    f"Skipping update at {step +1}, gradient norm {grad_norm:.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(self.train_grad_norm[-self.cfg.training.grad_norm_avg:]):.2f} * {GRAD_AVG_SCALE}"
+                    f"Skipping update at {step +1}, gradient norm {grad_norm:.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(self.train_grad_norm[-self.cfg.training.grad_norm_avg:]):.2f} + {GRAD_AVG_SCALE} * std {np.std(self.train_grad_norm[-self.cfg.training.grad_norm_avg:]):.2f}"
                 )
                 # self.scheduler.step()  # ensure correct total steps
                 return

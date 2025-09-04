@@ -22,8 +22,6 @@ from experiments.kinematics.observables import create_partial_jet
 from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 from experiments.utils import GaussianFourierProjection
 
-ADD_VAL = True
-
 
 class JetKinematicsExperiment(BaseExperiment):
     def init_physics(self):
@@ -522,9 +520,6 @@ class JetKinematicsExperiment(BaseExperiment):
         elif n_batches == -1:
             n_batches = len(loader)
         LOGGER.info(f"Sampling {n_batches} batches for evaluation")
-
-        if ADD_VAL:
-            loader = chain(self.val_loader, self.test_loader)
         it = iter(loader)
 
         for i in range(n_batches):
