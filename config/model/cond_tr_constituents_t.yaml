@@ -5,19 +5,23 @@ net:
 
   in_channels: null
   out_channels: 4
-  hidden_channels: 128
+  hidden_channels: 64
 
-  num_blocks: 6
+  num_blocks: 8
   num_heads: 8
-  dropout_prob: 0.1
+  dropout_prob: 0.0
+
+  increase_hidden_channels: 2
 
 net_condition:
   _target_: experiments.baselines.Transformer
 
   in_channels: null
   out_channels: null
-  hidden_channels: 128
+  hidden_channels: 64
 
-  num_blocks: 4
+  num_blocks: 6
   num_heads: 8
-  dropout_prob: 0.1
+  dropout_prob: 0.0
+
+  increase_hidden_channels: 2

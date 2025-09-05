@@ -51,6 +51,7 @@ train: true
 training:
  iterations: 100000
  batchsize: 8192
+ optimizer: Adam
  lr: 1e-3
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
