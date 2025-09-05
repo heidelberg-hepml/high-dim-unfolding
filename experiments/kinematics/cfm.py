@@ -449,6 +449,12 @@ class EventCFM(CFM):
                 fixed_dims=self.cfm.masked_dims,
                 scaling=torch.tensor([self.cfm.scaling]),
             )
+        elif coordinates_label == "StandardLogPtPhiEtaAsinhM2":
+            coordinates = c.StandardLogPtPhiEtaAsinhM2(
+                pt_min=self.pt_min,
+                fixed_dims=self.cfm.masked_dims,
+                scaling=torch.tensor([self.cfm.scaling]),
+            )
         elif coordinates_label == "IndividualStandardLogPtPhiEtaLogM2":
             coordinates = c.IndividualStandardLogPtPhiEtaLogM2(
                 pt_min=self.pt_min,

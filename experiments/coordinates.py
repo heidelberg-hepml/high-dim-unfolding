@@ -343,6 +343,23 @@ class StandardAsinhPtPhiEtaLogM2(BaseCoordinates):
         ]
 
 
+class StandardLogPtPhiEtaAsinhM2(BaseCoordinates):
+    # Fitted (log(pt), phi, eta, log(m^2))
+    def __init__(self, pt_min, fixed_dims=[], scaling=torch.ones(1, 4), **kwargs):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
+            tr.Pt_to_ClampedPt(pt_min),
+            tr.Pt_to_LogPt(),
+            tr.M2_to_AsinhM2(),
+            tr.StandardNormal(fixed_dims, scaling, contains_uniform_phi=True),
+        ]
+
+
 class StandardLogPtPhiEtaM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, m^2)
     def __init__(self, pt_min, fixed_dims=[], scaling=torch.ones(1, 4), **kwargs):
