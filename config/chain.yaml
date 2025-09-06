@@ -18,6 +18,14 @@ model_run_indices:
 
 data:
  pt_cut: 0.0
+ length: -1
+
+use_true_mult: false
+use_true_jet: false
+
+constituents_cfg:
+ evaluation:
+  n_batches: -1
 
 defaults:
   - default

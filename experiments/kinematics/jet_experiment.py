@@ -570,6 +570,8 @@ class JetKinematicsExperiment(BaseExperiment):
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
 
+            LOGGER.info(f"Sampled batch {i+1}/{n_batches}")
+
         self.data_raw["samples"] = Batch.from_data_list(
             samples, follow_batch=["x_gen", "x_det"]
         )

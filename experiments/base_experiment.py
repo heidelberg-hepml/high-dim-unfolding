@@ -35,7 +35,7 @@ cs.store(name="base_mlp", node=MLPConfig)
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
 
-GRAD_AVG_SCALE = 7
+GRAD_AVG_SCALE = 4
 MAX_GRAD_SKIPS = 5  # max consecutive gradient skips before forcing update
 
 
