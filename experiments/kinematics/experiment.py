@@ -582,6 +582,14 @@ class KinematicsExperiment(BaseExperiment):
 
             # sample_batch = batch.clone()
 
+            torch.testing.assert_close(
+                sample_batch.jet_gen,
+                new_gen_jets if sampled_jets is not None else batch.jet_gen,
+            )
+            torch.testing.assert_close(new_batch.jet_gen, new_gen_jets)
+            torch.testing.assert_close(sample_batch.jet_det, batch.jet_det)
+            torch.testing.assert_close(sample_batch.x_det, batch.x_det)
+
             # Compute jets for sample_batch
             sample_gen_jets = torch.repeat_interleave(
                 sample_batch.jet_gen, sample_batch.x_gen_ptr.diff(), dim=0

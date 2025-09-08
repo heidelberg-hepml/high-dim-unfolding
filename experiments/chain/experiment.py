@@ -114,6 +114,7 @@ class ChainExperiment(BaseExperiment):
             const_cfg.evaluation.load_samples = False
             const_cfg.plot = True
             const_cfg.data.update(self.cfg.data)
+            const_cfg.cfm.update(self.cfg.constituents_cfg.cfm)
             const_cfg.evaluation.update(self.cfg.constituents_cfg.evaluation)
 
         self.constituents_exp = KinematicsExperiment(

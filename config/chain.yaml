@@ -26,6 +26,8 @@ use_true_jet: false
 constituents_cfg:
  evaluation:
   n_batches: -1
+ cfm:
+  sort: false
 
 defaults:
   - default
