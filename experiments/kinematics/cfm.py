@@ -120,7 +120,9 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, constituents_mask = add_jet_to_sequence(batch)
+            new_batch, constituents_mask = add_jet_to_sequence(
+                batch, self.cfm.jet_to_4m
+            )
         else:
             new_batch = batch
             constituents_mask = torch.ones(
@@ -274,7 +276,9 @@ class CFM(nn.Module):
         """
 
         if self.cfm.add_jet:
-            new_batch, constituents_mask = add_jet_to_sequence(batch)
+            new_batch, constituents_mask = add_jet_to_sequence(
+                batch, self.cfm.jet_to_4m
+            )
         else:
             new_batch = batch.clone()
             constituents_mask = torch.ones(

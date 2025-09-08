@@ -97,6 +97,7 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += 4
 
             elif self.cfg.modelname == "ConditionalLGATr":
+                self.cfg.cfm.jet_to_4m = True
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim
                 )

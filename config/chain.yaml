@@ -27,7 +27,7 @@ constituents_cfg:
  evaluation:
   n_batches: -1
  cfm:
-  sort: false
+  sort: true
 
 defaults:
   - default
