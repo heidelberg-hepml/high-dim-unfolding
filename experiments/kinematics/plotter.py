@@ -346,8 +346,8 @@ def plot_jetmomenta(
 
 def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
 
-    coords = exp.model.coordinates
-    det_lvl_coords = exp.model.condition_coordinates
+    coords = exp.model.const_coordinates
+    det_lvl_coords = exp.model.condition_const_coordinates
 
     max_n = (
         min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
@@ -570,8 +570,8 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
 
 def plot_correlations(exp, filename, model_label, weights=None, mask_dict=None):
 
-    coords = exp.model.coordinates
-    det_lvl_coords = exp.model.condition_coordinates
+    coords = exp.model.const_coordinates
+    det_lvl_coords = exp.model.condition_const_coordinates
 
     with PdfPages(filename) as file:
         for name in exp.corr.keys():

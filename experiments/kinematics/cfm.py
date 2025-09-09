@@ -400,6 +400,22 @@ class JetCFM(EventCFM):
         self.scaling = torch.tensor(self.cfm.jet_coordinates_options.scaling)
         assert not self.cfm.add_constituents or not self.cfm.transpose
 
+    def sample_base(self, x0, generator=None):
+        sample = torch.randn(
+            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
+        )
+        if self.jet_coordinates.contains_phi:
+            sample[..., 1] = (
+                torch.rand(
+                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+                )
+                * 2
+                * torch.pi
+                - torch.pi
+            )
+        sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
+        return sample
+
     def batch_loss(self, batch):
         """
         Construct the conditional flow matching objective

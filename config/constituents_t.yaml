@@ -19,7 +19,6 @@ data:
  mult_encoding_dim: 0
  part_to_jet: false
 
-
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
@@ -28,7 +27,7 @@ cfm:
   pt_min: 0.0
   masked_dims: [3]
   scaling: [1,1,1,1]
- jet_coordinates: StandardPtPhiEtaM2
+ jet_coordinates: StandardLogPtPhiEtaLogM2
  jet_coordinates_options:
   pt_min: null
   masked_dims: []

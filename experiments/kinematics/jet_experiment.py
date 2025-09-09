@@ -84,15 +84,15 @@ class JetKinematicsExperiment(BaseExperiment):
             elif self.cfg.modelname == "JetConditionalLGATr":
                 self.cfg.cfm.transpose = False
                 self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim
+                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim + 2
                 )
                 if self.cfg.cfm.add_constituents:
                     self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.pos_encoding_dim + 1
+                        self.cfg.data.pos_encoding_dim + 3
                     )
                 else:
                     self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.mult_encoding_dim
+                        self.cfg.data.mult_encoding_dim + 2
                     )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
@@ -183,29 +183,25 @@ class JetKinematicsExperiment(BaseExperiment):
         # For jet-level learning, we fit on the jet momenta directly
         # We create a simple mask where each jet is treated as a single particle
         train_gen_mask = torch.ones(train_idx, 1, dtype=torch.bool)
-        self.model.coordinates.init_fit(
+        self.model.jet_coordinates.init_fit(
             gen_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
             mask=train_gen_mask,
             jet=gen_jets[:train_idx],
         )
 
         jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
-        self.model.condition_coordinates.init_fit(
+        self.model.condition_jet_coordinates.init_fit(
             det_jets[:train_idx].unsqueeze(1),
             mask=jet_train_det_mask,
             jet=det_jets[:train_idx],
         )
-
-        det_jets = self.model.condition_coordinates.fourmomenta_to_x(det_jets)
-
-        gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
 
         if self.cfg.cfm.add_constituents:
             train_det_mask = (
                 torch.arange(det_particles.shape[1])[None, :]
                 < det_mults[:train_idx, None]
             )
-            self.model.constituents_condition_coordinates.init_fit(
+            self.model.condition_const_coordinates.init_fit(
                 det_particles[:train_idx],
                 mask=train_det_mask,
                 jet=torch.repeat_interleave(
@@ -217,7 +213,7 @@ class JetKinematicsExperiment(BaseExperiment):
                 torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
             )
             det_particles[det_mask] = (
-                self.model.constituents_condition_coordinates.fourmomenta_to_x(
+                self.model.condition_const_coordinates.fourmomenta_to_x(
                     det_particles[det_mask],
                     jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
                     ptr=torch.cumsum(
@@ -228,6 +224,17 @@ class JetKinematicsExperiment(BaseExperiment):
                     ),
                 )
             )
+
+        gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
+
+        det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
+
+        plot_kinematics(
+            self.cfg.run_dir,
+            det_jets,
+            gen_jets,
+            filename="jet_kinematics_before.pdf",
+        )
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
@@ -389,9 +396,6 @@ class JetKinematicsExperiment(BaseExperiment):
 
         size = len(gen_particles)
 
-        det_jets = jetmomenta_to_fourmomenta(det_jets)
-        gen_jets = jetmomenta_to_fourmomenta(gen_jets)
-
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
@@ -399,22 +403,51 @@ class JetKinematicsExperiment(BaseExperiment):
             # For jet-level learning, we fit on the jet momenta directly
             # We create a simple mask where each jet is treated as a single particle
             train_gen_mask = torch.ones(train_idx, 1, dtype=torch.bool)
-            self.model.coordinates.init_fit(
+            self.model.jet_coordinates.init_fit(
                 gen_jets[:train_idx].unsqueeze(1),  # Add sequence dimension
                 mask=train_gen_mask,
                 jet=gen_jets[:train_idx],
             )
 
             jet_train_det_mask = torch.ones(train_idx, 1, dtype=torch.bool)
-            self.model.condition_coordinates.init_fit(
+            self.model.condition_jet_coordinates.init_fit(
                 det_jets[:train_idx].unsqueeze(1),
                 mask=jet_train_det_mask,
                 jet=det_jets[:train_idx],
             )
 
-        det_jets = self.model.condition_coordinates.fourmomenta_to_x(det_jets)
+            if self.cfg.cfm.add_constituents:
+                train_det_mask = (
+                    torch.arange(det_particles.shape[1])[None, :]
+                    < det_mults[:train_idx, None]
+                )
+                self.model.condition_const_coordinates.init_fit(
+                    det_particles[:train_idx],
+                    mask=train_det_mask,
+                    jet=torch.repeat_interleave(
+                        det_jets[:train_idx], det_mults[:train_idx], dim=0
+                    ),
+                )
 
-        gen_jets = self.model.coordinates.fourmomenta_to_x(gen_jets)
+        if self.cfg.cfm.add_constituents:
+            det_mask = (
+                torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+            )
+            det_particles[det_mask] = (
+                self.model.condition_const_coordinates.fourmomenta_to_x(
+                    det_particles[det_mask],
+                    jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+                    ptr=torch.cumsum(
+                        torch.cat(
+                            [torch.zeros(1, dtype=torch.int64), det_mults], dim=0
+                        ),
+                        dim=0,
+                    ),
+                )
+            )
+
+        det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
+        gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
 
         LOGGER.info(
             f"Preprocessed {size} events from {file} in {time.time() - t1:.2f} seconds"
@@ -535,30 +568,30 @@ class JetKinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
-            sample_batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
-                sample_batch.jet_det
+            sample_batch.jet_det = (
+                self.model.condition_jet_coordinates.x_to_fourmomenta(
+                    sample_batch.jet_det
+                )
             )
 
-            sample_batch.jet_gen = self.model.coordinates.x_to_fourmomenta(
+            sample_batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(
                 sample_batch.jet_gen
             )
 
-            batch.jet_det = self.model.condition_coordinates.x_to_fourmomenta(
+            batch.jet_det = self.model.condition_jet_coordinates.x_to_fourmomenta(
                 batch.jet_det
             )
 
-            batch.jet_gen = self.model.coordinates.x_to_fourmomenta(batch.jet_gen)
+            batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
 
             if self.cfg.cfm.add_constituents:
                 sample_batch.x_det = (
-                    self.model.constituents_condition_coordinates.x_to_fourmomenta(
+                    self.model.condition_const_coordinates.x_to_fourmomenta(
                         sample_batch.x_det
                     )
                 )
-                batch.x_det = (
-                    self.model.constituents_condition_coordinates.x_to_fourmomenta(
-                        batch.x_det
-                    )
+                batch.x_det = self.model.condition_const_coordinates.x_to_fourmomenta(
+                    batch.x_det
                 )
 
             samples.extend(sample_batch.detach().to_data_list())

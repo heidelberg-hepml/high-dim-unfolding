@@ -23,17 +23,24 @@ data:
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
- coordinates: StandardAsinhPtPhiEtaLogM2
+ const_coordinates: StandardJetScaledLogPtPhiEtaM2
+ const_coordinates_options:
+  pt_min: 0.0
+  masked_dims: [3]
+  scaling: [1,1,1,1]
+ jet_coordinates: StandardLogPtPhiEtaLogM2
+ jet_coordinates_options:
+  pt_min: null
+  masked_dims: []
+  scaling: [1,1,1,1]
  geometry:
   type: simple
   periodic: true
  transforms_float64: true
- masked_dims: []
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
  add_constituents: false
  add_mass: false
- scaling: [1.0, 1.0, 1.0, 1.0]
  weight: 0.0
  transpose: false
  unconditional: false
