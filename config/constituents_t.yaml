@@ -1,5 +1,5 @@
 exp_type: constituents
-exp_name: simplecondtest
+exp_name: consts_t
 
 use_mlflow: false
 
@@ -67,7 +67,7 @@ evaluation:
  batchsize: 4096
  classifier: false
  sample: true
- n_batches: -1
+ n_batches: 70
  eval_loss: []
  save_samples: false
  load_samples: false

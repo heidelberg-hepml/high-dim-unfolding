@@ -39,13 +39,11 @@ cfm:
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
  add_jet: true
- jet_to_4m: false
  add_mass: false
  gac: true
  weight: 0.0
  sort: true
  rescale: false
- transpose: false
 
 odeint:
  method: rk4
