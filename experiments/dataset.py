@@ -290,8 +290,8 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
-    det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
+    det_jets = (det_particles * det_mask).sum(dim=1)
+    gen_jets = (gen_particles * gen_mask).sum(dim=1)
 
     if cfg.part_to_jet:
         det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
@@ -373,8 +373,8 @@ def load_ttbar_file(file, cfg, dtype, length):
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
-    det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
+    det_jets = (det_particles * det_mask).sum(dim=1)
+    gen_jets = (gen_particles * gen_mask).sum(dim=1)
 
     if cfg.part_to_jet:
         det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))

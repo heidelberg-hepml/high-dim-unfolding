@@ -507,12 +507,7 @@ class JetConditionalLGATrCFM(JetCFM):
             constituents_mask = torch.ones(
                 x.shape[0], dtype=torch.bool, device=x.device
             )
-            plot_kinematics(
-                "/remote/gpu04/petitjean/high-dim-unfolding/runs/coords_debug",
-                x[~constituents_mask],
-                batch.jet_gen,
-                filename="jet_kinematics_before_c.pdf",
-            )
+
             ptr = batch.x_det_ptr
             det_jets = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
             ext_det_jets = torch.repeat_interleave(det_jets, ptr.diff(), dim=0)
@@ -527,12 +522,6 @@ class JetConditionalLGATrCFM(JetCFM):
             )
             fourmomenta[~constituents_mask] = det_jets
 
-            plot_kinematics(
-                "/remote/gpu04/petitjean/high-dim-unfolding/runs/coords_debug",
-                fourmomenta[~constituents_mask],
-                fourmomenta[~constituents_mask],
-                filename="jet_kinematics_before_c_4m.pdf",
-            )
             scalars = torch.cat([batch.scalars_det, x[..., [0, 3]]], dim=1)
 
         else:
@@ -568,22 +557,9 @@ class JetConditionalLGATrCFM(JetCFM):
         crossattention_mask,
         self_condition=None,
     ):
-        plot_kinematics(
-            "/remote/gpu04/petitjean/high-dim-unfolding/runs/coords_debug",
-            batch.jet_det,
-            batch.jet_gen,
-            filename="jet_kinematics_before_v.pdf",
-        )
 
         fourmomenta = self.jet_coordinates.x_to_fourmomenta(
             xt,
-        )
-
-        plot_kinematics(
-            "/remote/gpu04/petitjean/high-dim-unfolding/runs/coords_debug",
-            batch.jet_det,
-            fourmomenta,
-            filename="jet_kinematics_before_v_4m.pdf",
         )
 
         condition_mv, condition_s = condition

@@ -164,9 +164,6 @@ class JetKinematicsExperiment(BaseExperiment):
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
-        det_jets = jetmomenta_to_fourmomenta(det_jets)
-        gen_jets = jetmomenta_to_fourmomenta(gen_jets)
-
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
