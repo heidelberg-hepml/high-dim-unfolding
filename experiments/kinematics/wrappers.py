@@ -171,7 +171,8 @@ class ConditionalLGATrCFM(EventCFM):
                 ptr=ptr,
             )
         )
-        fourmomenta[~constituents_mask] = det_jets
+        if self.cfm.add_jet:
+            fourmomenta[~constituents_mask] = det_jets
 
         scalars = torch.cat([batch.scalars_det, x[..., [0, 3]]], dim=-1)
 
@@ -219,7 +220,8 @@ class ConditionalLGATrCFM(EventCFM):
             ptr=ptr,
         )
 
-        fourmomenta[~constituents_mask] = gen_jets
+        if self.cfm.add_jet:
+            fourmomenta[~constituents_mask] = gen_jets
 
         condition_mv, condition_s = condition
         if self_condition is not None:
@@ -507,8 +509,10 @@ class JetConditionalLGATrCFM(JetCFM):
             constituents_mask = torch.ones(
                 x.shape[0], dtype=torch.bool, device=x.device
             )
-
-            ptr = batch.x_det_ptr
+            ptr = batch.x_det_ptr - torch.arange(
+                batch.x_det_ptr.shape[0], device=batch.x_det_ptr.device
+            )
+            constituents_mask[ptr[:-1]] = False
             det_jets = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
             ext_det_jets = torch.repeat_interleave(det_jets, ptr.diff(), dim=0)
 

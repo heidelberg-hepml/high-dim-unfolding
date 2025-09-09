@@ -226,13 +226,6 @@ class JetKinematicsExperiment(BaseExperiment):
 
         det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
 
-        plot_kinematics(
-            self.cfg.run_dir,
-            det_jets,
-            gen_jets,
-            filename="jet_kinematics_before.pdf",
-        )
-
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
         if self.cfg.data.mult_encoding_dim > 0:
@@ -582,13 +575,29 @@ class JetKinematicsExperiment(BaseExperiment):
             batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
 
             if self.cfg.cfm.add_constituents:
+                sample_det_jets = torch.repeat_interleave(
+                    sample_batch.jet_det,
+                    sample_batch.x_det_ptr.diff(),
+                    dim=0,
+                )
+
+                batch_det_jets = torch.repeat_interleave(
+                    batch.jet_det,
+                    batch.x_det_ptr.diff(),
+                    dim=0,
+                )
+
                 sample_batch.x_det = (
                     self.model.condition_const_coordinates.x_to_fourmomenta(
-                        sample_batch.x_det
+                        sample_batch.x_det,
+                        ptr=sample_batch.x_det_ptr.diff(),
+                        jet=sample_det_jets,
                     )
                 )
                 batch.x_det = self.model.condition_const_coordinates.x_to_fourmomenta(
-                    batch.x_det
+                    batch.x_det,
+                    ptr=batch.x_det_ptr.diff(),
+                    jet=batch_det_jets,
                 )
 
             samples.extend(sample_batch.detach().to_data_list())
