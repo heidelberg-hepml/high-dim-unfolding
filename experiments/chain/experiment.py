@@ -188,11 +188,9 @@ class ChainExperiment(BaseExperiment):
         jet_samples_path = os.path.join(
             self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}"
         )
-        self.sampled_jets = fourmomenta_to_jetmomenta(
-            torch.load(
-                os.path.join(jet_samples_path, "samples.pt"), weights_only=False
-            ).jet_gen
-        )
+        self.sampled_jets = torch.load(
+            os.path.join(jet_samples_path, "samples.pt"), weights_only=False
+        ).jet_gen
 
         LOGGER.info("Step 3: Sampling constituents...")
 

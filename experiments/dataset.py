@@ -175,8 +175,8 @@ def load_zplusjet(data_path, cfg, dtype):
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
 
-    det_jets = fourmomenta_to_jetmomenta((det_particles * det_mask).sum(dim=1))
-    gen_jets = fourmomenta_to_jetmomenta((gen_particles * gen_mask).sum(dim=1))
+    det_jets = (det_particles * det_mask).sum(dim=1)
+    gen_jets = (gen_particles * gen_mask).sum(dim=1)
 
     if cfg.pt_cut > 0:
         det_mask = det_jets[..., 0] > cfg.pt_cut

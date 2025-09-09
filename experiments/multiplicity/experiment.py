@@ -48,7 +48,6 @@ class MultiplicityExperiment(BaseExperiment):
 
             self.cfg.data.max_num_particles = max_num_particles
             self.cfg.data.diff = diff
-            self.cfg.data.pt_min = pt_min
             self.load_fn = load_fn
 
             self.cfg.model.distribution = self.cfg.dist.type

@@ -8,6 +8,7 @@ from experiments.embedding import embed_data_into_ga
 from experiments.coordinates import jetmomenta_to_fourmomenta
 from experiments.dataset import positional_encoding
 from experiments.logger import LOGGER
+from experiments.kinematics.plots import plot_kinematics
 
 
 class ConditionalTransformerCFM(EventCFM):
@@ -124,13 +125,6 @@ class ConditionalLGATrCFM(EventCFM):
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
 
-    def init_coordinates(self):
-        self.coordinates = self._init_coordinates(self.cfm.coordinates)
-        self.condition_coordinates = self._init_coordinates("Fourmomenta")
-        if self.cfm.transforms_float64:
-            self.coordinates.to(torch.float64)
-            self.condition_coordinates.to(torch.float64)
-
     def get_masks(self, batch):
         _, _, gen_batch_idx, _ = embed_data_into_ga(
             batch.x_gen,
@@ -156,6 +150,31 @@ class ConditionalLGATrCFM(EventCFM):
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
+        x = batch.x_det
+        constituents_mask = torch.ones(x.shape[0], dtype=torch.bool, device=x.device)
+        if self.cfm.add_jet:
+            constituents_mask[batch.x_det_ptr[:-1]] = False
+            ptr = batch.x_det_ptr - torch.arange(
+                batch.x_det_ptr.shape[0], device=batch.x_det_ptr.device
+            )
+        else:
+            ptr = batch.x_det_ptr
+
+        det_jets = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
+        ext_det_jets = torch.repeat_interleave(det_jets, ptr.diff(), dim=0)
+
+        fourmomenta = torch.zeros_like(x)
+        fourmomenta[constituents_mask] = (
+            self.condition_const_coordinates.x_to_fourmomenta(
+                x[constituents_mask],
+                jet=ext_det_jets,
+                ptr=ptr,
+            )
+        )
+        fourmomenta[~constituents_mask] = det_jets
+
+        scalars = torch.cat([batch.scalars_det, x], dim=-1)
+
         mv, s, _, _ = embed_data_into_ga(
             batch.x_det,
             batch.scalars_det,
@@ -189,18 +208,18 @@ class ConditionalLGATrCFM(EventCFM):
             )
         else:
             ptr = batch.x_gen_ptr
-        gen_jets = torch.repeat_interleave(batch.jet_gen, ptr.diff(), dim=0)
+
+        gen_jets = self.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
+        ext_gen_jets = torch.repeat_interleave(gen_jets, ptr.diff(), dim=0)
 
         fourmomenta = torch.zeros_like(xt)
-        fourmomenta[constituents_mask] = self.coordinates.x_to_fourmomenta(
+        fourmomenta[constituents_mask] = self.const_coordinates.x_to_fourmomenta(
             xt[constituents_mask],
-            jet=gen_jets,
+            jet=ext_gen_jets,
             ptr=ptr,
         )
 
-        fourmomenta[~constituents_mask] = jetmomenta_to_fourmomenta(
-            xt[~constituents_mask]
-        )
+        fourmomenta[~constituents_mask] = gen_jets
 
         condition_mv, condition_s = condition
         if self_condition is not None:
@@ -259,12 +278,14 @@ class ConditionalLGATrCFM(EventCFM):
             raise ValueError("Non-finite values found in velocity outputs")
 
         v_straight = torch.zeros_like(v_fourmomenta)
-        v_straight[constituents_mask] = self.coordinates.velocity_fourmomenta_to_x(
-            v_fourmomenta[constituents_mask],
-            fourmomenta[constituents_mask],
-            jet=gen_jets,
-            ptr=ptr,
-        )[0]
+        v_straight[constituents_mask] = (
+            self.const_coordinates.velocity_fourmomenta_to_x(
+                v_fourmomenta[constituents_mask],
+                fourmomenta[constituents_mask],
+                jet=ext_gen_jets,
+                ptr=ptr,
+            )[0]
+        )
 
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
@@ -437,19 +458,6 @@ class JetConditionalLGATrCFM(JetCFM):
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
 
-    def init_coordinates(self):
-        self.coordinates = self._init_coordinates(self.cfm.coordinates)
-        self.condition_coordinates = self._init_coordinates("Fourmomenta")
-        if self.cfm.add_constituents:
-            self.constituents_condition_coordinates = self._init_coordinates(
-                "Fourmomenta"
-            )
-        if self.cfm.transforms_float64:
-            self.coordinates.to(torch.float64)
-            self.condition_coordinates.to(torch.float64)
-            if self.cfm.add_constituents:
-                self.constituents_condition_coordinates.to(torch.float64)
-
     def get_masks(self, batch):
         _, _, gen_batch_idx, _ = embed_data_into_ga(
             batch.jet_gen,
@@ -484,20 +492,37 @@ class JetConditionalLGATrCFM(JetCFM):
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
+
         if self.cfm.add_constituents:
-            mv, s, _, _ = embed_data_into_ga(
-                batch.x_det,
-                batch.scalars_det,
-                batch.x_det_ptr,
-                self.ga_cfg,
+            x = batch.x_det
+            constituents_mask = torch.ones(
+                x.shape[0], dtype=torch.bool, device=x.device
             )
+            ptr = batch.x_det_ptr
+            det_jets = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
+            ext_det_jets = torch.repeat_interleave(det_jets, ptr.diff(), dim=0)
+
+            fourmomenta = torch.zeros_like(x)
+            fourmomenta[constituents_mask] = (
+                self.condition_const_coordinates.x_to_fourmomenta(
+                    x[constituents_mask],
+                    jet=ext_det_jets,
+                    ptr=ptr,
+                )
+            )
+            scalars = batch.scalars_det
         else:
-            mv, s, _, _ = embed_data_into_ga(
-                batch.jet_det,
-                batch.jet_scalars_det,
-                torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
-                self.ga_cfg,
-            )
+            fourmomenta = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
+            ptr = torch.arange(batch.num_graphs + 1, device=batch.jet_det.device)
+            scalars = batch.jet_scalars_det
+
+        mv, s, _, _ = embed_data_into_ga(
+            fourmomenta,
+            scalars,
+            ptr,
+            self.ga_cfg,
+        )
+
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
         attn_kwargs = {
@@ -517,7 +542,7 @@ class JetConditionalLGATrCFM(JetCFM):
         self_condition=None,
     ):
 
-        fourmomenta = self.coordinates.x_to_fourmomenta(
+        fourmomenta = self.jet_coordinates.x_to_fourmomenta(
             xt,
         )
 
@@ -555,7 +580,7 @@ class JetConditionalLGATrCFM(JetCFM):
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
 
-        v_straight = self.coordinates.velocity_fourmomenta_to_x(
+        v_straight = self.jet_coordinates.velocity_fourmomenta_to_x(
             v_fourmomenta, fourmomenta
         )[0]
 

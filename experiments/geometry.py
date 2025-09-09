@@ -13,6 +13,9 @@ class BaseGeometry:
     def get_metric(self, y1, y2, x):
         raise NotImplementedError
 
+    def _handle_periodic(self, x):
+        raise NotImplementedError
+
 
 class SimpleGeometry:
     def get_trajectory(self, x_target, x_base, t):

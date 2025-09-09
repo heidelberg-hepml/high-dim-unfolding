@@ -4,7 +4,6 @@ from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
-import copy
 
 import os, time, glob
 from omegaconf import open_dict
@@ -59,18 +58,19 @@ class KinematicsExperiment(BaseExperiment):
             max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = (
                 load_dataset(self.cfg.data.dataset)
             )
-
             self.cfg.data.max_num_particles = max_num_particles
-            if self.cfg.data.pt_min is None:
-                self.cfg.data.pt_min = pt_min
-            if self.cfg.cfm.masked_dims is None:
-                self.cfg.cfm.masked_dims = masked_dims
+            self.cfg.cfm.const_coordinates_options.pt_min = pt_min
+            self.cfg.cfm.const_coordinates_options.fixed_dims = masked_dims
+            self.cfg.cfm.masked_dims = masked_dims
+            self.cfg.cfm.jet_coordinates_options.pt_min = jet_pt_min
+
+            self.cfg.cfm.const_coordinates_options.masked_dims = masked_dims
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
 
             if self.cfg.data.part_to_jet:
-                self.cfg.cfm.masked_dims = []
+                self.cfg.cfm.const_coordinates_options.masked_dims = []
                 self.cfg.cfm.add_jet = False
                 self.cfg.data.max_constituents = 1
 
@@ -173,10 +173,6 @@ class KinematicsExperiment(BaseExperiment):
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
         # initialize cfm (might require data)
-        self.model.init_physics(
-            pt_min=self.cfg.data.pt_min,
-            mass=self.cfg.data.mass,
-        )
         self.model.init_coordinates()
 
         # initialize geometry
@@ -185,7 +181,7 @@ class KinematicsExperiment(BaseExperiment):
         train_gen_mask = (
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
-        self.model.coordinates.init_fit(
+        self.model.const_coordinates.init_fit(
             gen_particles[:train_idx],
             mask=train_gen_mask,
             jet=torch.repeat_interleave(
@@ -193,10 +189,12 @@ class KinematicsExperiment(BaseExperiment):
             ),
         )
 
+        self.model.jet_coordinates.init_fit(gen_jets[:train_idx])
+
         train_det_mask = (
             torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         )
-        self.model.condition_coordinates.init_fit(
+        self.model.condition_const_coordinates.init_fit(
             det_particles[:train_idx],
             mask=train_det_mask,
             jet=torch.repeat_interleave(
@@ -204,23 +202,32 @@ class KinematicsExperiment(BaseExperiment):
             ),
         )
 
-        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-        det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
-            det_particles[det_mask],
-            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
-            ptr=torch.cumsum(
-                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0), dim=0
-            ),
-        )
+        self.model.condition_jet_coordinates.init_fit(det_jets[:train_idx])
 
         gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-        gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
+        gen_particles[gen_mask] = self.model.const_coordinates.fourmomenta_to_x(
             gen_particles[gen_mask],
             jet=torch.repeat_interleave(gen_jets, gen_mults, dim=0),
             ptr=torch.cumsum(
                 torch.cat([torch.zeros(1, dtype=torch.int64), gen_mults], dim=0), dim=0
             ),
         )
+
+        gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
+
+        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+        det_particles[det_mask] = (
+            self.model.condition_const_coordinates.fourmomenta_to_x(
+                det_particles[det_mask],
+                jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+                ptr=torch.cumsum(
+                    torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
+                    dim=0,
+                ),
+            )
+        )
+
+        det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
 
@@ -303,10 +310,6 @@ class KinematicsExperiment(BaseExperiment):
         )
 
         # initialize cfm
-        self.model.init_physics(
-            pt_min=self.cfg.data.pt_min,
-            mass=self.cfg.data.mass,
-        )
         self.model.init_coordinates()
 
         # initialize geometry
@@ -392,43 +395,51 @@ class KinematicsExperiment(BaseExperiment):
                 torch.arange(gen_particles.shape[1])[None, :]
                 < gen_mults[:train_idx, None]
             )
-            self.model.coordinates.init_fit(
+            self.model.const_coordinates.init_fit(
                 gen_particles[:train_idx],
                 mask=train_gen_mask,
                 jet=torch.repeat_interleave(
                     gen_jets[:train_idx], gen_mults[:train_idx], dim=0
                 ),
             )
+            self.model.jet_coordinates.init_fit(gen_jets[:train_idx])
 
             train_det_mask = (
                 torch.arange(det_particles.shape[1])[None, :]
                 < det_mults[:train_idx, None]
             )
-            self.model.condition_coordinates.init_fit(
+            self.model.condition_const_coordinates.init_fit(
                 det_particles[:train_idx],
                 mask=train_det_mask,
                 jet=torch.repeat_interleave(
                     det_jets[:train_idx], det_mults[:train_idx], dim=0
                 ),
             )
-
-        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-        det_particles[det_mask] = self.model.condition_coordinates.fourmomenta_to_x(
-            det_particles[det_mask],
-            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
-            ptr=torch.cumsum(
-                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0), dim=0
-            ),
-        )
+            self.model.condition_jet_coordinates.init_fit(det_jets[:train_idx])
 
         gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-        gen_particles[gen_mask] = self.model.coordinates.fourmomenta_to_x(
+        gen_particles[gen_mask] = self.model.const_coordinates.fourmomenta_to_x(
             gen_particles[gen_mask],
             jet=torch.repeat_interleave(gen_jets, gen_mults, dim=0),
             ptr=torch.cumsum(
                 torch.cat([torch.zeros(1, dtype=torch.int64), gen_mults], dim=0), dim=0
             ),
         )
+        gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
+
+        det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+        det_particles[det_mask] = (
+            self.model.condition_const_coordinates.fourmomenta_to_x(
+                det_particles[det_mask],
+                jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+                ptr=torch.cumsum(
+                    torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
+                    dim=0,
+                ),
+            )
+        )
+        det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
+
         LOGGER.info(
             f"Preprocessed {size} events from {file} in {time.time() - t1:.2f} seconds"
         )
@@ -581,35 +592,70 @@ class KinematicsExperiment(BaseExperiment):
                 self.dtype,
             )
 
+            sample_batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(
+                sample_batch.jet_gen
+            )
+            sample_batch.jet_det = (
+                self.model.condition_jet_coordinates.x_to_fourmomenta(
+                    sample_batch.jet_det
+                )
+            )
+            batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
+            batch.jet_det = self.model.condition_jet_coordinates.x_to_fourmomenta(
+                batch.jet_det
+            )
+
             # Compute jets for sample_batch
             sample_gen_jets = torch.repeat_interleave(
-                sample_batch.jet_gen, sample_batch.x_gen_ptr.diff(), dim=0
+                sample_batch.jet_gen,
+                sample_batch.x_gen_ptr.diff(),
+                dim=0,
             )
             sample_det_jets = torch.repeat_interleave(
-                sample_batch.jet_det, sample_batch.x_det_ptr.diff(), dim=0
+                sample_batch.jet_det,
+                sample_batch.x_det_ptr.diff(),
+                dim=0,
             )
 
             # Compute jets for original batch
             batch_gen_jets = torch.repeat_interleave(
-                batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
+                batch.jet_gen,
+                batch.x_gen_ptr.diff(),
+                dim=0,
             )
             batch_det_jets = torch.repeat_interleave(
-                batch.jet_det, batch.x_det_ptr.diff(), dim=0
+                batch.jet_det,
+                batch.x_det_ptr.diff(),
+                dim=0,
             )
 
-            sample_batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
-                sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
+            sample_batch.x_det = (
+                self.model.condition_const_coordinates.x_to_fourmomenta(
+                    sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
+                )
             )
-            sample_batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+            sample_batch.jet_det = (
+                self.model.condition_jet_coordinates.x_to_fourmomenta(
+                    sample_batch.jet_det
+                )
+            )
+            sample_batch.x_gen = self.model.const_coordinates.x_to_fourmomenta(
                 sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
             )
+            sample_batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(
+                sample_batch.jet_gen
+            )
 
-            batch.x_det = self.model.condition_coordinates.x_to_fourmomenta(
+            batch.x_det = self.model.condition_const_coordinates.x_to_fourmomenta(
                 batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
             )
-            batch.x_gen = self.model.coordinates.x_to_fourmomenta(
+            batch.jet_det = self.model.condition_jet_coordinates.x_to_fourmomenta(
+                batch.jet_det
+            )
+            batch.x_gen = self.model.const_coordinates.x_to_fourmomenta(
                 batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
             )
+            batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
 
             if not self.cfg.data.part_to_jet:
                 sample_batch.x_gen = fix_mass(

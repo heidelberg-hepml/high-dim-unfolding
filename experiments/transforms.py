@@ -622,10 +622,15 @@ class StandardNormal(BaseTransform):
         self.fixed_dims = fixed_dims
         self.mean = torch.zeros(1, 4)
         self.std = torch.ones(1, 4)
-        self.scaling = scaling
+        if type(scaling) is not torch.Tensor:
+            self.scaling = torch.tensor([scaling])
+        else:
+            self.scaling = scaling
         self.contains_uniform_phi = contains_uniform_phi
 
-    def init_fit(self, x, mask, **kwargs):
+    def init_fit(self, x, mask=None, **kwargs):
+        if mask is None:
+            mask = torch.ones(x.shape[0], dtype=torch.bool)
         self.mean = torch.mean(x[mask], dim=0, keepdim=True)
         self.std = torch.std(x[mask], dim=0, keepdim=True)
         # self.mean[:, self.fixed_dims] = 0
@@ -686,7 +691,9 @@ class StandardNormal(BaseTransform):
 class PtPhiEtaM2_to_JetScale(BaseTransform):
     def _forward(self, ptphietam2, jet, **kwargs):
         pt, phi, eta, m2 = unpack_last(ptphietam2)
-        jet_pt, jet_phi, jet_eta, _ = unpack_last(jet)
+        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+        jet_phi = get_phi(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+        jet_eta = get_eta(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
 
         pt = pt / jet_pt
         phi = phi - jet_phi
@@ -697,7 +704,9 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
     def _inverse(self, y, jet, **kwargs):
         pt, phi, eta, m2 = unpack_last(y)
-        jet_pt, jet_phi, jet_eta, _ = unpack_last(jet)
+        jet_pt = get_pt(jet).to(dtype=y.dtype, device=y.device)
+        jet_phi = get_phi(jet).to(dtype=y.dtype, device=y.device)
+        jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
 
         pt = pt * jet_pt
         phi = phi + jet_phi
@@ -707,7 +716,7 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         return torch.stack((pt, phi, eta, m2), dim=-1)
 
     def _jac_forward(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = jet[:, 0].to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
@@ -720,7 +729,7 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 
     def _jac_inverse(self, ptphietam2, y, jet, **kwargs):
 
-        jet_pt = jet[:, 0].to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
@@ -732,27 +741,39 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
     def _detjac_forward(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = jet[:, 0].to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
         return 1 / jet_pt
 
 
 class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
     def _forward(self, logptphietalogm2, jet, **kwargs):
         logpt, phi, eta, logm2 = unpack_last(logptphietalogm2)
-        jet_pt, jet_phi, jet_eta, jet_m2 = unpack_last(jet)
+        jet_pt = get_pt(jet).to(
+            dtype=logptphietalogm2.dtype, device=logptphietalogm2.device
+        )
+        jet_phi = get_phi(jet).to(
+            dtype=logptphietalogm2.dtype, device=logptphietalogm2.device
+        )
+        jet_eta = get_eta(jet).to(
+            dtype=logptphietalogm2.dtype, device=logptphietalogm2.device
+        )
+        jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
         # pt = pt / jet_pt
         logpt = logpt - torch.log(jet_pt + EPS1)
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
-        logm2 = logm2  # - torch.log(jet_m2 + EPS1)
+        logm2 = logm2 - torch.log(jet_m2 + EPS1)
 
         return torch.stack((logpt, phi, eta, logm2), dim=-1)
 
     def _inverse(self, y, jet, **kwargs):
         logpt, phi, eta, logm2 = unpack_last(y)
-        jet_pt, jet_phi, jet_eta, jet_m2 = unpack_last(jet)
+        jet_pt = get_pt(jet).to(dtype=y.dtype, device=y.device)
+        jet_phi = get_phi(jet).to(dtype=y.dtype, device=y.device)
+        jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
+        jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
         logpt = logpt + torch.log(jet_pt + EPS1)
         phi = phi + jet_phi
@@ -795,9 +816,14 @@ class IndividualNormal(BaseTransform):
     def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4)):
         super().__init__()
         self.fixed_dims = fixed_dims
-        self.scaling = scaling
+        if type(scaling) is not torch.Tensor:
+            self.scaling = torch.tensor([scaling])
+        else:
+            self.scaling = scaling
 
-    def init_fit(self, x, mask, **kwargs):
+    def init_fit(self, x, mask=None, **kwargs):
+        if mask is None:
+            mask = torch.ones_like(x[..., 0], dtype=torch.bool)
         mask = mask.unsqueeze(-1)
         self.mean = (x * mask).sum(dim=0) / mask.sum(dim=0)
         try:

@@ -39,8 +39,10 @@ class JetKinematicsExperiment(BaseExperiment):
                 load_dataset(self.cfg.data.dataset)
             )
 
-            if self.cfg.data.pt_min is None:
-                self.cfg.data.pt_min = jet_pt_min
+            self.cfg.cfm.jet_coordinates_options.pt_min = jet_pt_min
+            self.cfg.cfm.const_coordinates_options.pt_min = pt_min
+            self.cfg.cfm.const_coordinates_options.fixed_dims = masked_dims
+            self.cfg.cfm.masked_dims = []
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
@@ -173,10 +175,6 @@ class JetKinematicsExperiment(BaseExperiment):
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
         # initialize cfm (requires data)
-        self.model.init_physics(
-            pt_min=self.cfg.data.pt_min,
-            mass=self.cfg.data.mass,
-        )
         self.model.init_coordinates()
 
         # initialize geometry
@@ -312,10 +310,6 @@ class JetKinematicsExperiment(BaseExperiment):
         )
 
         # initialize cfm (requires data)
-        self.model.init_physics(
-            pt_min=self.cfg.data.pt_min,
-            mass=self.cfg.data.mass,
-        )
         self.model.init_coordinates()
 
         # initialize geometry

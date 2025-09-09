@@ -41,11 +41,13 @@ class CFM(nn.Module):
 
         self.odeint = odeint
         self.cfm = cfm
-        self.scaling = torch.tensor([cfm.scaling])
+        self.scaling = torch.tensor(self.cfm.const_coordinates_options.scaling)
 
         # initialize to base objects, this will be overwritten later
-        self.coordinates = c.BaseCoordinates()
-        self.condition_coordinates = c.BaseCoordinates()
+        self.const_coordinates = c.BaseCoordinates()
+        self.condition_const_coordinates = c.BaseCoordinates()
+        self.jet_coordinates = c.BaseCoordinates()
+        self.condition_jet_coordinates = c.BaseCoordinates()
         self.geometry = BaseGeometry()
 
         if cfm.transforms_float64:
@@ -69,8 +71,8 @@ class CFM(nn.Module):
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
         if (
-            self.coordinates.contains_phi
-            and "JetScaled" not in self.cfm.coordinates.__class__.__name__
+            self.const_coordinates.contains_phi
+            and "JetScaled" not in self.cfm.const_coordinates.__class__.__name__
         ):
             sample[..., 1] = (
                 torch.rand(
@@ -120,9 +122,7 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, constituents_mask = add_jet_to_sequence(
-                batch, self.cfm.jet_to_4m
-            )
+            new_batch, constituents_mask = add_jet_to_sequence(batch)
         else:
             new_batch = batch
             constituents_mask = torch.ones(
@@ -276,9 +276,7 @@ class CFM(nn.Module):
         """
 
         if self.cfm.add_jet:
-            new_batch, constituents_mask = add_jet_to_sequence(
-                batch, self.cfm.jet_to_4m
-            )
+            new_batch, constituents_mask = add_jet_to_sequence(batch)
         else:
             new_batch = batch.clone()
             constituents_mask = torch.ones(
@@ -362,142 +360,32 @@ class EventCFM(CFM):
         velocity_mask[:, self.cfm.masked_dims] = False
         self.register_buffer("velocity_mask", velocity_mask, persistent=False)
 
-    def init_physics(self, pt_min, mass):
-        """
-        Pass physics information to the CFM class
-
-        Parameters
-        ----------
-        pt_min: float
-            Minimum pt value for each particle
-        mass: float
-        """
-        self.pt_min = pt_min
-        self.mass = mass
-
     def init_coordinates(self):
-        self.coordinates = self._init_coordinates(self.cfm.coordinates)
-        self.condition_coordinates = self._init_coordinates(self.cfm.coordinates)
+        self.const_coordinates = getattr(c, self.cfm.const_coordinates)(
+            **self.cfm.const_coordinates_options
+        )
+        self.condition_const_coordinates = getattr(c, self.cfm.const_coordinates)(
+            **self.cfm.const_coordinates_options
+        )
+        self.jet_coordinates = getattr(c, self.cfm.jet_coordinates)(
+            **self.cfm.jet_coordinates_options
+        )
+        self.condition_jet_coordinates = getattr(c, self.cfm.jet_coordinates)(
+            **self.cfm.jet_coordinates_options
+        )
         if self.cfm.transforms_float64:
-            self.coordinates.to(torch.float64)
-            self.condition_coordinates.to(torch.float64)
-
-    def _init_coordinates(self, coordinates_label):
-        if coordinates_label == "Fourmomenta":
-            coordinates = c.Fourmomenta()
-        elif coordinates_label == "StandardFourmomenta":
-            coordinates = c.StandardFourmomenta(
-                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
-            )
-        elif coordinates_label == "PPPM2":
-            coordinates = c.PPPM2()
-        elif coordinates_label == "StandardPPPM2":
-            coordinates = c.StandardPPPM2()
-        elif coordinates_label == "PPPLogM2":
-            coordinates = c.PPPLogM2()
-        elif coordinates_label == "StandardPPPLogM2":
-            coordinates = c.StandardPPPLogM2()
-        elif coordinates_label == "EPhiPtPz":
-            coordinates = c.EPhiPtPz(pt_min=self.pt_min)
-        elif coordinates_label == "StandardEPhiPtPz":
-            coordinates = c.StandardEPhiPtPz(
-                self.cfm.masked_dims, torch.tensor([self.cfm.scaling])
-            )
-        elif coordinates_label == "PtPhiEtaE":
-            coordinates = c.PtPhiEtaE(pt_min=self.pt_min)
-        elif coordinates_label == "PtPhiEtaM2":
-            coordinates = c.PtPhiEtaM2(pt_min=self.pt_min)
-        elif coordinates_label == "StandardPtPhiEtaM2":
-            coordinates = c.StandardPtPhiEtaM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "StandardJetScaledPtPhiEtaM2":
-            coordinates = c.StandardJetScaledPtPhiEtaM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "LogPtPhiEtaE":
-            coordinates = c.LogPtPhiEtaE(self.pt_min)
-        elif coordinates_label == "LogPtPhiEtaM2":
-            coordinates = c.LogPtPhiEtaM2(self.pt_min)
-        elif coordinates_label == "PtPhiEtaLogM2":
-            coordinates = c.PtPhiEtaLogM2(pt_min=self.pt_min)
-        elif coordinates_label == "StandardPtPhiEtaLogM2":
-            coordinates = c.StandardPtPhiEtaLogM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "LogPtPhiEtaM2":
-            coordinates = c.LogPtPhiEtaM2(self.pt_min)
-        elif coordinates_label == "StandardLogPtPhiEtaM2":
-            coordinates = c.StandardLogPtPhiEtaM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "LogPtPhiEtaLogM2":
-            coordinates = c.LogPtPhiEtaLogM2(self.pt_min)
-        elif coordinates_label == "StandardLogPtPhiEtaLogM2":
-            coordinates = c.StandardLogPtPhiEtaLogM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "StandardAsinhPtPhiEtaLogM2":
-            coordinates = c.StandardAsinhPtPhiEtaLogM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "StandardLogPtPhiEtaAsinhM2":
-            coordinates = c.StandardLogPtPhiEtaAsinhM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "IndividualStandardLogPtPhiEtaLogM2":
-            coordinates = c.IndividualStandardLogPtPhiEtaLogM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "JetScaledPtPhiEtaM2":
-            coordinates = c.JetScaledPtPhiEtaM2(pt_min=self.pt_min)
-        elif coordinates_label == "JetScaledLogPtPhiEtaLogM2":
-            coordinates = c.JetScaledLogPtPhiEtaLogM2(pt_min=self.pt_min)
-        elif coordinates_label == "StandardJetScaledLogPtPhiEtaLogM2":
-            coordinates = c.StandardJetScaledLogPtPhiEtaLogM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "StandardJetScaledLogPtPhiEtaM2":
-            coordinates = c.StandardJetScaledLogPtPhiEtaM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        elif coordinates_label == "IndividualStandardJetScaledLogPtPhiEtaLogM2":
-            coordinates = c.IndividualStandardJetScaledLogPtPhiEtaLogM2(
-                pt_min=self.pt_min,
-                fixed_dims=self.cfm.masked_dims,
-                scaling=torch.tensor([self.cfm.scaling]),
-            )
-        else:
-            raise ValueError(f"coordinates={coordinates_label} not implemented")
-        return coordinates
+            self.const_coordinates.to(torch.float64)
+            self.condition_const_coordinates.to(torch.float64)
+            self.jet_coordinates.to(torch.float64)
+            self.condition_jet_coordinates.to(torch.float64)
 
     def init_geometry(self):
         # placeholder for any initialization that needs to be done
         if self.cfm.geometry.type == "simple":
             self.geometry = SimplePossiblyPeriodicGeometry(
-                contains_phi=self.coordinates.contains_phi,
+                contains_phi=self.const_coordinates.contains_phi,
                 periodic=self.cfm.geometry.periodic,
-                scale=self.cfm.scaling[1],
+                scale=self.scaling[1].item(),
             )
         else:
             raise ValueError(f"geometry={self.cfm.geometry} not implemented")
@@ -509,20 +397,8 @@ class EventCFM(CFM):
 class JetCFM(EventCFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.scaling = torch.tensor(self.cfm.jet_coordinates_options.scaling)
         assert not self.cfm.add_constituents or not self.cfm.transpose
-
-    def init_coordinates(self):
-        self.coordinates = self._init_coordinates(self.cfm.coordinates)
-        self.condition_coordinates = self._init_coordinates(self.cfm.coordinates)
-        if self.cfm.add_constituents:
-            self.constituents_condition_coordinates = self._init_coordinates(
-                self.cfm.coordinates
-            )
-        if self.cfm.transforms_float64:
-            self.coordinates.to(torch.float64)
-            self.condition_coordinates.to(torch.float64)
-            if self.cfm.add_constituents:
-                self.constituents_condition_coordinates.to(torch.float64)
 
     def batch_loss(self, batch):
         """

@@ -17,7 +17,11 @@ class BaseCoordinates(torch.nn.Module):
         self.contains_mass = False
         self.transforms = []
 
-    def init_fit(self, fourmomenta, mask, **kwargs):
+    def init_fit(self, fourmomenta, mask=None, **kwargs):
+        if mask is None:
+            mask = torch.ones(
+                fourmomenta.shape[0], dtype=torch.bool, device=fourmomenta.device
+            )
         x = fourmomenta.clone()
         assert torch.isfinite(x).all()
         for transform in self.transforms[:-1]:

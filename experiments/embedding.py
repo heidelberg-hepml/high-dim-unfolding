@@ -87,7 +87,7 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
     return multivectors, scalars, batch, mask
 
 
-def add_jet_to_sequence(batch, jet_to_fourmomenta=False):
+def add_jet_to_sequence(batch):
     new_batch = batch.clone()
 
     batchsize = len(new_batch.x_gen_ptr) - 1
@@ -109,10 +109,8 @@ def add_jet_to_sequence(batch, jet_to_fourmomenta=False):
         device=new_batch.x_gen.device,
     )
     x_gen[~insert_gen_jets] = new_batch.x_gen
-    if jet_to_fourmomenta:
-        x_gen[insert_gen_jets] = jetmomenta_to_fourmomenta(new_batch.jet_gen)
-    else:
-        x_gen[insert_gen_jets] = new_batch.jet_gen
+
+    x_gen[insert_gen_jets] = new_batch.jet_gen
     scalars_gen = torch.zeros(
         x_gen.shape[0],
         new_batch.scalars_gen.shape[1],
@@ -137,10 +135,7 @@ def add_jet_to_sequence(batch, jet_to_fourmomenta=False):
         device=new_batch.x_det.device,
     )
     x_det[~insert_det_jets] = new_batch.x_det
-    if jet_to_fourmomenta:
-        x_det[insert_det_jets] = jetmomenta_to_fourmomenta(new_batch.jet_det)
-    else:
-        x_det[insert_det_jets] = new_batch.jet_det
+    x_det[insert_det_jets] = new_batch.jet_det
 
     scalars_det = torch.zeros(
         x_det.shape[0],
