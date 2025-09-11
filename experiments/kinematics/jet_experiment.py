@@ -49,7 +49,6 @@ class JetKinematicsExperiment(BaseExperiment):
             self.cfg.cfm.pe_dim = self.cfg.data.pos_encoding_dim
 
             if self.cfg.modelname == "JetConditionalTransformer":
-                self.cfg.cfm.transpose = True
                 if self.cfg.cfm.transpose:
                     base_in_channels = 1
                 else:

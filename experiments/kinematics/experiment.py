@@ -584,7 +584,9 @@ class KinematicsExperiment(BaseExperiment):
                 assert (
                     new_batch.num_graphs == new_gen_jets.shape[0]
                 ), f"Expected {new_batch.num_graphs} jets, but got {new_gen_jets.shape[0]}."
-                new_batch.jet_gen = new_gen_jets
+                new_batch.jet_gen = self.model.jet_coordinates.fourmomenta_to_x(
+                    new_gen_jets
+                )
 
             sample_batch, base = self.model.sample(
                 new_batch,
@@ -667,22 +669,6 @@ class KinematicsExperiment(BaseExperiment):
                 batch.x_gen = fix_mass(batch.x_gen, mass=self.cfg.data.mass)
                 batch.x_det = fix_mass(batch.x_det, mass=self.cfg.data.mass)
 
-            if self.cfg.cfm.rescale:
-                summed_sample_gen_jets = torch.repeat_interleave(
-                    scatter(
-                        sample_batch.x_gen,
-                        sample_batch.x_gen_batch,
-                        dim=0,
-                        reduce="sum",
-                    ),
-                    sample_batch.x_gen_ptr.diff(),
-                    dim=0,
-                )
-                true_sample_gen_jets = jetmomenta_to_fourmomenta(sample_gen_jets)
-                sample_batch.x_gen = sample_batch.x_gen * (
-                    true_sample_gen_jets / summed_sample_gen_jets
-                )
-
             samples.extend(sample_batch.detach().to_data_list())
             targets.extend(batch.detach().to_data_list())
 
@@ -731,28 +717,6 @@ class KinematicsExperiment(BaseExperiment):
             os.path.join(path, "truth.pt"), weights_only=False, map_location=self.device
         )
         LOGGER.info(f"Loaded samples with {len(self.data_raw['samples'])} events")
-
-        if self.cfg.cfm.rescale:
-            summed_sample_gen_jets = torch.repeat_interleave(
-                scatter(
-                    self.data_raw["samples"].x_gen,
-                    self.data_raw["samples"].x_gen_batch,
-                    dim=0,
-                    reduce="sum",
-                ),
-                self.data_raw["samples"].x_gen_ptr.diff(),
-                dim=0,
-            )
-            sample_gen_jets = torch.repeat_interleave(
-                self.data_raw["samples"].jet_gen,
-                self.data_raw["samples"].x_gen_ptr.diff(),
-                dim=0,
-            )
-
-            true_sample_gen_jets = jetmomenta_to_fourmomenta(sample_gen_jets)
-            self.data_raw["samples"].x_gen = self.data_raw["samples"].x_gen * (
-                true_sample_gen_jets / summed_sample_gen_jets
-            )
 
         samples = self.data_raw["samples"].to_data_list()
 
