@@ -189,13 +189,28 @@ class ChainExperiment(BaseExperiment):
             self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}"
         )
         self.sampled_jets = torch.load(
-            os.path.join(jet_samples_path, "samples.pt"), weights_only=False
+            os.path.join(jet_samples_path, "samples.pt"),
+            weights_only=False,
+            map_location=self.device,
         ).jet_gen
 
         LOGGER.info("Step 3: Sampling constituents...")
 
         if self.cfg.use_true_jet:
-            self.sampled_jets = None
+            self.sampled_jets = torch.load(
+                os.path.join(jet_samples_path, "truth.pt"),
+                weights_only=False,
+                map_location=self.device,
+            ).jet_gen
+            if torch.tensor(self.cfg.jet_smearing).max() > 0:
+                noise = torch.randn_like(self.sampled_jets) * torch.tensor(
+                    [self.cfg.jet_smearing], device=self.device
+                )
+                self.sampled_jets += noise * self.sampled_jets
+                torch.save(
+                    self.sampled_jets.cpu(),
+                    os.path.join(jet_samples_path, "samples.pt"),
+                )
 
         self.constituents_exp.evaluate(self.sampled_multiplicities, self.sampled_jets)
         self.constituents_exp.plot()

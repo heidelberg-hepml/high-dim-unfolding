@@ -44,37 +44,51 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
             fourmomenta.dtype,
         )
         n_spurions = spurions.shape[0]
+        if ga_cfg.spurion_channels:
+            spurions = spurions.unsqueeze(0).repeat(multivectors.shape[0], 1, 1)
+            multivectors = torch.cat([multivectors, spurions], dim=1)
+            mask = torch.zeros(
+                multivectors.shape[0],
+                dtype=torch.bool,
+                device=multivectors.device,
+            )
 
-        spurion_idxs = torch.stack(
-            [ptr[:-1] + i for i in range(n_spurions)], dim=0
-        ) + n_spurions * torch.arange(batchsize, device=ptr.device)
-        spurion_idxs = spurion_idxs.permute(1, 0).flatten()
-        insert_spurion = torch.zeros(
-            multivectors.shape[0] + n_spurions * batchsize,
-            dtype=torch.bool,
-            device=multivectors.device,
-        )
-        insert_spurion[spurion_idxs] = True
-        multivectors_buffer = multivectors.clone()
-        multivectors = torch.empty(
-            insert_spurion.shape[0],
-            *multivectors.shape[1:],
-            dtype=multivectors.dtype,
-            device=multivectors.device,
-        )
-        multivectors[~insert_spurion] = multivectors_buffer
-        multivectors[insert_spurion] = spurions.repeat(batchsize, 1).unsqueeze(-2)
-        scalars_buffer = scalars.clone()
-        scalars = torch.zeros(
-            multivectors.shape[0],
-            scalars.shape[1],
-            dtype=scalars.dtype,
-            device=scalars.device,
-        )
-        scalars[~insert_spurion] = scalars_buffer
-        new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
+        else:
+            spurion_idxs = torch.stack(
+                [ptr[:-1] + i for i in range(n_spurions)], dim=0
+            ) + n_spurions * torch.arange(batchsize, device=ptr.device).unsqueeze(0)
+            spurion_idxs = spurion_idxs.permute(1, 0).flatten()
+            insert_spurion = torch.zeros(
+                multivectors.shape[0] + n_spurions * batchsize,
+                dtype=torch.bool,
+                device=multivectors.device,
+            )
+            insert_spurion[spurion_idxs] = True
+            multivectors_buffer = multivectors.clone()
+            multivectors = torch.empty(
+                insert_spurion.shape[0],
+                *multivectors.shape[1:],
+                dtype=multivectors.dtype,
+                device=multivectors.device,
+            )
+            multivectors[~insert_spurion] = multivectors_buffer
+            multivectors[insert_spurion] = spurions.repeat(batchsize, 1).unsqueeze(-2)
+            if getattr(ga_cfg, "spurion_onehot", False):
+                scalars_buffer = torch.cat(
+                    [scalars.clone(), spurion_idxs.unsqueeze(-1)], dim=0
+                )
+            else:
+                scalars_buffer = scalars.clone()
+            scalars = torch.zeros(
+                multivectors.shape[0],
+                scalars_buffer.shape[1],
+                dtype=scalars.dtype,
+                device=scalars.device,
+            )
+            scalars[~insert_spurion] = scalars_buffer
+            new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
 
-        mask = insert_spurion
+            mask = insert_spurion
     else:
         mask = torch.zeros(
             multivectors.shape[0],

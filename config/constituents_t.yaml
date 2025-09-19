@@ -18,6 +18,7 @@ data:
  pos_encoding_dim: 8
  mult_encoding_dim: 0
  part_to_jet: false
+ use_sampled_jets: false
 
 cfm:
  embed_t_dim: 8

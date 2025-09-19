@@ -22,6 +22,7 @@ data:
 
 use_true_mult: false
 use_true_jet: false
+jet_smearing: [0,0,0,0]
 
 constituents_cfg:
  evaluation:

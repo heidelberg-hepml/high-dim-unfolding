@@ -192,6 +192,48 @@ def load_zplusjet(data_path, cfg, dtype):
         gen_mults = gen_mults[mask]
         gen_pids = gen_pids[mask]
 
+    LOGGER.info(f"First mult: {gen_mults[0]}")
+
+    if getattr(cfg, "use_sampled_jets", False):
+        train = torch.load(
+            "/remote/gpu04/petitjean/high-dim-unfolding/runs/long_jets_6/z_Tr_Lion2-4_1024_noconst_2481358/samples_4/samples_train.pt",
+            weights_only=False,
+            map_location=gen_jets.device,
+        )
+        val = torch.load(
+            "/remote/gpu04/petitjean/high-dim-unfolding/runs/long_jets_6/z_Tr_Lion2-4_1024_noconst_2481358/samples_4/samples_val.pt",
+            weights_only=False,
+            map_location=gen_jets.device,
+        )
+        test = torch.load(
+            "/remote/gpu04/petitjean/high-dim-unfolding/runs/long_jets_6/z_Tr_Lion2-4_1024_noconst_2481358/samples_4/samples_test.pt",
+            weights_only=False,
+            map_location=gen_jets.device,
+        )
+        LOGGER.info(
+            f"Using sampled jets from {train.jet_gen.shape[0]} train, {val.jet_gen.shape[0]} val, {test.jet_gen.shape[0]} test events"
+        )
+        mult = torch.cat(
+            [train.x_gen_ptr.diff(), val.x_gen_ptr.diff(), test.x_gen_ptr.diff()], dim=0
+        )
+        det_jets = det_jets[:-1]
+        det_particles = det_particles[:-1]
+        det_mults = det_mults[:-1]
+        det_pids = det_pids[:-1]
+        gen_jets = gen_jets[:-1]
+        gen_particles = gen_particles[:-1]
+        gen_mults = gen_mults[:-1]
+        gen_pids = gen_pids[:-1]
+        for i in range(mult.shape[0]):
+            if mult[i] != gen_mults[i + 1]:
+                LOGGER.warning(
+                    f"Sampled jet mult {mult[i]} != gen mult {gen_mults[i]} at index {i}"
+                )
+                break
+
+        sampled_jets = torch.cat([train.jet_gen, val.jet_gen, test.jet_gen], dim=0)
+        gen_jets = sampled_jets
+
     if cfg.part_to_jet:
         det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
         det_mults = torch.ones(det_jets.shape[0], dtype=torch.int)

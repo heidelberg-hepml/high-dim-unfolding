@@ -94,7 +94,8 @@ class ConditionalLGATrCFM(EventCFM):
         net,
         net_condition,
         cfm,
-        scalar_dims,
+        scalar_inputs,
+        scalar_outputs,
         odeint,
         GA_config,
     ):
@@ -105,7 +106,7 @@ class ConditionalLGATrCFM(EventCFM):
         net_condition : torch.nn.Module
         cfm : Dict
             Information about how to set up CFM (used in parent classes)
-        scalar_dims : List[int]
+        scalar_outputs : List[int]
             Components within the used parametrization
             for which the equivariantly predicted velocity (using multivector channels)
             is overwritten by a scalar network output (using scalar channels)
@@ -119,7 +120,8 @@ class ConditionalLGATrCFM(EventCFM):
             cfm,
             odeint,
         )
-        self.scalar_dims = scalar_dims
+        self.scalar_inputs = scalar_inputs
+        self.scalar_outputs = scalar_outputs
         self.ga_cfg = GA_config if self.cfm.gac else None
         self.net = net
         self.net_condition = net_condition
@@ -174,14 +176,22 @@ class ConditionalLGATrCFM(EventCFM):
         if self.cfm.add_jet:
             fourmomenta[~constituents_mask] = det_jets
 
-        scalars = torch.cat([batch.scalars_det, x[..., [0, 3]]], dim=-1)
+        scalars = torch.cat([batch.scalars_det, x[..., self.scalar_inputs]], dim=-1)
 
-        mv, s, _, _ = embed_data_into_ga(
-            batch.x_det,
-            scalars,
-            batch.x_det_ptr,
-            self.ga_cfg,
-        )
+        if getattr(self.ga_cfg, "condition_spurions", True):
+            mv, s, _, _ = embed_data_into_ga(
+                batch.x_det,
+                scalars,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, _ = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_det_ptr,
+                None,
+            )
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
         attn_kwargs = {
@@ -229,23 +239,31 @@ class ConditionalLGATrCFM(EventCFM):
                 [
                     batch.scalars_gen,
                     self.t_embedding(t),
+                    xt[..., self.scalar_inputs],
                     self_condition,
-                    xt[..., 0],
-                    xt[..., 3],
                 ],
                 dim=-1,
             )
         else:
             scalars = torch.cat(
-                [batch.scalars_gen, self.t_embedding(t), xt[..., [0, 3]]], dim=-1
+                [batch.scalars_gen, self.t_embedding(t), xt[..., self.scalar_inputs]],
+                dim=-1,
             )
 
-        mv, s, _, spurions_mask = embed_data_into_ga(
-            fourmomenta,
-            scalars,
-            batch.x_gen_ptr,
-            self.ga_cfg,
-        )
+        if getattr(self.ga_cfg, "input_spurions", True):
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_gen_ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_gen_ptr,
+                None,
+            )
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),
@@ -301,7 +319,9 @@ class ConditionalLGATrCFM(EventCFM):
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
         row_indices = torch.where(constituents_mask)[0].unsqueeze(-1)
-        v_straight[row_indices, self.scalar_dims] = v_s[row_indices, self.scalar_dims]
+        v_straight[row_indices, self.scalar_outputs] = v_s[
+            row_indices, self.scalar_outputs
+        ]
 
         return v_straight
 
@@ -438,7 +458,8 @@ class JetConditionalLGATrCFM(JetCFM):
         net,
         net_condition,
         cfm,
-        scalar_dims,
+        scalar_inputs,
+        scalar_outputs,
         odeint,
         GA_config,
     ):
@@ -449,7 +470,7 @@ class JetConditionalLGATrCFM(JetCFM):
         net_condition : torch.nn.Module
         cfm : Dict
             Information about how to set up CFM (used in parent classes)
-        scalar_dims : List[int]
+        scalar_outputs : List[int]
             Components within the used parametrization
             for which the equivariantly predicted velocity (using multivector channels)
             is overwritten by a scalar network output (using scalar channels)
@@ -463,7 +484,8 @@ class JetConditionalLGATrCFM(JetCFM):
             cfm,
             odeint,
         )
-        self.scalar_dims = scalar_dims
+        self.scalar_inputs = scalar_inputs
+        self.scalar_outputs = scalar_outputs
         self.ga_cfg = GA_config if self.cfm.gac else None
         self.net = net
         self.net_condition = net_condition
@@ -526,22 +548,30 @@ class JetConditionalLGATrCFM(JetCFM):
             )
             fourmomenta[~constituents_mask] = det_jets
 
-            scalars = torch.cat([batch.scalars_det, x[..., [0, 3]]], dim=1)
+            scalars = torch.cat([batch.scalars_det, x[..., self.scalar_inputs]], dim=1)
 
         else:
             fourmomenta = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
             ptr = torch.arange(batch.num_graphs + 1, device=batch.jet_det.device)
             scalars = torch.cat(
-                [batch.jet_scalars_det, batch.jet_det[..., [0, 3]]],
+                [batch.jet_scalars_det, batch.jet_det[..., self.scalar_inputs]],
                 dim=1,
             )
 
-        mv, s, _, _ = embed_data_into_ga(
-            fourmomenta,
-            scalars,
-            ptr,
-            self.ga_cfg,
-        )
+        if getattr(self.ga_cfg, "condition_spurions", True):
+            mv, s, _, _ = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, _ = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_det_ptr,
+                None,
+            )
 
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
@@ -572,24 +602,35 @@ class JetConditionalLGATrCFM(JetCFM):
                 [
                     batch.jet_scalars_gen,
                     self.t_embedding(t),
+                    xt[..., self.scalar_inputs],
                     self_condition,
-                    xt[..., 0],
-                    xt[..., 3],
                 ],
                 dim=-1,
             )
         else:
             scalars = torch.cat(
-                [batch.jet_scalars_gen, self.t_embedding(t), xt[..., [0, 3]]],
+                [
+                    batch.jet_scalars_gen,
+                    self.t_embedding(t),
+                    xt[..., self.scalar_inputs],
+                ],
                 dim=-1,
             )
 
-        mv, s, _, spurions_mask = embed_data_into_ga(
-            fourmomenta,
-            scalars,
-            torch.arange(batch.num_graphs + 1, device=xt.device),
-            self.ga_cfg,
-        )
+        if getattr(self.ga_cfg, "input_spurions", True):
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                torch.arange(batch.num_graphs + 1, device=xt.device),
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                torch.arange(batch.num_graphs + 1, device=xt.device),
+                None,
+            )
 
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),
@@ -616,6 +657,6 @@ class JetConditionalLGATrCFM(JetCFM):
 
         # Overwrite transformed velocities with scalar outputs
         # (this is specific to GATr to avoid large jacobians from from log-transforms)
-        v_straight[..., self.scalar_dims] = v_s[..., self.scalar_dims]
+        v_straight[..., self.scalar_outputs] = v_s[..., self.scalar_outputs]
 
         return v_straight

@@ -1,11 +1,16 @@
 _target_: experiments.kinematics.wrappers.JetConditionalLGATrCFM
 
-scalar_dims: [0,3]
+scalar_inputs: [0,2,3]
+scalar_outputs: [0,3]
 
 GA_config:
  beam_spurion: xyplane
  beam_mirror: true
  add_time_spurion: true
+ spurion_onehot: false
+ input_spurions: true
+ condition_spurions: true
+ spurion_channels: false
 
 net:
  _target_: lgatr.nets.ConditionalLGATr

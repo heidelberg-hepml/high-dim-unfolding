@@ -4,7 +4,7 @@ from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
-
+from lgatr.interface import get_spurions
 import os, time, glob
 from omegaconf import open_dict
 from itertools import chain
@@ -97,12 +97,13 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.model.net.in_channels += 4
 
             elif self.cfg.modelname == "ConditionalLGATr":
-                self.cfg.cfm.jet_to_4m = True
                 self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.pos_encoding_dim + 2
+                    self.cfg.cfm.embed_t_dim
+                    + self.cfg.data.pos_encoding_dim
+                    + len(self.cfg.model.scalar_inputs)
                 )
                 self.cfg.model.net_condition.in_s_channels = (
-                    self.cfg.data.pos_encoding_dim + 2
+                    self.cfg.data.pos_encoding_dim + len(self.cfg.model.scalar_inputs)
                 )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
@@ -124,6 +125,22 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.model.net_condition.in_s_channels += 1
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
+                if getattr(self.cfg.model.GA_config, "spurion_channels", False):
+                    self.cfg.model.GA_config.spurion_onehot = False
+                    spurions = get_spurions(
+                        self.cfg.model.GA_config.beam_spurion,
+                        self.cfg.model.GA_config.add_time_spurion,
+                        self.cfg.model.GA_config.beam_mirror,
+                    )
+                    n_spurions = spurions.shape[0]
+                    if self.cfg.model.GA_config.condition_spurions:
+                        self.cfg.model.net_condition.in_mv_channels += n_spurions
+                    if self.cfg.model.GA_config.input_spurions:
+                        self.cfg.model.net.in_mv_channels += n_spurions
+                    self.cfg.model.net.in_mv_channels += n_spurions
+                if getattr(self.cfg.model.GA_config, "spurion_onehot", False):
+                    self.cfg.model.net.in_s_channels += 1
+                    self.cfg.model.net_condition.in_s_channels += 1
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -147,6 +164,9 @@ class KinematicsExperiment(BaseExperiment):
             self._init_data(data_path)
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
+        )
+        LOGGER.info(
+            f"first train mult: {self.train_data[0].x_gen.shape[0]}, first val mult: {self.val_data[0].x_gen.shape[0]}, first test mult: {self.test_data[0].x_gen.shape[0]}"
         )
 
     def _init_data(self, data_path):
@@ -461,30 +481,20 @@ class KinematicsExperiment(BaseExperiment):
             self.test_loader = None
             return
 
+        if getattr(self.cfg.evaluation, "sample_all", False):
+            shuffle = False
+        else:
+            shuffle = True
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
             num_replicas=self.world_size,
             rank=self.rank,
-            shuffle=True,
+            shuffle=shuffle,
         )
         self.train_loader = DataLoader(
             dataset=self.train_data,
             batch_size=self.cfg.training.batchsize // self.world_size,
             sampler=train_sampler,
-            follow_batch=["x_gen", "x_det"],
-            num_workers=2,
-            pin_memory=True,
-        )
-        test_sampler = torch.utils.data.DistributedSampler(
-            self.test_data,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=False,
-        )
-        self.test_loader = DataLoader(
-            dataset=self.test_data,
-            batch_size=self.cfg.evaluation.batchsize // self.world_size,
-            sampler=test_sampler,
             follow_batch=["x_gen", "x_det"],
             num_workers=2,
             pin_memory=True,
@@ -499,6 +509,20 @@ class KinematicsExperiment(BaseExperiment):
             dataset=self.val_data,
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=val_sampler,
+            follow_batch=["x_gen", "x_det"],
+            num_workers=2,
+            pin_memory=True,
+        )
+        test_sampler = torch.utils.data.DistributedSampler(
+            self.test_data,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+        self.test_loader = DataLoader(
+            dataset=self.test_data,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=test_sampler,
             follow_batch=["x_gen", "x_det"],
             num_workers=2,
             pin_memory=True,
@@ -548,6 +572,8 @@ class KinematicsExperiment(BaseExperiment):
 
         for i in range(n_batches):
             batch = next(it).to(self.device)
+            if i == 0:
+                LOGGER.info(f"first mult: {batch.x_gen_ptr.diff()[0]}")
 
             if sampled_mults is not None:
                 new_batch = batch.clone()
@@ -636,28 +662,17 @@ class KinematicsExperiment(BaseExperiment):
                     sample_batch.x_det, jet=sample_det_jets, ptr=sample_batch.x_det_ptr
                 )
             )
-            sample_batch.jet_det = (
-                self.model.condition_jet_coordinates.x_to_fourmomenta(
-                    sample_batch.jet_det
-                )
-            )
             sample_batch.x_gen = self.model.const_coordinates.x_to_fourmomenta(
                 sample_batch.x_gen, jet=sample_gen_jets, ptr=sample_batch.x_gen_ptr
-            )
-            sample_batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(
-                sample_batch.jet_gen
             )
 
             batch.x_det = self.model.condition_const_coordinates.x_to_fourmomenta(
                 batch.x_det, jet=batch_det_jets, ptr=batch.x_det_ptr
             )
-            batch.jet_det = self.model.condition_jet_coordinates.x_to_fourmomenta(
-                batch.jet_det
-            )
+
             batch.x_gen = self.model.const_coordinates.x_to_fourmomenta(
                 batch.x_gen, jet=batch_gen_jets, ptr=batch.x_gen_ptr
             )
-            batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
 
             if not self.cfg.data.part_to_jet:
                 sample_batch.x_gen = fix_mass(

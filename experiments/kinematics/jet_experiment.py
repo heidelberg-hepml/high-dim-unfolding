@@ -3,7 +3,7 @@ import torch
 from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
-
+from lgatr.interface import get_spurions
 import os, time, glob
 from omegaconf import open_dict
 from itertools import chain
@@ -83,15 +83,20 @@ class JetKinematicsExperiment(BaseExperiment):
             elif self.cfg.modelname == "JetConditionalLGATr":
                 self.cfg.cfm.transpose = False
                 self.cfg.model.net.in_s_channels = (
-                    self.cfg.cfm.embed_t_dim + self.cfg.data.mult_encoding_dim + 2
+                    self.cfg.cfm.embed_t_dim
+                    + self.cfg.data.mult_encoding_dim
+                    + len(self.cfg.model.scalar_inputs)
                 )
                 if self.cfg.cfm.add_constituents:
                     self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.pos_encoding_dim + 3
+                        self.cfg.data.pos_encoding_dim
+                        + len(self.cfg.model.scalar_inputs)
+                        + 1
                     )
                 else:
                     self.cfg.model.net_condition.in_s_channels = (
-                        self.cfg.data.mult_encoding_dim + 2
+                        self.cfg.data.mult_encoding_dim
+                        + len(self.cfg.model.scalar_inputs)
                     )
                 self.cfg.model.net_condition.out_mv_channels = (
                     self.cfg.model.net.hidden_mv_channels
@@ -107,6 +112,22 @@ class JetKinematicsExperiment(BaseExperiment):
                 )
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
+                if getattr(self.cfg.model.GA_config, "spurion_channels", False):
+                    self.cfg.model.GA_config.spurion_onehot = False
+                    spurions = get_spurions(
+                        self.cfg.model.GA_config.beam_spurion,
+                        self.cfg.model.GA_config.add_time_spurion,
+                        self.cfg.model.GA_config.beam_mirror,
+                    )
+                    n_spurions = spurions.shape[0]
+                    if self.cfg.model.GA_config.condition_spurions:
+                        self.cfg.model.net_condition.in_mv_channels += n_spurions
+                    if self.cfg.model.GA_config.input_spurions:
+                        self.cfg.model.net.in_mv_channels += n_spurions
+                    self.cfg.model.net.in_mv_channels += n_spurions
+                if getattr(self.cfg.model.GA_config, "spurion_onehot", False):
+                    self.cfg.model.net.in_s_channels += 1
+                    self.cfg.model.net_condition.in_s_channels += 1
 
             elif self.cfg.modelname == "JetMLP":
                 base_in_channels = 4
@@ -147,6 +168,9 @@ class JetKinematicsExperiment(BaseExperiment):
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training jets, {len(self.val_data)} validation jets, and {len(self.test_data)} test jets in {time.time() - t0:.2f} seconds"
         )
+        LOGGER.info(
+            f"first train mult: {self.train_data[0].x_gen.shape[0]}, first val mult: {self.val_data[0].x_gen.shape[0]}, first test mult: {self.test_data[0].x_gen.shape[0]}"
+        )
 
     def _init_data(self, data_path):
         t0 = time.time()
@@ -169,6 +193,9 @@ class JetKinematicsExperiment(BaseExperiment):
 
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
+        LOGGER.info(
+            f"first train mult: {gen_mults[0]}, first val mult: {gen_mults[train_idx]}, first test mult: {gen_mults[val_idx]}"
+        )
 
         # initialize cfm (requires data)
         self.model.init_coordinates()
@@ -459,11 +486,15 @@ class JetKinematicsExperiment(BaseExperiment):
             self.val_loader = None
             self.test_loader = None
             return
+        if getattr(self.cfg.evaluation, "sample_all", False):
+            shuffle = False
+        else:
+            shuffle = True
         train_sampler = torch.utils.data.DistributedSampler(
             self.train_data,
             num_replicas=self.world_size,
             rank=self.rank,
-            shuffle=True,
+            shuffle=shuffle,
         )
         self.train_loader = DataLoader(
             dataset=self.train_data,
@@ -511,7 +542,18 @@ class JetKinematicsExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         self.model.eval()
-        if self.cfg.evaluation.sample:
+        if getattr(self.cfg.evaluation, "sample_all", False):
+            LOGGER.info("Sampling all datasets for evaluation")
+            t0 = time.time()
+            self._sample_events(
+                loaders["train"], sampled_mults, filename="samples_train"
+            )
+            self._sample_events(loaders["val"], sampled_mults, filename="samples_val")
+            self._sample_events(loaders["test"], sampled_mults, filename="samples_test")
+            loaders["gen"] = self.sample_loader
+            dt = time.time() - t0
+            LOGGER.info(f"Finished sampling after {dt/60:.2f}min")
+        elif self.cfg.evaluation.sample:
             t0 = time.time()
             self._sample_events(loaders["test"], sampled_mults)
             loaders["gen"] = self.sample_loader
@@ -523,7 +565,7 @@ class JetKinematicsExperiment(BaseExperiment):
         else:
             LOGGER.info("Skip sampling")
 
-    def _sample_events(self, loader, sampled_mults=None):
+    def _sample_events(self, loader, sampled_mults=None, filename=None):
         samples = []
         targets = []
         self.data_raw = {}
@@ -541,6 +583,9 @@ class JetKinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
             new_batch = batch.clone()
+
+            if i == 0:
+                LOGGER.info(f"first mult: {batch.x_gen_ptr.diff()[0]}")
 
             if sampled_mults is not None:
                 new_batch.jet_scalars_gen = self.model.mult_encoding(
@@ -632,6 +677,12 @@ class JetKinematicsExperiment(BaseExperiment):
             LOGGER.info(f"Saving samples in {path}")
             torch.save(self.data_raw["samples"], os.path.join(path, "samples.pt"))
             torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
+        if getattr(self.cfg.evaluation, "sample_all", False):
+            path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
+            os.makedirs(os.path.join(path), exist_ok=True)
+            LOGGER.info(f"Saving samples in {path}")
+            torch.save(self.data_raw["samples"], os.path.join(path, f"{filename}.pt"))
+            # torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
 
     def _load_samples(self):
         path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.warm_start_idx}")
