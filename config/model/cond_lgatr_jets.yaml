@@ -7,7 +7,6 @@ GA_config:
  beam_spurion: xyplane
  beam_mirror: true
  add_time_spurion: true
- spurion_onehot: false
  input_spurions: true
  condition_spurions: true
  spurion_channels: false

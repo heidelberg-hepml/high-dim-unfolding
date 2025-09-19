@@ -122,24 +122,40 @@ class ConditionalLGATrCFM(EventCFM):
         )
         self.scalar_inputs = scalar_inputs
         self.scalar_outputs = scalar_outputs
-        self.ga_cfg = GA_config if self.cfm.gac else None
+        self.ga_cfg = GA_config
         self.net = net
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
-        _, _, gen_batch_idx, _ = embed_data_into_ga(
-            batch.x_gen,
-            batch.scalars_gen,
-            batch.x_gen_ptr,
-            self.ga_cfg,
-        )
-        _, _, det_batch_idx, _ = embed_data_into_ga(
-            batch.x_det,
-            batch.scalars_det,
-            batch.x_det_ptr,
-            self.ga_cfg,
-        )
+        if getattr(self.ga_cfg, "input_spurions", False):
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.x_gen,
+                batch.scalars_gen,
+                batch.x_gen_ptr,
+                self.ga_cfg,
+            )
+        else:
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.x_gen,
+                batch.scalars_gen,
+                batch.x_gen_ptr,
+                None,
+            )
+        if getattr(self.ga_cfg, "condition_spurions", True):
+            _, _, det_batch_idx, _ = embed_data_into_ga(
+                batch.x_det,
+                batch.scalars_det,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            _, _, det_batch_idx, _ = embed_data_into_ga(
+                batch.x_det,
+                batch.scalars_det,
+                batch.x_det_ptr,
+                None,
+            )
         attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
         condition_attention_mask = xformers_mask(
             det_batch_idx, materialize=not self.use_xformers
@@ -486,32 +502,56 @@ class JetConditionalLGATrCFM(JetCFM):
         )
         self.scalar_inputs = scalar_inputs
         self.scalar_outputs = scalar_outputs
-        self.ga_cfg = GA_config if self.cfm.gac else None
+        self.ga_cfg = GA_config
         self.net = net
         self.net_condition = net_condition
         self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
-        _, _, gen_batch_idx, _ = embed_data_into_ga(
-            batch.jet_gen,
-            batch.jet_scalars_gen,
-            torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
-            self.ga_cfg,
-        )
-        if self.cfm.add_constituents:
-            _, _, det_batch_idx, _ = embed_data_into_ga(
-                batch.x_det,
-                batch.scalars_det,
-                batch.x_det_ptr,
-                self.ga_cfg,
-            )
-        else:
-            _, _, det_batch_idx, _ = embed_data_into_ga(
-                batch.jet_det,
-                batch.jet_scalars_det,
+        if getattr(self.ga_cfg, "input_spurions", True):
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.jet_gen,
+                batch.jet_scalars_gen,
                 torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
                 self.ga_cfg,
             )
+        else:
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.jet_gen,
+                batch.jet_scalars_gen,
+                torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                None,
+            )
+        if self.cfm.add_constituents:
+            if getattr(self.ga_cfg, "condition_spurions", True):
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.x_det,
+                    batch.scalars_det,
+                    batch.x_det_ptr,
+                    self.ga_cfg,
+                )
+            else:
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.x_det,
+                    batch.scalars_det,
+                    batch.x_det_ptr,
+                    None,
+                )
+        else:
+            if getattr(self.ga_cfg, "condition_spurions", True):
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.jet_det,
+                    batch.jet_scalars_det,
+                    torch.arange(batch.num_graphs + 1, device=batch.jet_det.device),
+                    self.ga_cfg,
+                )
+            else:
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.jet_det,
+                    batch.jet_scalars_det,
+                    torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                    None,
+                )
 
         attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
         condition_attention_mask = xformers_mask(
@@ -562,14 +602,14 @@ class JetConditionalLGATrCFM(JetCFM):
             mv, s, _, _ = embed_data_into_ga(
                 fourmomenta,
                 scalars,
-                batch.x_det_ptr,
+                ptr,
                 self.ga_cfg,
             )
         else:
             mv, s, _, _ = embed_data_into_ga(
                 fourmomenta,
                 scalars,
-                batch.x_det_ptr,
+                ptr,
                 None,
             )
 
@@ -578,7 +618,21 @@ class JetConditionalLGATrCFM(JetCFM):
         attn_kwargs = {
             "attn_bias" if self.use_xformers else "attn_mask": attention_mask
         }
+
+        LOGGER.info(f"mv in shape: {mv.shape}, s in shape: {s.shape}")
+        LOGGER.info(f"cond mv in: {mv}, cond s in: {s}")
+
+        assert torch.isfinite(mv).all() and torch.isfinite(s).all()
+
         condition_mv, condition_s = self.net_condition(mv, s, **attn_kwargs)
+
+        LOGGER.info(
+            f"mv out shape: {condition_mv.shape}, s out shape: {condition_s.shape}"
+        )
+        LOGGER.info(f"cond mv out: {condition_mv}, cond s out: {condition_s}")
+
+        assert torch.isfinite(condition_mv).all() and torch.isfinite(condition_s).all()
+
         return condition_mv, condition_s
 
     def get_velocity(
@@ -632,6 +686,15 @@ class JetConditionalLGATrCFM(JetCFM):
                 None,
             )
 
+        LOGGER.info(f"mv in shape: {mv.shape}, s in shape: {s.shape}")
+        LOGGER.info(
+            f"cond mv in shape: {condition_mv.shape}, cond s in shape: {condition_s.shape}"
+        )
+        LOGGER.info(f"mv in: {mv}, s in: {s}")
+
+        assert torch.isfinite(mv).all() and torch.isfinite(s).all()
+        assert torch.isfinite(condition_mv).all() and torch.isfinite(condition_s).all()
+
         mv_outputs, s_outputs = self.net(
             multivectors=mv.unsqueeze(0),
             multivectors_condition=condition_mv,
@@ -647,6 +710,14 @@ class JetConditionalLGATrCFM(JetCFM):
 
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
+
+        LOGGER.info(f"mv out shape: {mv_outputs.shape}, s out shape: {s_outputs.shape}")
+
+        LOGGER.info(f"mv_outputs: {mv_outputs}, s_outputs: {s_outputs}")
+
+        assert torch.isfinite(mv_outputs).all() and torch.isfinite(s_outputs).all()
+
+        LOGGER.info(f"spurions_mask: {spurions_mask}")
 
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]

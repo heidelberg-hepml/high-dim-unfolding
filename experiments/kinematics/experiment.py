@@ -126,7 +126,6 @@ class KinematicsExperiment(BaseExperiment):
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
                 if getattr(self.cfg.model.GA_config, "spurion_channels", False):
-                    self.cfg.model.GA_config.spurion_onehot = False
                     spurions = get_spurions(
                         self.cfg.model.GA_config.beam_spurion,
                         self.cfg.model.GA_config.add_time_spurion,
@@ -138,8 +137,9 @@ class KinematicsExperiment(BaseExperiment):
                     if self.cfg.model.GA_config.input_spurions:
                         self.cfg.model.net.in_mv_channels += n_spurions
                     self.cfg.model.net.in_mv_channels += n_spurions
-                if getattr(self.cfg.model.GA_config, "spurion_onehot", False):
+                if getattr(self.cfg.model.GA_config, "input_spurions", True):
                     self.cfg.model.net.in_s_channels += 1
+                if getattr(self.cfg.model.GA_config, "condition_spurions", True):
                     self.cfg.model.net_condition.in_s_channels += 1
 
             # copy model-specific parameters
@@ -164,9 +164,6 @@ class KinematicsExperiment(BaseExperiment):
             self._init_data(data_path)
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training events, {len(self.val_data)} validation events, and {len(self.test_data)} test events in {time.time() - t0:.2f} seconds"
-        )
-        LOGGER.info(
-            f"first train mult: {self.train_data[0].x_gen.shape[0]}, first val mult: {self.val_data[0].x_gen.shape[0]}, first test mult: {self.test_data[0].x_gen.shape[0]}"
         )
 
     def _init_data(self, data_path):
@@ -572,8 +569,6 @@ class KinematicsExperiment(BaseExperiment):
 
         for i in range(n_batches):
             batch = next(it).to(self.device)
-            if i == 0:
-                LOGGER.info(f"first mult: {batch.x_gen_ptr.diff()[0]}")
 
             if sampled_mults is not None:
                 new_batch = batch.clone()

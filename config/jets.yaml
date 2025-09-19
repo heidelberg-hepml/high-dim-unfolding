@@ -1,5 +1,5 @@
 exp_type: jets
-exp_name: simplecondtest
+exp_name: jets
 
 use_mlflow: false
 
@@ -56,10 +56,10 @@ odeint:
 
 train: true
 training:
- iterations: 100000
- batchsize: 8192
- optimizer: Adam
- lr: 1e-3
+ iterations: 200000
+ batchsize: 1024
+ optimizer: Lion
+ lr: 2e-4
  scheduler: CosineAnnealingLR
  validate_every_n_steps: 5000
  clip_grad_norm: 5.

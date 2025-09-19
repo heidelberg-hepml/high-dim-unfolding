@@ -510,6 +510,10 @@ class JetCFM(EventCFM):
 
         distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
 
+        LOGGER.info(f"loss: {loss}")
+        LOGGER.info(f"vp: {vp}")
+        LOGGER.info(f"vt: {vt}")
+
         return loss.mean(), distance_particlewise
 
     def sample(self, batch, device, dtype):

@@ -113,7 +113,6 @@ class JetKinematicsExperiment(BaseExperiment):
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_s_channels += 4
                 if getattr(self.cfg.model.GA_config, "spurion_channels", False):
-                    self.cfg.model.GA_config.spurion_onehot = False
                     spurions = get_spurions(
                         self.cfg.model.GA_config.beam_spurion,
                         self.cfg.model.GA_config.add_time_spurion,
@@ -124,9 +123,9 @@ class JetKinematicsExperiment(BaseExperiment):
                         self.cfg.model.net_condition.in_mv_channels += n_spurions
                     if self.cfg.model.GA_config.input_spurions:
                         self.cfg.model.net.in_mv_channels += n_spurions
-                    self.cfg.model.net.in_mv_channels += n_spurions
-                if getattr(self.cfg.model.GA_config, "spurion_onehot", False):
+                if getattr(self.cfg.model.GA_config, "input_spurions", True):
                     self.cfg.model.net.in_s_channels += 1
+                if getattr(self.cfg.model.GA_config, "condition_spurions", True):
                     self.cfg.model.net_condition.in_s_channels += 1
 
             elif self.cfg.modelname == "JetMLP":
@@ -168,9 +167,6 @@ class JetKinematicsExperiment(BaseExperiment):
         LOGGER.info(
             f"Created {self.cfg.data.dataset} with {len(self.train_data)} training jets, {len(self.val_data)} validation jets, and {len(self.test_data)} test jets in {time.time() - t0:.2f} seconds"
         )
-        LOGGER.info(
-            f"first train mult: {self.train_data[0].x_gen.shape[0]}, first val mult: {self.val_data[0].x_gen.shape[0]}, first test mult: {self.test_data[0].x_gen.shape[0]}"
-        )
 
     def _init_data(self, data_path):
         t0 = time.time()
@@ -193,9 +189,6 @@ class JetKinematicsExperiment(BaseExperiment):
 
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
-        LOGGER.info(
-            f"first train mult: {gen_mults[0]}, first val mult: {gen_mults[train_idx]}, first test mult: {gen_mults[val_idx]}"
-        )
 
         # initialize cfm (requires data)
         self.model.init_coordinates()
@@ -583,9 +576,6 @@ class JetKinematicsExperiment(BaseExperiment):
         for i in range(n_batches):
             batch = next(it).to(self.device)
             new_batch = batch.clone()
-
-            if i == 0:
-                LOGGER.info(f"first mult: {batch.x_gen_ptr.diff()[0]}")
 
             if sampled_mults is not None:
                 new_batch.jet_scalars_gen = self.model.mult_encoding(
