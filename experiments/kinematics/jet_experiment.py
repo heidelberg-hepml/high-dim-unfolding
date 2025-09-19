@@ -123,10 +123,11 @@ class JetKinematicsExperiment(BaseExperiment):
                         self.cfg.model.net_condition.in_mv_channels += n_spurions
                     if self.cfg.model.GA_config.input_spurions:
                         self.cfg.model.net.in_mv_channels += n_spurions
-                if getattr(self.cfg.model.GA_config, "input_spurions", True):
-                    self.cfg.model.net.in_s_channels += 1
-                if getattr(self.cfg.model.GA_config, "condition_spurions", True):
-                    self.cfg.model.net_condition.in_s_channels += 1
+                else:
+                    if getattr(self.cfg.model.GA_config, "input_spurions", True):
+                        self.cfg.model.net.in_s_channels += 1
+                    if getattr(self.cfg.model.GA_config, "condition_spurions", True):
+                        self.cfg.model.net_condition.in_s_channels += 1
 
             elif self.cfg.modelname == "JetMLP":
                 base_in_channels = 4
