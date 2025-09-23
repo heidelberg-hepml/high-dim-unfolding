@@ -1,3 +1,4 @@
+import math
 import torch
 from lgatr.interface import embed_vector, get_spurions
 
@@ -45,7 +46,7 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
             fourmomenta.dtype,
         )
         n_spurions = spurions.shape[0]
-        if ga_cfg.spurion_channels:
+        if getattr(ga_cfg, "spurion_channels", False):
             spurions = spurions.unsqueeze(0).repeat(multivectors.shape[0], 1, 1)
             multivectors = torch.cat([multivectors, spurions], dim=1)
             mask = torch.zeros(
@@ -84,9 +85,10 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
                 device=scalars.device,
             )
             scalars[~insert_spurion] = scalars_buffer
-            scalars = torch.cat(
-                [scalars, insert_spurion.to(scalars.dtype).unsqueeze(-1)], dim=-1
-            )
+            if hasattr(ga_cfg, "spurion_channels"):
+                scalars = torch.cat(
+                    [scalars, insert_spurion.to(scalars.dtype).unsqueeze(-1)], dim=-1
+                )
             new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
 
             mask = insert_spurion
@@ -174,3 +176,117 @@ def add_jet_to_sequence(batch):
     new_batch.x_det_batch = get_batch_from_ptr(new_batch.x_det_ptr)
 
     return new_batch, ~insert_gen_jets
+
+
+import torch
+
+
+def add_jet_det_and_stop_to_x_gen(batch):
+    """
+    Modify only x_gen by:
+      1. Prepending jet_det at the start of each sequence.
+      2. Appending a sampled stop token at the end of each sequence.
+
+    Args:
+        batch: original batch object
+    """
+    new_batch = batch.clone()
+    device = new_batch.x_gen.device
+    batchsize = len(new_batch.x_gen_ptr) - 1
+    arange = torch.arange(batchsize, device=device)
+
+    extra_tokens = 2 * batchsize
+    x_gen = torch.empty(
+        new_batch.x_gen.shape[0] + extra_tokens,
+        *new_batch.x_gen.shape[1:],
+        dtype=new_batch.x_gen.dtype,
+        device=device,
+    )
+    scalars_gen = torch.zeros(
+        x_gen.shape[0],
+        new_batch.scalars_gen.shape[1] + 2,  # +2 channels
+        dtype=new_batch.scalars_gen.dtype,
+        device=device,
+    )
+
+    starts = new_batch.x_gen_ptr[:-1] + 2 * arange  # start insert positions
+    ends = new_batch.x_gen_ptr[1:] + 2 * arange  # end insert positions
+
+    insert_start = torch.zeros(x_gen.shape[0], dtype=torch.bool, device=device)
+    insert_start[starts] = True
+    insert_end = torch.zeros(x_gen.shape[0], dtype=torch.bool, device=device)
+    insert_end[ends] = True
+    insert_mask = insert_start | insert_end
+
+    x_gen[~insert_mask] = new_batch.x_gen
+    scalars_gen[~insert_mask, :-2] = new_batch.scalars_gen
+
+    # Insert jet_det at starts
+    x_gen[starts] = new_batch.jet_det
+
+    # Insert sampled stop token at ends
+    stop_tokens = sample_stop_tokens(batchsize, device=device, dtype=x_gen.dtype)
+    x_gen[ends] = stop_tokens
+
+    # Add channels indicating inserted token
+    scalars_gen[:, -2] = insert_start.to(scalars_gen.dtype)
+    scalars_gen[:, -1] = insert_end.to(scalars_gen.dtype)
+
+    # Update batch
+    new_batch.x_gen = x_gen
+    new_batch.scalars_gen = scalars_gen
+    # shift pointers: +2 per sequence
+    new_batch.x_gen_ptr[1:] = new_batch.x_gen_ptr[1:] + 2 * arange + 2
+    new_batch.x_gen_batch = get_batch_from_ptr(new_batch.x_gen_ptr)
+
+    return new_batch, ~insert_mask
+
+
+def sample_stop_tokens(
+    n: int,
+    dtype: torch.dtype,
+    device: torch.device,
+    mu: float = 5.0,
+    sigma: float = 0.08,
+    kappa: float = 200.0,
+    theta0: float = 0.0,
+) -> torch.Tensor:
+    # θ ~ von Mises
+    u1 = torch.rand(n, device=device)
+    u2 = torch.rand(n, device=device)
+    a = 1.0 + math.sqrt(1.0 + 4.0 * kappa**2)
+    b = (a - math.sqrt(2 * a)) / (2 * kappa)
+    r = (1 + b**2) / (2 * b)
+    thetas = torch.zeros(n, device=device)
+    for i in range(n):
+        while True:
+            u = torch.rand(3, device=device)
+            z = torch.cos(math.pi * u[0])
+            f = (1 + r * z) / (r + z)
+            c = kappa * (r - f)
+            if u[1] < c * (2 - c) or u[1] <= c * torch.exp(1 - c):
+                break
+        thetas[i] = (torch.sign(u[2] - 0.5) * torch.acos(f) + theta0) % (2 * math.pi)
+    # z1,z2,z3 ~ Normal(mu, sigma)
+    z = mu + sigma * torch.randn(n, 3, device=device)
+    return torch.cat([thetas[:, None], z], dim=1).to(dtype)
+
+
+def stop_threshold_fn(
+    token,
+    mu=torch.tensor([5.0, 5.0, 5.0]),
+    sigma=0.08,
+    theta0=0.0,
+    kappa=200.0,
+    tau=10.0,
+):
+    # token: shape [4]  (theta, z1, z2, z3)
+    theta = token[0]
+    z = token[1:]
+    # circular difference wrapped to [-pi,pi]
+    dtheta = ((theta - theta0 + math.pi) % (2 * math.pi)) - math.pi
+    sigma_theta = 1.0 / math.sqrt(kappa)  # von Mises -> approx Normal
+    d2 = (dtheta**2) / (sigma_theta**2) + ((z - mu.to(z.device)) ** 2).sum() / (
+        sigma**2
+    )
+    return d2 < tau

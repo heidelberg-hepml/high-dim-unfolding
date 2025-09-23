@@ -1,6 +1,6 @@
 from collections.abc import Mapping
 import torch
-from xformers.ops.fmha import BlockDiagonalMask
+from xformers.ops.fmha.attn_bias import BlockDiagonalMask, BlockDiagonalCausalMask
 import math
 from torch import nn
 import numpy as np
@@ -209,6 +209,36 @@ def xformers_mask(batch, batch_condition=None, materialize=False):
         mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(
             batch.device
         )
+
+    return mask
+
+
+def xformers_causal_mask(batch, materialize=False):
+    """
+    Construct attention mask that makes sure that objects only attend to each other
+    within the same batch element, and not across batch elements
+
+    Parameters
+    ----------
+    batch: torch.tensor
+        batch object in the torch_geometric.data naming convention
+        contains batch index for each event in a sparse tensor
+    materialize: bool
+        Decides whether a xformers or ('materialized') torch.tensor mask should be returned
+        The xformers mask allows to use the optimized xformers attention kernel, but only runs on gpu
+
+    Returns
+    -------
+    mask: xformers.ops.fmha.attn_bias.BlockDiagonalMask or torch.tensor
+        attention mask, to be used in xformers.ops.memory_efficient_attention
+        or torch.nn.functional.scaled_dot_product_attention
+    """
+    bincounts = torch.bincount(batch).tolist()
+
+    mask = BlockDiagonalCausalMask.from_seqlens(bincounts)
+    if materialize:
+        # materialize mask to torch.tensor (only for testing purposes)
+        mask = mask.materialize(shape=(len(batch), len(batch))).to(batch.device)
 
     return mask
 

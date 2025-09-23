@@ -1,0 +1,36 @@
+_target_: experiments.kinematics.wrappers.AutoregressiveTransformerCFM
+
+net:
+  _target_: experiments.baselines.ConditionalTransformer
+
+  in_channels: null
+  out_channels: 32
+  hidden_channels: 128
+
+  num_blocks: 4
+  num_heads: 8
+  dropout_prob: 0.0
+
+  increase_hidden_channels: 2
+
+net_condition:
+  _target_: experiments.baselines.Transformer
+
+  in_channels: null
+  out_channels: null
+  hidden_channels: 128
+
+  num_blocks: 3
+  num_heads: 8
+  dropout_prob: 0.0
+
+  increase_hidden_channels: 2
+
+mlp:
+  _target_: experiments.baselines.MLP
+
+  in_shape: null
+  out_shape: 4
+  hidden_channels: 256
+  hidden_layers: 8
+  dropout_prob: 0.1

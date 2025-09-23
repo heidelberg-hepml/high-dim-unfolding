@@ -64,13 +64,12 @@ class KinematicsExperiment(BaseExperiment):
             self.cfg.cfm.masked_dims = masked_dims
             self.cfg.cfm.jet_coordinates_options.pt_min = jet_pt_min
 
-            self.cfg.cfm.const_coordinates_options.masked_dims = masked_dims
             self.load_fn = load_fn
 
             self.cfg.cfm.mult_encoding_dim = self.cfg.data.mult_encoding_dim
 
             if self.cfg.data.part_to_jet:
-                self.cfg.cfm.const_coordinates_options.masked_dims = []
+                self.cfg.cfm.const_coordinates_options.fixed_dims = []
                 self.cfg.cfm.add_jet = False
                 self.cfg.data.max_constituents = 1
 
@@ -141,6 +140,32 @@ class KinematicsExperiment(BaseExperiment):
                         self.cfg.model.net.in_s_channels += 1
                     if getattr(self.cfg.model.GA_config, "condition_spurions", True):
                         self.cfg.model.net_condition.in_s_channels += 1
+
+            elif self.cfg.modelname == "AutoregressiveTransformer":
+                self.cfg.model.net.in_channels = 4 + self.cfg.data.pos_encoding_dim
+                self.cfg.model.net_condition.in_channels = (
+                    4 + self.cfg.data.pos_encoding_dim
+                )
+                self.cfg.model.net_condition.out_channels = (
+                    self.cfg.model.net.hidden_channels
+                )
+                if self.cfg.data.add_pid:
+                    self.cfg.model.net.in_channels += 6
+                    self.cfg.model.net_condition.in_channels += 6
+                # one hot jet_det jet_gen stop token
+                self.cfg.model.net.in_channels += 3
+                # one hot jet_det
+                self.cfg.model.net_condition.in_channels += 1
+                # mlp
+                self.cfg.model.mlp.in_shape = (
+                    4  # fourmomenta
+                    + self.cfg.cfm.embed_t_dim
+                    + self.cfg.data.pos_encoding_dim
+                    + self.cfg.model.net.out_channels
+                    + 3  # one hot jet_det jet_gen stop token
+                )
+                if self.cfg.cfm.self_condition_prob > 0.0:
+                    self.cfg.model.mlp.in_channels += 4
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
