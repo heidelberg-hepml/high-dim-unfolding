@@ -634,7 +634,7 @@ class KinematicsExperiment(BaseExperiment):
                     new_gen_jets
                 )
 
-            sample_batch, base = self.model.sample(
+            sample_batch = self.model.sample(
                 new_batch,
                 self.device,
                 self.dtype,

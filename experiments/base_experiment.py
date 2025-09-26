@@ -728,7 +728,7 @@ class BaseExperiment:
                     LOGGER.warning(
                         f"Not skipping update at {step +1}, already skipped {self.grad_skip_counter} consecutive updates"
                     )
-                    self.grad_skip_counter = 0
+                self.grad_skip_counter = 0
 
         if self.cfg.training.mixed_precision:
             self.scaler.step(self.optimizer)

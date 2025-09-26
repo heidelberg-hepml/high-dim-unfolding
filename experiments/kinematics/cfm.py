@@ -350,7 +350,7 @@ class CFM(nn.Module):
             index_perm = torch.argsort(index, dim=0, stable=True)
             sample_batch.x_gen = sample_batch.x_gen.take_along_dim(index_perm, dim=0)
 
-        return sample_batch.detach(), x1.detach()
+        return sample_batch.detach()  # , x1.detach()
 
 
 class EventCFM(CFM):
@@ -588,7 +588,7 @@ class JetCFM(EventCFM):
 
         sample_batch.jet_gen = self.geometry._handle_periodic(x0)
 
-        return sample_batch, x1
+        return sample_batch  # , x1
 
 
 class JetMLPCFM(EventCFM):
@@ -709,7 +709,7 @@ class JetMLPCFM(EventCFM):
 
         sample_batch.jet_gen = self.geometry._handle_periodic(x0)
 
-        return sample_batch, x1
+        return sample_batch  # , x1
 
     def get_velocity(
         self,
