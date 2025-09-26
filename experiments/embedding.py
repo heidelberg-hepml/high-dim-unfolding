@@ -242,6 +242,113 @@ def add_jet_det_and_stop_to_x_gen(batch):
     return new_batch, ~insert_mask
 
 
+def add_start_token_to_x_gen(batch):
+    """
+    Add exactly one token per sequence at the START (jet_det),
+    and append exactly one new scalars_gen channel that flags those starts.
+    """
+    new_batch = batch.clone()
+    device = new_batch.x_gen.device
+    batchsize = len(new_batch.x_gen_ptr) - 1
+    arange = torch.arange(batchsize, device=device)
+
+    # We insert one token per sequence.
+    extra_tokens = batchsize
+    x_gen = torch.empty(
+        new_batch.x_gen.shape[0] + extra_tokens,
+        *new_batch.x_gen.shape[1:],
+        dtype=new_batch.x_gen.dtype,
+        device=device,
+    )
+
+    # Append one new channel
+    scalars_gen = torch.zeros(
+        x_gen.shape[0],
+        new_batch.scalars_gen.shape[1] + 1,
+        dtype=new_batch.scalars_gen.dtype,
+        device=device,
+    )
+
+    # In the expanded array, starts land at original starts + number of prior inserts (i)
+    starts = new_batch.x_gen_ptr[:-1] + arange  # position to place jet_det per seq
+
+    insert_start = torch.zeros(x_gen.shape[0], dtype=torch.bool, device=device)
+    insert_start[starts] = True
+
+    # Copy through non-insert positions
+    x_gen[~insert_start] = new_batch.x_gen
+    scalars_gen[~insert_start, :-1] = new_batch.scalars_gen
+
+    # Insert jet_det tokens
+    x_gen[starts] = new_batch.jet_det
+
+    # Set the (new) last channel to the start flag
+    scalars_gen[:, -1] = insert_start.to(scalars_gen.dtype)
+
+    # Update pointers: +1 per sequence
+    new_batch.x_gen = x_gen
+    new_batch.scalars_gen = scalars_gen
+    new_batch.x_gen_ptr[1:] = new_batch.x_gen_ptr[1:] + arange + 1
+    new_batch.x_gen_batch = get_batch_from_ptr(new_batch.x_gen_ptr)
+
+    # Mask for original-token positions
+    return new_batch, ~insert_start
+
+
+def add_stop_token_to_x_gen(batch):
+    """
+    Add exactly one token per sequence at the END (sampled stop token),
+    and append exactly one new scalars_gen channel that flags those ends.
+    """
+    new_batch = batch.clone()
+    device = new_batch.x_gen.device
+    batchsize = len(new_batch.x_gen_ptr) - 1
+    arange = torch.arange(batchsize, device=device)
+
+    # We insert one token per sequence.
+    extra_tokens = batchsize
+    x_gen = torch.empty(
+        new_batch.x_gen.shape[0] + extra_tokens,
+        *new_batch.x_gen.shape[1:],
+        dtype=new_batch.x_gen.dtype,
+        device=device,
+    )
+
+    # Append exactly one new channel
+    scalars_gen = torch.zeros(
+        x_gen.shape[0],
+        new_batch.scalars_gen.shape[1] + 1,
+        dtype=new_batch.scalars_gen.dtype,
+        device=device,
+    )
+
+    # Ends are the current sequence ends, shifted by prior inserts (i)
+    ends = new_batch.x_gen_ptr[1:] + arange  # position to place stop token per seq
+
+    insert_end = torch.zeros(x_gen.shape[0], dtype=torch.bool, device=device)
+    insert_end[ends] = True
+
+    # Copy through non-insert positions
+    x_gen[~insert_end] = new_batch.x_gen
+    scalars_gen[~insert_end, :-1] = new_batch.scalars_gen
+
+    # Insert sampled stop tokens
+    stop_tokens = sample_stop_tokens(batchsize, device=device, dtype=x_gen.dtype)
+    x_gen[ends] = stop_tokens
+
+    # Set the (new) last channel to the end flag
+    scalars_gen[:, -1] = insert_end.to(scalars_gen.dtype)
+
+    # Update pointers: +1 per sequence
+    new_batch.x_gen = x_gen
+    new_batch.scalars_gen = scalars_gen
+    new_batch.x_gen_ptr[1:] = new_batch.x_gen_ptr[1:] + arange + 1
+    new_batch.x_gen_batch = get_batch_from_ptr(new_batch.x_gen_ptr)
+
+    # Mask for original-token positions
+    return new_batch, ~insert_end
+
+
 def sample_stop_tokens(
     n: int,
     dtype: torch.dtype,

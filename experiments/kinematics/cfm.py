@@ -12,7 +12,8 @@ from experiments.dataset import positional_encoding
 from experiments.baselines import custom_rk4
 from experiments.embedding import (
     add_jet_to_sequence,
-    add_jet_det_and_stop_to_x_gen,
+    add_start_token_to_x_gen,
+    add_stop_token_to_x_gen,
     stop_threshold_fn,
 )
 from experiments.logger import LOGGER
@@ -824,7 +825,10 @@ class AutoregressiveCFM(EventCFM):
         loss : torch.tensor with shape (1)
         """
         new_batch, constituents_mask = add_jet_to_sequence(batch)
-        new_batch, sequence_mask = add_jet_det_and_stop_to_x_gen(new_batch)
+        new_batch, sequence_mask = add_start_token_to_x_gen(new_batch)
+        if self.cfm.stop_token:
+            new_batch, sequence_mask = add_stop_token_to_x_gen(new_batch)
+            sequence_mask[new_batch.x_gen_ptr[:-1]] = False  # flag start tokens
 
         x0 = new_batch.x_gen
         t = torch.rand(
@@ -850,6 +854,20 @@ class AutoregressiveCFM(EventCFM):
         condition = self.get_condition(
             new_batch, attention_mask, condition_attention_mask, crossattention_mask
         )
+
+        if not self.cfm.stop_token:
+            stop_channels = condition[..., -1]
+            target_stop_channels = torch.zeros_like(
+                stop_channels, dtype=torch.float32, device=stop_channels.device
+            )
+            target_stop_channels[new_batch.x_gen_ptr[1:] - 1] = 1.0
+            num_pos = target_stop_channels.sum()
+            num_tokens = target_stop_channels.numel()
+            pos_weight = (num_tokens - num_pos) / num_pos
+            stop_loss = nn.BCEWithLogitsLoss(pos_weight)(
+                stop_channels, target_stop_channels
+            )
+            condition = condition[..., :-1]
 
         if self.cfm.self_condition_prob > 0.0:
             self_condition = torch.zeros_like(vt, device=vt.device, dtype=vt.dtype)
@@ -882,71 +900,108 @@ class AutoregressiveCFM(EventCFM):
         # evaluate conditional flow matching objective
         distance = self.geometry.get_metric(vp, vt, xt[sequence_mask])
 
-        if self.cfm.cosine_similarity_factor > 0.0:
-            cosine_similarity = (
-                1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
-            ).mean()
-            loss = (
-                1 - self.cfm.cosine_similarity_factor
-            ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
-        else:
-            loss = distance
+        # if self.cfm.cosine_similarity_factor > 0.0:
+        #     cosine_similarity = (
+        #         1 - (vp * vt).sum(dim=-1) / (vp.norm(dim=-1) * vt.norm(dim=-1))
+        #     ).mean()
+        #     loss = (
+        #         1 - self.cfm.cosine_similarity_factor
+        #     ) * distance + self.cfm.cosine_similarity_factor * cosine_similarity
+        # else:
+        #     loss = distance
 
-        loss = scatter(loss, new_batch.x_gen_batch[sequence_mask], dim=0, reduce="mean")
+        jet_loss = distance[~constituents_mask]
+        const_loss = scatter(
+            distance[constituents_mask],
+            new_batch.x_gen_batch[sequence_mask][constituents_mask],
+            dim=0,
+            reduce="mean",
+        )
 
-        if self.cfm.weight > 0.0:
-            cost = self.geometry.get_distance(x0[sequence_mask], x1[sequence_mask])
-            cost = scatter(
-                cost, new_batch.x_gen_batch[sequence_mask], dim=0, reduce="mean"
-            )
-            loss = loss * torch.exp(-self.cfm.weight * cost)
+        # if self.cfm.weight > 0.0:
+        #     cost = self.geometry.get_distance(x0[sequence_mask], x1[sequence_mask])
+        #     cost = scatter(
+        #         cost, new_batch.x_gen_batch[sequence_mask], dim=0, reduce="mean"
+        #     )
+        #     loss = loss * torch.exp(-self.cfm.weight * cost)
 
-        loss = loss.mean()
+        # loss = loss.mean()
 
-        distance_particlewise = ((vp - vt) ** 2).mean(dim=0) / 2
-        return loss, distance_particlewise
+        loss = const_loss.mean() + jet_loss.mean()
+
+        const_metrics = ((vp[constituents_mask] - vt[constituents_mask]) ** 2).mean(
+            dim=0
+        ) / 2
+        jet_metrics = ((vp[~constituents_mask] - vt[~constituents_mask]) ** 2).mean(
+            dim=0
+        ) / 2
+        metrics = torch.cat([const_metrics, jet_metrics], dim=0)
+
+        if self.cfm.stop_scale > 0.0 and not self.cfm.stop_token:
+            loss = loss + self.cfm.stop_scale * stop_loss
+            metrics = torch.cat([metrics, stop_loss.unsqueeze(0)], dim=0)
+
+        return loss, metrics
 
     def sample(self, batch, device=None, dtype=None):
         """
-        Autoregressive sampling:
-        • start each sequence with jet_det only
-        • first predicted token is jet_gen (sample_base_jet)
-        • subsequent tokens use sample_base_const
-        • scalars_gen = [pos_encoding(8), flag1, flag2, flag3]
-        • stop when EOS is predicted or when max_len is reached
-        • final graphs exclude jet_det and jet_gen; contain up to max_len tokens after jet_gen
+        Autoregressive sampling that supports:
+        - STOP TOKEN mode (self.cfm.stop_token=True): EOS is a token; 3 flag channels.
+        - STOP CHANNEL mode (self.cfm.stop_token=False): EOS is a channel logit; 2 flag channels.
         """
         B = len(batch.x_gen_ptr) - 1
-        LOGGER.info(f"Autoregressive sampling: {B} sequences in batch")
         device = device or batch.x_gen.device
         dtype = dtype or batch.x_gen.dtype
 
-        pos_enc = positional_encoding(pe_dim=8).to(device, dtype)  # (max_len, 8)
+        # channels
+        pe_dim = 8
+        n_flag = (
+            3 if self.cfm.stop_token else 2
+        )  # <-- one fewer channel without stop token
+        pos_enc = positional_encoding(
+            seq_length=self.cfm.max_seq_len, pe_dim=pe_dim
+        ).to(
+            device, dtype
+        )  # (max_len, pe_dim)
         max_len = pos_enc.size(0)
 
-        # seed per sequence with jet_det (1,F) and its scalar row (1, 8+3)
+        def make_scalar_row(pos_idx, is_jet_det=False, is_jet_gen=False):
+            """Build scalars_gen row with correct channel count."""
+            pe = (
+                torch.zeros(pe_dim, device=device, dtype=dtype)
+                if pos_idx is None
+                else pos_enc[pos_idx]
+            )
+            if self.cfm.stop_token:
+                # [pos8, after_jet_gen, start_flag, end_flag]
+                if is_jet_det:
+                    flags = torch.tensor([0.0, 1.0, 0.0], device=device, dtype=dtype)
+                elif is_jet_gen:
+                    flags = torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype)
+                else:
+                    flags = torch.tensor([0.0, 0.0, 0.0], device=device, dtype=dtype)
+            else:
+                # [pos8, after_jet_gen, start_flag]  (no EOS one-hot)
+                if is_jet_det:
+                    flags = torch.tensor([0.0, 1.0], device=device, dtype=dtype)
+                elif is_jet_gen:
+                    flags = torch.tensor([1.0, 0.0], device=device, dtype=dtype)
+                else:
+                    flags = torch.tensor([0.0, 0.0], device=device, dtype=dtype)
+            return torch.cat([pe, flags], dim=0).unsqueeze(0)
+
+        # Seed per sequence with jet_det
         generated_tokens = [
             [batch.jet_det[i].to(device, dtype).unsqueeze(0)] for i in range(B)
         ]
-        generated_scalars = [
-            [
-                torch.cat(
-                    [
-                        torch.zeros(8, device=device, dtype=dtype),
-                        torch.tensor([0.0, 1.0, 0.0], device=device, dtype=dtype),
-                    ],
-                    dim=0,
-                ).unsqueeze(0)
-            ]
-            for _ in range(B)
-        ]
-
+        generated_scalars = [[make_scalar_row(None, is_jet_det=True)] for _ in range(B)]
         active = torch.arange(B, device=device)
 
-        # tmp_batch once; we overwrite its dynamic fields each step
-        tmp_batch, _ = add_jet_to_sequence(batch)
+        # tmp_batch scaffold
+        new_batch, _ = add_jet_to_sequence(batch)
+        tmp_batch = new_batch.clone()
 
-        # ---------- Pre-loop: sample jet_gen with sample_base_jet ----------
+        # Pre-loop: sample jet_gen with sample_base_jet
         prefix_x = torch.cat(
             [torch.cat(generated_tokens[i], dim=0) for i in active], dim=0
         )
@@ -967,6 +1022,9 @@ class AutoregressiveCFM(EventCFM):
 
         last_token_idx = [ptr[i + 1] - 1 for i in range(len(ptr) - 1)]
         last_condition = condition[last_token_idx]
+
+        if not self.cfm.stop_token:
+            last_condition = last_condition[..., :-1]
 
         x1 = self.sample_base_jet(
             torch.cat([generated_tokens[i][-1] for i in active], dim=0)
@@ -999,25 +1057,17 @@ class AutoregressiveCFM(EventCFM):
                 torch.tensor([1.0, 0.0], device=device, dtype=dtype),
                 **self.odeint,
             )[-1]
-
         x_token = self.geometry._handle_periodic(x_token)
 
         # append jet_gen to every active sequence
         for j, seq_idx in enumerate(active.tolist()):
-            tok = x_token[j].unsqueeze(0)
-            scalar = torch.cat(
-                [
-                    torch.zeros(8, device=device, dtype=dtype),
-                    torch.tensor([1.0, 0.0, 0.0], device=device, dtype=dtype),
-                ],
-                dim=0,
-            ).unsqueeze(0)
-            generated_tokens[seq_idx].append(tok)
-            generated_scalars[seq_idx].append(scalar)
+            generated_tokens[seq_idx].append(x_token[j].unsqueeze(0))
+            generated_scalars[seq_idx].append(make_scalar_row(None, is_jet_gen=True))
 
-        # ---------- Loop: subsequent tokens with sample_base_const ----------
+        # Loop: subsequent tokens with sample_base_const
+        stop_threshold = getattr(self.cfm, "stop_threshold", 0.5)
+
         while len(active) > 0:
-            LOGGER.info(f"Autoregressive sampling: {len(active)} sequences active")
             prefix_x = torch.cat(
                 [torch.cat(generated_tokens[i], dim=0) for i in active], dim=0
             )
@@ -1031,6 +1081,20 @@ class AutoregressiveCFM(EventCFM):
                 [torch.cat(generated_scalars[i], dim=0) for i in active], dim=0
             )
 
+            det_mask = torch.isin(new_batch.x_det_batch, active)
+
+            tmp_batch.x_det = new_batch.x_det[det_mask]
+            tmp_batch.scalars_det = new_batch.scalars_det[det_mask]
+
+            det_mults = new_batch.x_det_ptr.diff()
+            tmp_batch.x_det_ptr = torch.cat(
+                [
+                    torch.zeros(1, device=device, dtype=torch.long),
+                    torch.cumsum(det_mults[active], dim=0),
+                ]
+            )
+            tmp_batch.x_det_batch = get_batch_from_ptr(tmp_batch.x_det_ptr)
+
             attn_mask, cond_attn_mask, cross_attn_mask = self.get_masks(tmp_batch)
             condition = self.get_condition(
                 tmp_batch, attn_mask, cond_attn_mask, cross_attn_mask
@@ -1039,7 +1103,11 @@ class AutoregressiveCFM(EventCFM):
             last_token_idx = [ptr[i + 1] - 1 for i in range(len(ptr) - 1)]
             last_condition = condition[last_token_idx]
 
-            # base for *constituent* tokens now
+            if not self.cfm.stop_token:
+                stop_channel = last_condition[..., -1]
+                last_condition = last_condition[..., :-1]
+
+            # propose next token from last generated token
             x1 = self.sample_base_const(
                 torch.cat([generated_tokens[i][-1] for i in active], dim=0)
             )
@@ -1074,25 +1142,39 @@ class AutoregressiveCFM(EventCFM):
 
             x_token = self.geometry._handle_periodic(x_token)
 
+            # decide which sequences remain active
             still_active = []
             for j, seq_idx in enumerate(active.tolist()):
+                # check termination
+                if self.cfm.stop_token:
+                    # EOS detected from the token itself
+                    if stop_threshold_fn(x_token[j]):  # your existing EOS test
+                        continue
+                else:
+                    # EOS decision from channel logit on *current last position*
+                    stop_logit = stop_channel[j]
+                    stop_prob = torch.sigmoid(stop_logit)
+                    if stop_prob.item() > stop_threshold:
+                        continue
+
+                # otherwise accept token
                 tok = x_token[j].unsqueeze(0)
                 pos_idx = len(generated_tokens[seq_idx]) - 2  # 0-based after jet_gen
                 if pos_idx >= max_len:
+                    # reached positional budget
                     continue
-                if stop_threshold_fn(tok.squeeze(0)):
-                    continue
-                scalar = torch.cat(
-                    [pos_enc[pos_idx], torch.zeros(3, device=device, dtype=dtype)],
-                    dim=0,
-                ).unsqueeze(0)
+
                 generated_tokens[seq_idx].append(tok)
-                generated_scalars[seq_idx].append(scalar)
+                generated_scalars[seq_idx].append(make_scalar_row(pos_idx))
                 still_active.append(seq_idx)
 
-            active = torch.tensor(still_active, device=device, dtype=torch.long)
+            active = (
+                torch.tensor(still_active, device=device, dtype=torch.long)
+                if len(still_active) > 0
+                else torch.tensor([], device=device, dtype=torch.long)
+            )
 
-        # pack final graphs (drop jet_det and jet_gen)
+        # ---------- Pack final graphs (drop jet_det and jet_gen) ----------
         data_list = []
         for i in range(B):
             seq = torch.cat(generated_tokens[i], dim=0)
@@ -1109,8 +1191,8 @@ class AutoregressiveCFM(EventCFM):
                     jet_gen=jet_gen,
                     x_det=batch.x_det[batch.x_det_batch == i],
                     scalars_det=batch.scalars_det[batch.x_det_batch == i],
-                    jet_det=batch.jet_det[i],
+                    jet_det=batch.jet_det[i].unsqueeze(0),
                 )
             )
 
-        return Batch.from_data_list(data_list)
+        return Batch.from_data_list(data_list, follow_batch=["x_gen", "x_det"])

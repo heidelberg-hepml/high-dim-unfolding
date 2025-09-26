@@ -774,7 +774,7 @@ class AutoregressiveTransformerCFM(AutoregressiveCFM):
     ):
 
         # if generating only last token, add only corresponding scalars
-        if xt.shape[0] == batch.num_graphs:
+        if xt.shape[0] <= batch.num_graphs:
             scalars = batch.scalars_gen[batch.x_gen_ptr[1:] - 1]
         else:
             scalars = batch.scalars_gen

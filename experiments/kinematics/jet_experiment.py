@@ -587,7 +587,7 @@ class JetKinematicsExperiment(BaseExperiment):
                     ].to(dtype=self.dtype)
                 ).to(self.device)
 
-            sample_batch, base = self.model.sample(
+            sample_batch = self.model.sample(
                 new_batch,
                 self.device,
                 self.dtype,

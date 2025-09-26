@@ -578,6 +578,7 @@ class BaseExperiment:
         self.model.train()
 
         self.grad_skip_counter = 0
+        self.grad_skip_prev = False
 
         # with torch.profiler.profile(
         #     activities=[
@@ -718,17 +719,21 @@ class BaseExperiment:
                 np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg :])
             ):
                 # self.scheduler.step()  # ensure correct total steps
-                self.grad_skip_counter += 1
+                if self.grad_skip_prev:
+                    self.grad_skip_counter += 1
+                else:
+                    self.grad_skip_counter = 0
                 if self.grad_skip_counter < MAX_GRAD_SKIPS:
                     LOGGER.warning(
                         f"Skipping update at {step +1}, log gradient norm {np.log(grad_norm):.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f} + {GRAD_AVG_SCALE} * std {np.std(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f}"
                     )
+                    self.grad_skip_prev = True
                     return
                 else:
                     LOGGER.warning(
                         f"Not skipping update at {step +1}, already skipped {self.grad_skip_counter} consecutive updates"
                     )
-                self.grad_skip_counter = 0
+            self.grad_skip_prev = False
 
         if self.cfg.training.mixed_precision:
             self.scaler.step(self.optimizer)

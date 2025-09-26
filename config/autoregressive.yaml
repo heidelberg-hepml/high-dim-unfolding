@@ -45,6 +45,8 @@ cfm:
  weight: 0.0
  sort: true
  rescale: false
+ stop_scale: 0.1
+ stop_token: false
 
 odeint:
  method: rk4

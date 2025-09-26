@@ -32,15 +32,15 @@ def plot_losses(exp, filename, model_label):
             "Gradient norm",
             logy=True,
         )
-        for k in range(4):
+        for key in exp.train_metrics.keys():
             plot_loss(
                 file,
                 [
-                    exp.train_metrics[f"mse_{k}"],
-                    exp.val_metrics[f"mse_{k}"],
+                    exp.train_metrics[key],
+                    exp.val_metrics[key],
                 ],
                 lr=exp.train_lr,
-                labels=[f"train mse_{k}", f"val mse_{k}"],
+                labels=[f"train {key}", f"val {key}"],
                 logy=True,
             )
 

@@ -152,8 +152,8 @@ class KinematicsExperiment(BaseExperiment):
                 if self.cfg.data.add_pid:
                     self.cfg.model.net.in_channels += 6
                     self.cfg.model.net_condition.in_channels += 6
-                # one hot jet_det jet_gen stop token
-                self.cfg.model.net.in_channels += 3
+                # one hot jet_det jet_gen
+                self.cfg.model.net.in_channels += 2
                 # one hot jet_det
                 self.cfg.model.net_condition.in_channels += 1
                 # mlp
@@ -162,10 +162,16 @@ class KinematicsExperiment(BaseExperiment):
                     + self.cfg.cfm.embed_t_dim
                     + self.cfg.data.pos_encoding_dim
                     + self.cfg.model.net.out_channels
-                    + 3  # one hot jet_det jet_gen stop token
+                    + 2  # one hot jet_det jet_gen
                 )
                 if self.cfg.cfm.self_condition_prob > 0.0:
-                    self.cfg.model.mlp.in_channels += 4
+                    self.cfg.model.mlp.in_shape += 4
+                if self.cfg.cfm.stop_token:
+                    self.cfg.model.mlp.in_shape += 1
+                    self.cfg.net.in_channels += 1
+                else:
+                    self.cfg.model.net.out_channels += 1
+                self.cfg.cfm.max_seq_len = self.cfg.data.max_constituents
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -781,6 +787,8 @@ class KinematicsExperiment(BaseExperiment):
             model_label = "Transformer"
         elif self.cfg.modelname == "ConditionalLGATr":
             model_label = "L-GATr"
+        elif self.cfg.modelname == "AutoregressiveTransformer":
+            model_label = "AR-Transformer"
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -838,14 +846,29 @@ class KinematicsExperiment(BaseExperiment):
         mse = loss.cpu().item()
         assert torch.isfinite(loss).all()
         metrics = {"mse": mse}
-        for k in range(4):
-            metrics[f"mse_{k}"] = component_loss[k].cpu().item()
+
+        if "Autoregressive" in self.cfg.modelname:
+            for k in range(4):
+                metrics[f"jet_mse_{k}"] = component_loss[k].cpu().item()
+                metrics[f"const_mse_{k}"] = component_loss[k + 4].cpu().item()
+            if not getattr(self.cfg.cfm, "stop_token", False):
+                metrics["BCE_stop_loss"] = component_loss[4].cpu().item()
+        else:
+            for k in range(4):
+                metrics[f"mse_{k}"] = component_loss[k].cpu().item()
         return loss, metrics
 
     def _init_metrics(self):
         metrics = {"mse": []}
-        for k in range(4):
-            metrics[f"mse_{k}"] = []
+        if "Autoregressive" in self.cfg.modelname:
+            for k in range(4):
+                metrics[f"jet_mse_{k}"] = []
+                metrics[f"const_mse_{k}"] = []
+            if not getattr(self.cfg.cfm, "stop_token", False):
+                metrics["BCE_stop_loss"] = []
+        else:
+            for k in range(4):
+                metrics[f"mse_{k}"] = []
         return metrics
 
     def define_process_specifics(self):
