@@ -175,7 +175,7 @@ def add_jet_to_sequence(batch):
     new_batch.x_det_ptr[1:] = new_batch.x_det_ptr[1:] + (arange + 1)
     new_batch.x_det_batch = get_batch_from_ptr(new_batch.x_det_ptr)
 
-    return new_batch, ~insert_gen_jets
+    return new_batch, ~insert_gen_jets, ~insert_det_jets
 
 
 import torch

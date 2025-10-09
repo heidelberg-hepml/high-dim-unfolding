@@ -16,6 +16,7 @@ from experiments.embedding import (
     add_stop_token_to_x_gen,
     stop_threshold_fn,
 )
+from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 
 
@@ -79,7 +80,7 @@ class CFM(nn.Module):
         )
         if (
             self.const_coordinates.contains_phi
-            and "JetScaled" not in self.cfm.const_coordinates.__class__.__name__
+            and "JetScaled" not in self.cfm.const_coordinates
         ):
             sample[..., 1] = (
                 torch.rand(
@@ -129,7 +130,7 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, constituents_mask = add_jet_to_sequence(batch)
+            new_batch, constituents_mask, _ = add_jet_to_sequence(batch)
         else:
             new_batch = batch
             constituents_mask = torch.ones(
@@ -283,7 +284,9 @@ class CFM(nn.Module):
         """
 
         if self.cfm.add_jet:
-            new_batch, constituents_mask = add_jet_to_sequence(batch)
+            new_batch, constituents_mask, det_constituents_mask = add_jet_to_sequence(
+                batch
+            )
         else:
             new_batch = batch.clone()
             constituents_mask = torch.ones(
@@ -438,7 +441,7 @@ class JetCFM(EventCFM):
         """
 
         if self.cfm.add_constituents:
-            new_batch, _ = add_jet_to_sequence(batch)
+            new_batch, _, _ = add_jet_to_sequence(batch)
         else:
             new_batch = batch.clone()
 
@@ -537,7 +540,7 @@ class JetCFM(EventCFM):
         """
 
         if self.cfm.add_constituents:
-            new_batch, _ = add_jet_to_sequence(batch)
+            new_batch, _, _ = add_jet_to_sequence(batch)
         else:
             new_batch = batch.clone()
 
@@ -824,7 +827,7 @@ class AutoregressiveCFM(EventCFM):
         -------
         loss : torch.tensor with shape (1)
         """
-        new_batch, constituents_mask = add_jet_to_sequence(batch)
+        new_batch, constituents_mask, _ = add_jet_to_sequence(batch)
         new_batch, sequence_mask = add_start_token_to_x_gen(new_batch)
         if self.cfm.stop_token:
             new_batch, sequence_mask = add_stop_token_to_x_gen(new_batch)
@@ -838,6 +841,19 @@ class AutoregressiveCFM(EventCFM):
             device=x0.device,
         )
         t = torch.repeat_interleave(t, new_batch.x_gen_ptr.diff(), dim=0)
+
+        plot_kinematics(
+            "./runs/autor_test",
+            new_batch.x_gen[new_batch.x_gen_ptr[:-1]],
+            new_batch.x_gen[new_batch.x_gen_ptr[:-1] + 1],
+            filename="jets_step.pdf",
+        )
+        plot_kinematics(
+            "./runs/autor_test",
+            new_batch.x_det,
+            new_batch.x_gen[sequence_mask][constituents_mask],
+            filename="constituents_step.pdf",
+        )
 
         x1 = self.sample_base(x0, sequence_mask, constituents_mask)
 
