@@ -1,5 +1,8 @@
 import torch
+from torch.distributions import VonMises
+
 import experiments.transforms as tr
+from experiments.utils import kappa_from_Vc
 
 DTYPE = torch.float64
 
@@ -31,6 +34,13 @@ class BaseCoordinates(torch.nn.Module):
             ).all(), (
                 f"Transform {transform.__class__.__name__} produced non-finite values."
             )
+        if self.contains_phi:
+            c = torch.cos(x[mask][:, 1]).mean()
+            s = torch.sin(x[mask][:, 1]).mean()
+            loc = torch.atan2(s, c).item()
+            circular_var = 1 - torch.sqrt(c**2 + s**2)
+            concentration = kappa_from_Vc(circular_var.item())
+            self.phi_dist = VonMises(loc=loc, concentration=concentration)
         self.transforms[-1].init_fit(x, mask=mask, **kwargs)
 
     def fourmomenta_to_x(self, a_in, **kwargs):
@@ -152,7 +162,7 @@ class StandardEPhiPtPz(BaseCoordinates):
             tr.EPPP_to_EPhiPtPz(),
             tr.Pt_to_ClampedPt(pt_min, pt_pos=2),
             tr.StandardNormal(
-                fixed_dims=fixed_dims, scaling=scaling, contains_uniform_phi=True
+                fixed_dims=fixed_dims, scaling=scaling, contains_phi=True
             ),
         ]
 
@@ -192,7 +202,7 @@ class StandardPtPhiEtaM2(BaseCoordinates):
             tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.StandardNormal(
-                fixed_dims=fixed_dims, scaling=scaling, contains_uniform_phi=True
+                fixed_dims=fixed_dims, scaling=scaling, contains_phi=True
             ),
         ]
 
@@ -208,7 +218,9 @@ class StandardJetScaledPtPhiEtaM2(BaseCoordinates):
             tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.PtPhiEtaM2_to_JetScale(),
-            tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
+            tr.StandardNormal(
+                fixed_dims=fixed_dims, scaling=scaling, contains_phi=True
+            ),
         ]
 
 
@@ -277,7 +289,7 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.M2_to_LogM2(),
             tr.StandardNormal(
-                fixed_dims=fixed_dims, scaling=scaling, contains_uniform_phi=True
+                fixed_dims=fixed_dims, scaling=scaling, contains_phi=True
             ),
         ]
 
@@ -326,7 +338,7 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_LogM2(),
-            tr.StandardNormal(fixed_dims, scaling, contains_uniform_phi=True),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -343,7 +355,7 @@ class StandardAsinhPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_AsinhPt(),
             tr.M2_to_LogM2(),
-            tr.StandardNormal(fixed_dims, scaling, contains_uniform_phi=True),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -360,7 +372,7 @@ class StandardLogPtPhiEtaAsinhM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_AsinhM2(),
-            tr.StandardNormal(fixed_dims, scaling, contains_uniform_phi=True),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -376,7 +388,7 @@ class StandardLogPtPhiEtaM2(BaseCoordinates):
             tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
-            tr.StandardNormal(fixed_dims, scaling, contains_uniform_phi=True),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -393,7 +405,7 @@ class IndividualStandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_LogM2(),
-            tr.IndividualNormal(fixed_dims, scaling),
+            tr.IndividualNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -443,7 +455,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.LogPtPhiEtaLogM2_to_JetScale(),
-            tr.StandardNormal(fixed_dims, scaling),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -460,7 +472,7 @@ class StandardJetScaledLogPtPhiEtaM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.LogPtPhiEtaLogM2_to_JetScale(),
-            tr.StandardNormal(fixed_dims, scaling),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 
@@ -478,7 +490,7 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.LogPtPhiEtaLogM2_to_JetScale(),
-            tr.IndividualNormal(fixed_dims, scaling),
+            tr.IndividualNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
 

@@ -78,18 +78,20 @@ class CFM(nn.Module):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
-        if (
-            self.const_coordinates.contains_phi
-            and "JetScaled" not in self.cfm.const_coordinates
-        ):
-            sample[..., 1] = (
-                torch.rand(
-                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-                )
-                * 2
-                * torch.pi
-                - torch.pi
-            )
+        # if (
+        #     self.const_coordinates.contains_phi
+        #     and "JetScaled" not in self.cfm.const_coordinates
+        # ):
+        #     sample[..., 1] = (
+        #         torch.rand(
+        #             x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+        #         )
+        #         * 2
+        #         * torch.pi
+        #         - torch.pi
+        #     )
+        if self.const_coordinates.contains_phi:
+            sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
         sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
@@ -415,14 +417,15 @@ class JetCFM(EventCFM):
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
         if self.jet_coordinates.contains_phi:
-            sample[..., 1] = (
-                torch.rand(
-                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-                )
-                * 2
-                * torch.pi
-                - torch.pi
-            )
+            # sample[..., 1] = (
+            #     torch.rand(
+            #         x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+            #     )
+            #     * 2
+            #     * torch.pi
+            #     - torch.pi
+            # )
+            sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
         return sample
 
@@ -758,14 +761,15 @@ class AutoregressiveCFM(EventCFM):
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
         if self.jet_coordinates.contains_phi:
-            sample[..., 1] = (
-                torch.rand(
-                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-                )
-                * 2
-                * torch.pi
-                - torch.pi
-            )
+            # sample[..., 1] = (
+            #     torch.rand(
+            #         x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+            #     )
+            #     * 2
+            #     * torch.pi
+            #     - torch.pi
+            # )
+            sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
         sample = sample * self.jet_scaling.to(x0.device, dtype=x0.dtype)
         return sample
 
@@ -773,36 +777,28 @@ class AutoregressiveCFM(EventCFM):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
+        # if (
+        #     self.const_coordinates.contains_phi
+        #     and "JetScaled" not in self.cfm.const_coordinates
+        # ):
+        #     sample[..., 1] = (
+        #         torch.rand(
+        #             x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+        #         )
+        #         * 2
+        #         * torch.pi
+        #         - torch.pi
+        #     )
         if self.const_coordinates.contains_phi:
-            sample[..., 1] = (
-                torch.rand(
-                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-                )
-                * 2
-                * torch.pi
-                - torch.pi
-            )
+            sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
         sample = sample * self.const_scaling.to(x0.device, dtype=x0.dtype)
         sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
         return sample
 
     def sample_base(self, x0, sequence_mask, constituents_mask, generator=None):
-        sample = torch.randn(
-            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
-        )
-        if self.const_coordinates.contains_phi:
-            sample[..., 1] = (
-                torch.rand(
-                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-                )
-                * 2
-                * torch.pi
-                - torch.pi
-            )
-        sample = sample * self.const_scaling.to(x0.device, dtype=x0.dtype)
-        sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
+        sample = torch.zeros(x0.shape, device=x0.device, dtype=x0.dtype)
         sample[~sequence_mask] = x0[~sequence_mask]  # keep padding fixed
-        new_sequence = sample[sequence_mask].clone()
+        new_sequence = x0[sequence_mask].clone()
         new_sequence[constituents_mask] = self.sample_base_const(
             new_sequence[constituents_mask], generator=generator
         )
@@ -827,7 +823,7 @@ class AutoregressiveCFM(EventCFM):
         -------
         loss : torch.tensor with shape (1)
         """
-        new_batch, constituents_mask, _ = add_jet_to_sequence(batch)
+        new_batch, constituents_mask, det_constituents_mask = add_jet_to_sequence(batch)
         new_batch, sequence_mask = add_start_token_to_x_gen(new_batch)
         if self.cfm.stop_token:
             new_batch, sequence_mask = add_stop_token_to_x_gen(new_batch)
@@ -842,20 +838,29 @@ class AutoregressiveCFM(EventCFM):
         )
         t = torch.repeat_interleave(t, new_batch.x_gen_ptr.diff(), dim=0)
 
+        x1 = self.sample_base(x0, sequence_mask, constituents_mask)
+
+        plot_kinematics(
+            "./runs/autor_test",
+            new_batch.x_det[new_batch.x_det_ptr[:-1]],
+            new_batch.x_gen[new_batch.x_gen_ptr[:-1]],
+            x1[new_batch.x_gen_ptr[:-1]],
+            filename="jets_det.pdf",
+        )
         plot_kinematics(
             "./runs/autor_test",
             new_batch.x_gen[new_batch.x_gen_ptr[:-1]],
             new_batch.x_gen[new_batch.x_gen_ptr[:-1] + 1],
-            filename="jets_step.pdf",
+            x1[new_batch.x_gen_ptr[:-1] + 1],
+            filename="jets_gen.pdf",
         )
         plot_kinematics(
             "./runs/autor_test",
-            new_batch.x_det,
+            new_batch.x_det[det_constituents_mask],
             new_batch.x_gen[sequence_mask][constituents_mask],
+            x1[sequence_mask][constituents_mask],
             filename="constituents_step.pdf",
         )
-
-        x1 = self.sample_base(x0, sequence_mask, constituents_mask)
 
         xt, vt = self.geometry.get_trajectory(
             x_target=x0,
@@ -943,7 +948,10 @@ class AutoregressiveCFM(EventCFM):
 
         # loss = loss.mean()
 
-        loss = const_loss.mean() + jet_loss.mean()
+        loss = (
+            self.cfm.const_scale * const_loss.mean()
+            + self.cfm.jet_scale * jet_loss.mean()
+        )
 
         const_metrics = ((vp[constituents_mask] - vt[constituents_mask]) ** 2).mean(
             dim=0
@@ -1014,7 +1022,7 @@ class AutoregressiveCFM(EventCFM):
         active = torch.arange(B, device=device)
 
         # tmp_batch scaffold
-        new_batch, _ = add_jet_to_sequence(batch)
+        new_batch, _, _ = add_jet_to_sequence(batch)
         tmp_batch = new_batch.clone()
 
         # Pre-loop: sample jet_gen with sample_base_jet

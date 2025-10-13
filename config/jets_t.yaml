@@ -44,7 +44,6 @@ cfm:
  weight: 0.0
  transpose: false
  unconditional: false
- gac: true
 
 
 odeint:
@@ -81,8 +80,7 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: []
- n_pt: 3
+ observables: ["multiplicity","jet"]
  correlations: false
 
 defaults:

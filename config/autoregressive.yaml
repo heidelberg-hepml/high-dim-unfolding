@@ -45,6 +45,8 @@ cfm:
  weight: 0.0
  sort: true
  rescale: false
+ jet_scale: 3.0
+ const_scale: 1.0
  stop_scale: 0.1
  stop_token: false
 
@@ -82,8 +84,9 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["jet"]
+ observables: ["multiplicity","jet"]
  n_pt: 3
+ angles: [[1,2],[1,3],[2,3]]
  correlations: false
 
 defaults:

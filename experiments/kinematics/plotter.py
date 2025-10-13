@@ -875,70 +875,71 @@ def plot_z(exp, filename, model_label):
         if exp.__class__.__name__ == "JetKinematicsExperiment":
             return
 
-        plot_ratio_histogram(
-            data={
-                "part": get_pt(gen_jets),
-                "reco": get_pt(det_jets),
-                model_label: get_pt(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"p_{T,\text{jet}} \text{ [GeV]}",
-            bins_range=torch.tensor([50, 800], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            logy=True,
-            legend_loc={"loc": "lower left", "bbox_to_anchor": (0.05, 0.0)},
-            file=file,
-            title={"title": "Z+jets", "x": 0.85, "y": 0.95},
-        )
+        if "constjet" in exp.cfg.plotting.observables:
+            plot_ratio_histogram(
+                data={
+                    "part": get_pt(gen_jets),
+                    "reco": get_pt(det_jets),
+                    model_label: get_pt(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"p_{T,\text{jet}} \text{ [GeV]}",
+                bins_range=torch.tensor([50, 800], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=True,
+                legend_loc={"loc": "lower left", "bbox_to_anchor": (0.05, 0.0)},
+                file=file,
+                title={"title": "Z+jets", "x": 0.85, "y": 0.95},
+            )
 
-        plot_ratio_histogram(
-            data={
-                "part": get_phi(gen_jets),
-                "reco": get_phi(det_jets),
-                model_label: get_phi(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"\phi_\text{jet}",
-            bins_range=torch.tensor([-torch.pi, torch.pi], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            logy=False,
-            file=file,
-            xrange=(-3.3, 3.3),
-            legend_loc="lower right",
-            title={"title": "Z+jets", "x": 0.85, "y": 0.95},
-            yrange=[0, 0.2],
-        )
+            plot_ratio_histogram(
+                data={
+                    "part": get_phi(gen_jets),
+                    "reco": get_phi(det_jets),
+                    model_label: get_phi(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"\phi_\text{jet}",
+                bins_range=torch.tensor([-torch.pi, torch.pi], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                xrange=(-3.3, 3.3),
+                legend_loc="lower right",
+                title={"title": "Z+jets", "x": 0.85, "y": 0.95},
+                yrange=[0, 0.2],
+            )
 
-        plot_ratio_histogram(
-            data={
-                "part": get_eta(gen_jets),
-                "reco": get_eta(det_jets),
-                model_label: get_eta(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"\eta_\text{jet}",
-            bins_range=torch.tensor([-4, 4], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            logy=False,
-            file=file,
-            legend_loc="lower center",
-            title={"title": "Z+jets", "x": 0.85, "y": 0.95},
-        )
+            plot_ratio_histogram(
+                data={
+                    "part": get_eta(gen_jets),
+                    "reco": get_eta(det_jets),
+                    model_label: get_eta(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"\eta_\text{jet}",
+                bins_range=torch.tensor([-4, 4], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc="lower center",
+                title={"title": "Z+jets", "x": 0.85, "y": 0.95},
+            )
 
-        plot_ratio_histogram(
-            data={
-                "part": get_mass(gen_jets),
-                "reco": get_mass(det_jets),
-                model_label: get_mass(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"m_\text{jet} \text{ [GeV]}",
-            bins_range=torch.tensor([3, 50], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            file=file,
-            title={"title": "Z+jets", "x": 0.18, "y": 0.95},
-            yrange=[0, 0.09],
-        )
+            plot_ratio_histogram(
+                data={
+                    "part": get_mass(gen_jets),
+                    "reco": get_mass(det_jets),
+                    model_label: get_mass(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"m_\text{jet} \text{ [GeV]}",
+                bins_range=torch.tensor([3, 50], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                file=file,
+                title={"title": "Z+jets", "x": 0.18, "y": 0.95},
+                yrange=[0, 0.09],
+            )
 
         for i in range(1, exp.cfg.plotting.n_pt + 1):
             gen_const_i = get_constituent(truth.x_gen, truth.x_gen_ptr, i)

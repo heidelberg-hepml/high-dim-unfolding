@@ -615,9 +615,7 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(
-        self, fixed_dims=[], scaling=torch.ones(1, 4), contains_uniform_phi=False
-    ):
+    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4), contains_phi=False):
         super().__init__()
         self.fixed_dims = fixed_dims
         self.mean = torch.zeros(1, 4)
@@ -626,7 +624,7 @@ class StandardNormal(BaseTransform):
             self.scaling = torch.tensor([scaling])
         else:
             self.scaling = scaling
-        self.contains_uniform_phi = contains_uniform_phi
+        self.contains_phi = contains_phi
 
     def init_fit(self, x, mask=None, **kwargs):
         if mask is None:
@@ -635,7 +633,7 @@ class StandardNormal(BaseTransform):
         self.std = torch.std(x[mask], dim=0, keepdim=True)
         # self.mean[:, self.fixed_dims] = 0
         self.std[:, self.fixed_dims] = 1
-        if self.contains_uniform_phi:
+        if self.contains_phi:
             self.mean[:, 1] = 0
             self.std[:, 1] = 1
         self.std = self.std / self.scaling.to(x.device, dtype=x.dtype)
@@ -813,13 +811,14 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
 
 
 class IndividualNormal(BaseTransform):
-    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4)):
+    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4), contains_phi=False):
         super().__init__()
         self.fixed_dims = fixed_dims
         if type(scaling) is not torch.Tensor:
             self.scaling = torch.tensor([scaling])
         else:
             self.scaling = scaling
+        self.contains_phi = contains_phi
 
     def init_fit(self, x, mask=None, **kwargs):
         if mask is None:

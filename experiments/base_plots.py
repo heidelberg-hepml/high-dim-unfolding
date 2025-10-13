@@ -28,12 +28,16 @@ COLORS = {
     "reco": "#1987C3DE",
     "Transf.": "#FF6404",
     "L-GATr": "#419108",
+    "AR-Tr.": "#AA33FF",
+    "AR-L-GATr": "#FF1414",
 }
 LINESTYLES = {
     "part": "-",
     "reco": "-",
     "Transf.": (0, (1, 1)),
     "L-GATr": (0, (3, 1)),
+    "AR-Tr.": (0, (1, 1)),
+    "AR-L-GATr": (0, (3, 1)),
 }
 LINE_WIDTH = 1.8
 LEFT, BOTTOM, RIGHT, TOP = 0.22, 0.18, 0.95, 0.95

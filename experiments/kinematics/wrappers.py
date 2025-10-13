@@ -128,7 +128,7 @@ class ConditionalLGATrCFM(EventCFM):
         self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
-        if getattr(self.ga_cfg, "input_spurions", False):
+        if getattr(self.ga_cfg, "input_spurions", True):
             _, _, gen_batch_idx, _ = embed_data_into_ga(
                 batch.x_gen,
                 batch.scalars_gen,

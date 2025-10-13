@@ -41,7 +41,6 @@ cfm:
  self_condition_prob: 0.0
  add_jet: true
  add_mass: false
- gac: true
  weight: 0.0
  sort: true
  rescale: false
@@ -80,8 +79,9 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["jet"]
+ observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass"]
  n_pt: 3
+ angles: [[1,2],[1,3],[2,3],[3,4]]
  correlations: false
 
 defaults:

@@ -35,9 +35,6 @@ cs.store(name="base_mlp", node=MLPConfig)
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
 
-GRAD_AVG_SCALE = 4
-MAX_GRAD_SKIPS = 5  # max consecutive gradient skips before forcing update
-
 
 class BaseExperiment:
     def __init__(self, cfg, rank=0, world_size=1):
@@ -715,7 +712,7 @@ class BaseExperiment:
         ):
             if np.log(grad_norm) > np.mean(
                 np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg :])
-            ) + GRAD_AVG_SCALE * np.std(
+            ) + self.cfg.training.grad_norm_avg_scale * np.std(
                 np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg :])
             ):
                 # self.scheduler.step()  # ensure correct total steps
@@ -723,9 +720,9 @@ class BaseExperiment:
                     self.grad_skip_counter += 1
                 else:
                     self.grad_skip_counter = 0
-                if self.grad_skip_counter < MAX_GRAD_SKIPS:
+                if self.grad_skip_counter < self.cfg.training.grad_norm_max_skips:
                     LOGGER.warning(
-                        f"Skipping update at {step +1}, log gradient norm {np.log(grad_norm):.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f} + {GRAD_AVG_SCALE} * std {np.std(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f}"
+                        f"Skipping update at {step +1}, log gradient norm {np.log(grad_norm):.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f} + {self.cfg.training.grad_norm_avg_scale} * std {np.std(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f}"
                     )
                     self.grad_skip_prev = True
                     return

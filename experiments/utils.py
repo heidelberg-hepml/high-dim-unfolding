@@ -4,6 +4,8 @@ from xformers.ops.fmha.attn_bias import BlockDiagonalMask, BlockDiagonalCausalMa
 import math
 from torch import nn
 import numpy as np
+from scipy.special import i0, i1
+from scipy.optimize import root_scalar
 
 from experiments.logger import LOGGER
 
@@ -281,3 +283,16 @@ def remove_prefix(state_dict, prefix="_orig_mod."):
         k[len(prefix) :] if k.startswith(prefix) else k: v
         for k, v in state_dict.items()
     }
+
+
+def kappa_from_Vc(Vc):
+    R = 1 - Vc
+    if R < 0.53:
+        kappa = 2 * R + R**3 + 5 * R**5 / 6
+    elif R < 0.85:
+        kappa = -0.4 + 1.39 * R + 0.43 / (1 - R)
+    elif R < 1 - 5e-3:
+        kappa = 1 / (R**3 - 4 * R**2 + 3 * R)
+    else:
+        kappa = 1 / (2 * (1 - R + EPS2))
+    return kappa
