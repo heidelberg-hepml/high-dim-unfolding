@@ -25,6 +25,20 @@ dist:
  n_components: 5
  diff: true
 
+wrapper_cfg:
+ const_coordinates: StandardJetScaledLogPtPhiEtaM2
+ const_coordinates_options:
+  pt_min: 0.0
+  masked_dims: [3]
+  scaling: [1,1,1,1]
+ jet_coordinates: StandardLogPtPhiEtaLogM2
+ jet_coordinates_options:
+  pt_min: null
+  masked_dims: []
+  scaling: [1,1,1,1]
+ transforms_float64: true
+ add_jet: true
+
 train: true
 training:
  iterations: 100000
