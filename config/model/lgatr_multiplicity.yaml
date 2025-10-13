@@ -1,5 +1,7 @@
 _target_: experiments.multiplicity.wrappers.MultiplicityLGATrWrapper
 
+scalar_inputs: [0,2,3]
+
 GA_config:
  beam_spurion: xyplane
  beam_mirror: true

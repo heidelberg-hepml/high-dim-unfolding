@@ -784,11 +784,11 @@ class KinematicsExperiment(BaseExperiment):
         t0 = time.time()
 
         if self.cfg.modelname == "ConditionalTransformer":
-            model_label = "Transformer"
+            model_label = "Transf."
         elif self.cfg.modelname == "ConditionalLGATr":
             model_label = "L-GATr"
         elif self.cfg.modelname == "AutoregressiveTransformer":
-            model_label = "AR-Transformer"
+            model_label = "AR-Transf."
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -804,36 +804,41 @@ class KinematicsExperiment(BaseExperiment):
         weights, mask_dict = None, None
 
         if self.cfg.evaluation.sample or self.cfg.evaluation.load_samples:
-            if self.cfg.plotting.fourmomenta:
-                LOGGER.info("Plotting fourmomenta")
-                filename = os.path.join(path, "fourmomenta.pdf")
-                plotter.plot_fourmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
+            filename = os.path.join(path, "plots.pdf")
+            if self.cfg.data.dataset == "zplusjet":
+                plotter.plot_z(filename=filename, **kwargs)
+            elif self.cfg.data.dataset == "ttbar":
+                plotter.plot_t(filename=filename, **kwargs)
+            # if self.cfg.plotting.fourmomenta:
+            #     LOGGER.info("Plotting fourmomenta")
+            #     filename = os.path.join(path, "fourmomenta.pdf")
+            #     plotter.plot_fourmomenta(
+            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+            #     )
 
-            if self.cfg.plotting.jetmomenta:
-                LOGGER.info("Plotting jetmomenta")
-                filename = os.path.join(path, "jetmomenta.pdf")
-                plotter.plot_jetmomenta(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
+            # if self.cfg.plotting.jetmomenta:
+            #     LOGGER.info("Plotting jetmomenta")
+            #     filename = os.path.join(path, "jetmomenta.pdf")
+            #     plotter.plot_jetmomenta(
+            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+            #     )
 
-            if self.cfg.plotting.preprocessed:
-                filename = os.path.join(path, "preprocessed.pdf")
-                plotter.plot_preprocessed(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-            if self.cfg.plotting.jetscaled:
-                LOGGER.info("Plotting jetscaled")
-                filename = os.path.join(path, "jetscaled.pdf")
-                plotter.plot_jetscaled(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
-            if len(self.obs.keys()) > 0:
-                filename = os.path.join(path, "observables.pdf")
-                plotter.plot_observables(
-                    filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-                )
+            # if self.cfg.plotting.preprocessed:
+            #     filename = os.path.join(path, "preprocessed.pdf")
+            #     plotter.plot_preprocessed(
+            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+            #     )
+            # if self.cfg.plotting.jetscaled:
+            #     LOGGER.info("Plotting jetscaled")
+            #     filename = os.path.join(path, "jetscaled.pdf")
+            #     plotter.plot_jetscaled(
+            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+            #     )
+            # if len(self.obs.keys()) > 0:
+            #     filename = os.path.join(path, "observables.pdf")
+            #     plotter.plot_observables(
+            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
+            #     )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
     def _init_loss(self):
@@ -872,109 +877,111 @@ class KinematicsExperiment(BaseExperiment):
         return metrics
 
     def define_process_specifics(self):
-        if self.cfg.data.max_constituents >= self.cfg.data.max_num_particles:
-            n_const = "All"
-        else:
-            n_const = str(self.cfg.data.max_constituents)
-        # self.plot_title = n_const + " constituents"
-        self.plot_title = None
+        pass
 
-        self.obs_coords = {}
+    #     if self.cfg.data.max_constituents >= self.cfg.data.max_num_particles:
+    #         n_const = "All"
+    #     else:
+    #         n_const = str(self.cfg.data.max_constituents)
+    #     # self.plot_title = n_const + " constituents"
+    #     self.plot_title = None
 
-        if "jet" in self.cfg.plotting.observables:
+    #     self.obs_coords = {}
 
-            self.obs_coords[r"\text{jet}"] = create_partial_jet(0.0, 1.0)
+    #     if "jet" in self.cfg.plotting.observables:
 
-        if "slices" in self.cfg.plotting.observables:
-            self.obs_coords[r"1-5"] = create_partial_jet(0, 5)
-            self.obs_coords[r"6-10"] = create_partial_jet(5, 10)
-            self.obs_coords[r"11-15"] = create_partial_jet(10, 15)
-            self.obs_coords[r"16-20"] = create_partial_jet(15, 20)
-            self.obs_coords[r"1-10"] = create_partial_jet(0, 10)
-            self.obs_coords[r"11-20"] = create_partial_jet(10, 20)
+    #         self.obs_coords[r"\text{jet}"] = create_partial_jet(0.0, 1.0)
 
-        if self.cfg.plotting.n_pt > 0:
-            if self.cfg.data.max_constituents == -1:
-                n_pt = self.cfg.plotting.n_pt
-            else:
-                n_pt = min(self.cfg.data.max_constituents, self.cfg.plotting.n_pt)
+    #     if "slices" in self.cfg.plotting.observables:
+    #         self.obs_coords[r"1-5"] = create_partial_jet(0, 5)
+    #         self.obs_coords[r"6-10"] = create_partial_jet(5, 10)
+    #         self.obs_coords[r"11-15"] = create_partial_jet(10, 15)
+    #         self.obs_coords[r"16-20"] = create_partial_jet(15, 20)
+    #         self.obs_coords[r"1-10"] = create_partial_jet(0, 10)
+    #         self.obs_coords[r"11-20"] = create_partial_jet(10, 20)
 
-            for i in range(n_pt):
+    #     if self.cfg.plotting.n_pt > 0:
+    #         if self.cfg.data.max_constituents == -1:
+    #             n_pt = self.cfg.plotting.n_pt
+    #         else:
+    #             n_pt = min(self.cfg.data.max_constituents, self.cfg.plotting.n_pt)
 
-                self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = (
-                    create_partial_jet(start=i, end=i + 1)
-                )
+    #         for i in range(n_pt):
 
-        self.obs = {}
+    #             self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = (
+    #                 create_partial_jet(start=i, end=i + 1)
+    #             )
 
-        if "angle" in self.cfg.plotting.observables:
-            self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
-            self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-            # self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
-            # self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "phi")
-            self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-            self.obs[r"\Delta \phi_{3,4}"] = compute_angles(2, 3, 3, 4, "phi")
-            # self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "phi")
+    #     self.obs = {}
 
-        if "dimass" in self.cfg.plotting.observables:
-            # dijet mass (only for CMS dataset with 3 jets)
+    #     if "angle" in self.cfg.plotting.observables:
+    #         self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
+    #         self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
+    #         # self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
+    #         # self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "phi")
+    #         self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
+    #         self.obs[r"\Delta \phi_{3,4}"] = compute_angles(2, 3, 3, 4, "phi")
+    #         # self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "phi")
 
-            for i in range(3):
-                for j in range(i + 1, 3):
-                    self.obs[r"M_{" + str(i + 1) + str(j + 1) + "}"] = dimass(i, j)
+    #     if "dimass" in self.cfg.plotting.observables:
+    #         # dijet mass (only for CMS dataset with 3 jets)
 
-        if "deltaR" in self.cfg.plotting.observables:
+    #         for i in range(3):
+    #             for j in range(i + 1, 3):
+    #                 self.obs[r"M_{" + str(i + 1) + str(j + 1) + "}"] = dimass(i, j)
 
-            for i in range(3):
-                for j in range(i + 1, 3):
-                    self.obs[r"\Delta R_{" + str(i + 1) + str(j + 1) + "}"] = deltaR(
-                        i, j
-                    )
+    #     if "deltaR" in self.cfg.plotting.observables:
 
-        if self.cfg.data.dataset == "zplusjet":
-            obs.R0 = 0.4
-            obs.R0SoftDrop = 0.8
-        elif self.cfg.data.dataset == "cms":
-            obs.R0 = 1.2
-            obs.R0SoftDrop = 1.2
-        elif self.cfg.data.dataset == "ttbar":
-            obs.R0 = 1.2
-            obs.R0SoftDrop = 1.2
+    #         for i in range(3):
+    #             for j in range(i + 1, 3):
+    #                 self.obs[r"\Delta R_{" + str(i + 1) + str(j + 1) + "}"] = deltaR(
+    #                     i, j
+    #                 )
 
-        if "tau1" in self.cfg.plotting.observables and FASTJET_AVAIL:
-            self.obs[r"\tau_1"] = tau1
-        if "tau2" in self.cfg.plotting.observables and FASTJET_AVAIL:
-            self.obs[r"\tau_2"] = tau2
-        if "tau21" in self.cfg.plotting.observables and FASTJET_AVAIL:
-            self.obs[r"\tau_{21}"] = (
-                lambda constituents, batch_idx, other_batch_idx: torch.where(
-                    tau1(constituents, batch_idx, other_batch_idx) != 0,
-                    tau2(constituents, batch_idx, other_batch_idx)
-                    / tau1(constituents, batch_idx, other_batch_idx),
-                    torch.tensor(0.0),
-                )
-            )
-        if "sd_mass" in self.cfg.plotting.observables and FASTJET_AVAIL:
-            self.obs[r"\log \rho"] = sd_mass
+    #     if self.cfg.data.dataset == "zplusjet":
+    #         obs.R0 = 0.4
+    #         obs.R0SoftDrop = 0.8
+    #     elif self.cfg.data.dataset == "cms":
+    #         obs.R0 = 1.2
+    #         obs.R0SoftDrop = 1.2
+    #     elif self.cfg.data.dataset == "ttbar":
+    #         obs.R0 = 1.2
+    #         obs.R0SoftDrop = 1.2
 
-        if "momentum_fraction" in self.cfg.plotting.observables and FASTJET_AVAIL:
-            self.obs[r"z_g"] = compute_zg
+    #     if "tau1" in self.cfg.plotting.observables and FASTJET_AVAIL:
+    #         self.obs[r"\tau_1"] = tau1
+    #     if "tau2" in self.cfg.plotting.observables and FASTJET_AVAIL:
+    #         self.obs[r"\tau_2"] = tau2
+    #     if "tau21" in self.cfg.plotting.observables and FASTJET_AVAIL:
+    #         self.obs[r"\tau_{21}"] = (
+    #             lambda constituents, batch_idx, other_batch_idx: torch.where(
+    #                 tau1(constituents, batch_idx, other_batch_idx) != 0,
+    #                 tau2(constituents, batch_idx, other_batch_idx)
+    #                 / tau1(constituents, batch_idx, other_batch_idx),
+    #                 torch.tensor(0.0),
+    #             )
+    #         )
+    #     if "sd_mass" in self.cfg.plotting.observables and FASTJET_AVAIL:
+    #         self.obs[r"\log \rho"] = sd_mass
 
-        if "jet_mass" in self.cfg.plotting.observables:
-            self.obs[r"M_{jet}"] = jet_mass
+    #     if "momentum_fraction" in self.cfg.plotting.observables and FASTJET_AVAIL:
+    #         self.obs[r"z_g"] = compute_zg
 
-        if "norm" in self.cfg.plotting.observables:
-            self.obs[
-                r"\sqrt{E_{\text{jet}}^2 + p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
-            ] = create_jet_norm()
-            self.obs[
-                r"\sqrt{p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
-            ] = create_jet_norm([1, 2, 3])
-            self.obs[r"p_{T,\text{jet}}"] = create_jet_norm([1, 2])
-            self.obs[r"M_{\text{jet}}"] = create_jet_norm([0], [1, 2, 3])
-            self.obs[
-                r"\sqrt{E_{\text{jet}}^2 - p_{x,\text{jet}}^2 - p_{y,\text{jet}}^2}"
-            ] = create_jet_norm([0], [1, 2])
-            self.obs[r"\sqrt{E_{\text{jet}}^2 - p_{z,\text{jet}}^2}"] = create_jet_norm(
-                [0], [3]
-            )
+    #     if "jet_mass" in self.cfg.plotting.observables:
+    #         self.obs[r"M_{jet}"] = jet_mass
+
+    #     if "norm" in self.cfg.plotting.observables:
+    #         self.obs[
+    #             r"\sqrt{E_{\text{jet}}^2 + p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
+    #         ] = create_jet_norm()
+    #         self.obs[
+    #             r"\sqrt{p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
+    #         ] = create_jet_norm([1, 2, 3])
+    #         self.obs[r"p_{T,\text{jet}}"] = create_jet_norm([1, 2])
+    #         self.obs[r"M_{\text{jet}}"] = create_jet_norm([0], [1, 2, 3])
+    #         self.obs[
+    #             r"\sqrt{E_{\text{jet}}^2 - p_{x,\text{jet}}^2 - p_{y,\text{jet}}^2}"
+    #         ] = create_jet_norm([0], [1, 2])
+    #         self.obs[r"\sqrt{E_{\text{jet}}^2 - p_{z,\text{jet}}^2}"] = create_jet_norm(
+    #             [0], [3]
+    #         )

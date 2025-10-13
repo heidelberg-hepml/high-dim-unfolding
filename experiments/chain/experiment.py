@@ -3,7 +3,7 @@ import torch
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 from torch_geometric.utils import scatter
-
+import shutil
 import os, time
 from omegaconf import open_dict, OmegaConf
 
@@ -177,10 +177,12 @@ class ChainExperiment(BaseExperiment):
         mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
         self.sampled_multiplicities = mult_samples[:, :1].to(dtype=torch.int64)
 
-        LOGGER.info("Step 2: Sampling jet kinematics...")
-
         if self.cfg.use_true_mult:
             self.sampled_multiplicities = None
+
+        shutil.rmtree(mult_samples_path)
+
+        LOGGER.info("Step 2: Sampling jet kinematics...")
 
         self.jet_exp.evaluate(self.sampled_multiplicities)
         self.jet_exp.plot()
@@ -193,8 +195,6 @@ class ChainExperiment(BaseExperiment):
             weights_only=False,
             map_location=self.device,
         ).jet_gen
-
-        LOGGER.info("Step 3: Sampling constituents...")
 
         if self.cfg.use_true_jet:
             self.sampled_jets = torch.load(
@@ -211,6 +211,10 @@ class ChainExperiment(BaseExperiment):
                     self.sampled_jets.cpu(),
                     os.path.join(jet_samples_path, "samples.pt"),
                 )
+
+        shutil.rmtree(jet_samples_path)
+
+        LOGGER.info("Step 3: Sampling constituents...")
 
         self.constituents_exp.evaluate(self.sampled_multiplicities, self.sampled_jets)
         self.constituents_exp.plot()

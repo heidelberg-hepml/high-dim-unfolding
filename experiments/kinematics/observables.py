@@ -17,7 +17,13 @@ except ImportError:
 import torch
 import numpy as np
 
-from experiments.utils import get_ptr_from_batch, ensure_angle, fix_mass
+from experiments.utils import (
+    get_ptr_from_batch,
+    ensure_angle,
+    fix_mass,
+    get_phi,
+    get_eta,
+)
 from experiments.coordinates import fourmomenta_to_jetmomenta
 
 R0 = None
@@ -254,3 +260,84 @@ def create_jet_norm(pos=[0, 1, 2, 3], neg=[]):
         return torch.stack(jet_norms)
 
     return jet_norm
+
+
+def get_constituent(consts, ptr, n):
+    n -= 1
+    mult = ptr.diff()
+    ptr_mask = mult > n
+    idx = ptr[:-1][ptr_mask] + n
+    return consts[idx]
+
+
+def get_dphi(consts, ptr, i, j):
+    i -= 1
+    j -= 1
+    mult = ptr.diff()
+    i, j = (i, j) if i < j else (j, i)
+    ptr_mask = mult > max(i, j)
+    idx_i = ptr[:-1][ptr_mask] + i
+    idx_j = ptr[:-1][ptr_mask] + j
+    phi_i = get_phi(consts[idx_i])
+    phi_j = get_phi(consts[idx_j])
+    dphi = ensure_angle(phi_j - phi_i)
+    return dphi
+
+
+def get_deta(consts, ptr, i, j):
+    i -= 1
+    j -= 1
+    mult = ptr.diff()
+    i, j = (i, j) if i < j else (j, i)
+    ptr_mask = mult > max(i, j)
+    idx_i = ptr[:-1][ptr_mask] + i
+    idx_j = ptr[:-1][ptr_mask] + j
+    eta_i = get_eta(consts[idx_i])
+    eta_j = get_eta(consts[idx_j])
+    deta = eta_j - eta_i
+    return deta
+
+
+def get_dr(consts, ptr, i, j):
+    i -= 1
+    j -= 1
+    mult = ptr.diff()
+    i, j = (i, j) if i < j else (j, i)
+    ptr_mask = mult > max(i, j)
+    idx_i = ptr[:-1][ptr_mask] + i
+    idx_j = ptr[:-1][ptr_mask] + j
+    phi_i = get_phi(consts[idx_i])
+    phi_j = get_phi(consts[idx_j])
+    eta_i = get_eta(consts[idx_i])
+    eta_j = get_eta(consts[idx_j])
+    dphi = ensure_angle(phi_j - phi_i)
+    deta = eta_j - eta_i
+    dr = torch.sqrt(dphi**2 + deta**2)
+    return dr
+
+
+def calculate_eec(batch, ptr):
+    zs_all = []
+    ws_all = []
+
+    for i in tqdm.tqdm(range(ptr.shape[0] - 1)):
+        particles = batch[ptr[i] : ptr[i + 1]]
+        p = particles[:, 1:]
+        E = (p**2).sum(dim=1).sqrt()
+        pt = (p[:, :-1] ** 2).sum(dim=1).sqrt()
+        total_pt = pt.sum()
+        # pairwise cosθ
+        dot = p @ p.T
+        denom = E[:, None] * E[None, :]
+        cos_theta = dot / denom
+        z = (1 - cos_theta) / 2
+
+        # pairwise weights
+        w = 2 * (pt[:, None] * pt[None, :]) / total_pt**2
+
+        # keep upper triangle
+        i_idx, j_idx = torch.triu_indices(z.shape[0], z.shape[0])
+        zs_all.append(z[i_idx, j_idx])
+        ws_all.append(w[i_idx, j_idx])
+
+    return torch.stack((torch.cat(zs_all), torch.cat(ws_all)), dim=1)

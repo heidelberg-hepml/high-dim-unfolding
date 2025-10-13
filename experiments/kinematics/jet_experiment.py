@@ -714,7 +714,7 @@ class JetKinematicsExperiment(BaseExperiment):
         t0 = time.time()
 
         if self.cfg.modelname == "JetConditionalTransformer":
-            model_label = "Transformer"
+            model_label = "Transf."
         elif self.cfg.modelname == "JetConditionalLGATr":
             model_label = "L-GATr"
         elif self.cfg.modelname == "JetMLP":
@@ -736,25 +736,30 @@ class JetKinematicsExperiment(BaseExperiment):
         weights, mask_dict = None, None
 
         if self.cfg.evaluation.sample or self.cfg.evaluation.load_samples:
-            if self.cfg.plotting.fourmomenta:
-                filename = os.path.join(path, "fourmomenta.pdf")
-                plotter.plot_fourmomenta(
-                    filename=filename,
-                    **kwargs,
-                    jet=True,
-                    weights=weights,
-                    mask_dict=mask_dict,
-                )
+            filename = os.path.join(path, "plots.pdf")
+            if self.cfg.data.dataset == "zplusjet":
+                plotter.plot_z(filename=filename, **kwargs)
+            elif self.cfg.data.dataset == "ttbar":
+                plotter.plot_t(filename=filename, **kwargs)
+            # if self.cfg.plotting.fourmomenta:
+            #     filename = os.path.join(path, "fourmomenta.pdf")
+            #     plotter.plot_fourmomenta(
+            #         filename=filename,
+            #         **kwargs,
+            #         jet=True,
+            #         weights=weights,
+            #         mask_dict=mask_dict,
+            #     )
 
-            if self.cfg.plotting.jetmomenta:
-                filename = os.path.join(path, "jetmomenta.pdf")
-                plotter.plot_jetmomenta(
-                    filename=filename,
-                    **kwargs,
-                    jet=True,
-                    weights=weights,
-                    mask_dict=mask_dict,
-                )
+            # if self.cfg.plotting.jetmomenta:
+            #     filename = os.path.join(path, "jetmomenta.pdf")
+            #     plotter.plot_jetmomenta(
+            #         filename=filename,
+            #         **kwargs,
+            #         jet=True,
+            #         weights=weights,
+            #         mask_dict=mask_dict,
+            #     )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
     def _init_loss(self):
@@ -778,9 +783,5 @@ class JetKinematicsExperiment(BaseExperiment):
         return metrics
 
     def define_process_specifics(self):
-        self.plot_title = None
-
-        self.obs_coords = {}
-        self.obs_coords[r"\text{jet}"] = create_partial_jet(0.0, 1.0)
-
-        self.obs = {}
+        with open_dict(self.cfg):
+            self.cfg.plotting.observables = ["multiplicity", "jet"]
