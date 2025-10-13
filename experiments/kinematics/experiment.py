@@ -190,7 +190,7 @@ class KinematicsExperiment(BaseExperiment):
         data_path = os.path.join(self.cfg.data.data_dir, f"{self.cfg.data.dataset}")
         LOGGER.info(f"Creating {self.cfg.data.dataset} from {data_path}")
         if self.cfg.data.dataset == "ttbar":
-            self._init_data2(data_path)
+            self._init_ttbar_data(data_path)
         else:
             self._init_data(data_path)
         LOGGER.info(
@@ -331,7 +331,7 @@ class KinematicsExperiment(BaseExperiment):
             gen_jets=gen_jets[val_idx:test_idx],
         )
 
-    def _init_data2(self, data_path):
+    def _init_ttbar_data(self, data_path):
         t0 = time.time()
 
         pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
