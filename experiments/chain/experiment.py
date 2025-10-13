@@ -55,9 +55,9 @@ class ChainExperiment(BaseExperiment):
             mult_cfg.train = False
             mult_cfg.evaluate = True
             mult_cfg.evaluation.sample = True
-            mult_cfg.evaluation.save_samples = True
+            mult_cfg.evaluation.save_samples = False
             mult_cfg.evaluation.load_samples = False
-            mult_cfg.plot = True
+            mult_cfg.plot = False
             mult_cfg.data.update(self.cfg.data)
 
         self.multiplicity_exp = MultiplicityExperiment(
@@ -83,9 +83,9 @@ class ChainExperiment(BaseExperiment):
             jet_cfg.train = False
             jet_cfg.evaluate = True
             jet_cfg.evaluation.sample = True
-            jet_cfg.evaluation.save_samples = True
+            jet_cfg.evaluation.save_samples = False
             jet_cfg.evaluation.load_samples = False
-            jet_cfg.plot = True
+            jet_cfg.plot = False
             jet_cfg.data.update(self.cfg.data)
 
         self.jet_exp = JetKinematicsExperiment(jet_cfg, self.rank, self.world_size)
@@ -169,50 +169,26 @@ class ChainExperiment(BaseExperiment):
 
         LOGGER.info("Step 1: Sampling multiplicities...")
         self.multiplicity_exp.evaluate()
-        self.multiplicity_exp.plot()
 
-        mult_samples_path = os.path.join(
-            self.cfg.run_dir, "multiplicity", f"samples_{self.cfg.run_idx}"
-        )
-        mult_samples = torch.load(os.path.join(mult_samples_path, "samples.pt"))
-        self.sampled_multiplicities = mult_samples[:, :1].to(dtype=torch.int64)
+        self.sampled_multiplicities = self.multiplicity_exp.results_test["samples"][
+            :, :1
+        ].to(dtype=torch.int64)
 
         if self.cfg.use_true_mult:
             self.sampled_multiplicities = None
 
-        shutil.rmtree(mult_samples_path)
-
         LOGGER.info("Step 2: Sampling jet kinematics...")
-
         self.jet_exp.evaluate(self.sampled_multiplicities)
-        self.jet_exp.plot()
 
-        jet_samples_path = os.path.join(
-            self.cfg.run_dir, "jets", f"samples_{self.cfg.run_idx}"
-        )
-        self.sampled_jets = torch.load(
-            os.path.join(jet_samples_path, "samples.pt"),
-            weights_only=False,
-            map_location=self.device,
-        ).jet_gen
+        self.sampled_jets = self.jet_exp.data_raw["samples"].jet_gen
 
         if self.cfg.use_true_jet:
-            self.sampled_jets = torch.load(
-                os.path.join(jet_samples_path, "truth.pt"),
-                weights_only=False,
-                map_location=self.device,
-            ).jet_gen
+            self.sampled_jets = self.jet_exp.data_raw["truth"].jet_gen
             if torch.tensor(self.cfg.jet_smearing).max() > 0:
                 noise = torch.randn_like(self.sampled_jets) * torch.tensor(
                     [self.cfg.jet_smearing], device=self.device
                 )
                 self.sampled_jets += noise * self.sampled_jets
-                torch.save(
-                    self.sampled_jets.cpu(),
-                    os.path.join(jet_samples_path, "samples.pt"),
-                )
-
-        shutil.rmtree(jet_samples_path)
 
         LOGGER.info("Step 3: Sampling constituents...")
 
