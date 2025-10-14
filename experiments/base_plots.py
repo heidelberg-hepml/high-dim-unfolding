@@ -45,7 +45,7 @@ X_LABEL_POS, Y_LABEL_POS = -0.05, -0.13
 FIGSIZE = (4.5, 4.5)
 
 
-def plot_loss(file, losses, lr=None, labels=None, logy=True):
+def plot_loss(file, losses, lr=None, labels=None, logy=True, start_it=1000):
     labels = [None for _ in range(len(losses))] if labels is None else labels
     if len(losses[1]) == 0:  # catch no-validations case
         losses = [losses[0]]
@@ -58,6 +58,9 @@ def plot_loss(file, losses, lr=None, labels=None, logy=True):
         else:
             frac = len(losses[0]) / len(loss)
             its = np.arange(1, len(loss) + 1) * frac
+        if i == 0 and start_it > 0:
+            its = its[start_it:]
+            loss = loss[start_it:]
         ax.plot(its, loss, label=label)
 
     if logy:

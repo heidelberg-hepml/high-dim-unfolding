@@ -80,7 +80,7 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["multiplicity","jet"]
+ observables: ["jet"]
  correlations: false
 
 defaults:

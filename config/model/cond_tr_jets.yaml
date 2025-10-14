@@ -9,7 +9,7 @@ net:
 
   num_blocks: 4
   num_heads: 8
-  dropout_prob: 0.0
+  dropout_prob: null
 
 net_condition:
   _target_: experiments.baselines.Transformer
@@ -20,4 +20,4 @@ net_condition:
 
   num_blocks: 2
   num_heads: 8
-  dropout_prob: 0.0
+  dropout_prob: null
