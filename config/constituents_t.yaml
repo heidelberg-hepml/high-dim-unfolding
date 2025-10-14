@@ -85,6 +85,6 @@ plotting:
  correlations: false
 
 defaults:
- - model: cond_tr_constituents_t
+ - model: cond_tr_constituents_large
  - default
  - _self_
