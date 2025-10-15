@@ -20,6 +20,7 @@ from experiments.kinematics.observables import (
     tau2,
     sd_mass,
     compute_zg,
+    FASTJET_AVAIL,
 )
 
 # from experiments.kinematics.plots import (
@@ -999,7 +1000,7 @@ def plot_z(exp, filename, model_label):
                 title={"title": "Z+jets", "x": 0.18, "y": 0.95},
             )
 
-        if "nsubjettiness" in exp.cfg.plotting.observables:
+        if "nsubjettiness" in exp.cfg.plotting.observables and FASTJET_AVAIL:
             LOGGER.info("Calculating n-subjettiness")
             gen_tau1 = tau1(truth.x_gen, truth.x_gen_batch, R0=0.4)
             det_tau1 = tau1(truth.x_det, truth.x_det_batch, R0=0.4)
@@ -1068,7 +1069,7 @@ def plot_z(exp, filename, model_label):
                 title={"title": "Z+jets", "x": 0.18, "y": 0.95},
             )
 
-        if "softdropmass" in exp.cfg.plotting.observables:
+        if "softdropmass" in exp.cfg.plotting.observables and FASTJET_AVAIL:
             LOGGER.info("Calculating softdrop mass")
             gen_rho = sd_mass(truth.x_gen, truth.x_gen_batch, R0=0.8)
             det_rho = sd_mass(truth.x_det, truth.x_det_batch, R0=0.8)
@@ -1091,7 +1092,7 @@ def plot_z(exp, filename, model_label):
                 title={"title": "Z+jets", "x": 0.85, "y": 0.95},
             )
 
-        if "momentumfraction" in exp.cfg.plotting.observables:
+        if "momentumfraction" in exp.cfg.plotting.observables and FASTJET_AVAIL:
             LOGGER.info("Calculating groomed jet momentum fraction")
             gen_zg = compute_zg(truth.x_gen, truth.x_gen_batch, R0=0.8)
             det_zg = compute_zg(truth.x_det, truth.x_det_batch, R0=0.8)
@@ -1429,7 +1430,7 @@ def plot_t(exp, filename, model_label):
                 title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
             )
 
-        if "nsubjettiness" in exp.cfg.plotting.observables:
+        if "nsubjettiness" in exp.cfg.plotting.observables and FASTJET_AVAIL:
             LOGGER.info("Calculating n-subjettiness")
             gen_tau1 = tau1(truth.x_gen, truth.x_gen_batch, R0=0.4)
             det_tau1 = tau1(truth.x_det, truth.x_det_batch, R0=0.4)
@@ -1497,7 +1498,7 @@ def plot_t(exp, filename, model_label):
                 title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
             )
 
-        if "softdropmass" in exp.cfg.plotting.observables:
+        if "softdropmass" in exp.cfg.plotting.observables and FASTJET_AVAIL:
             LOGGER.info("Calculating softdrop mass")
             gen_rho = sd_mass(truth.x_gen, truth.x_gen_batch, R0=0.8)
             det_rho = sd_mass(truth.x_det, truth.x_det_batch, R0=0.8)
@@ -1519,7 +1520,7 @@ def plot_t(exp, filename, model_label):
                 title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
             )
 
-        if "momentumfraction" in exp.cfg.plotting.observables:
+        if "momentumfraction" in exp.cfg.plotting.observables and FASTJET_AVAIL:
             LOGGER.info("Calculating groomed jet momentum fraction")
             gen_zg = compute_zg(truth.x_gen, truth.x_gen_batch, R0=0.8)
             det_zg = compute_zg(truth.x_det, truth.x_det_batch, R0=0.8)
