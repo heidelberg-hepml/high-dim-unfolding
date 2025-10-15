@@ -410,7 +410,6 @@ class JetCFM(EventCFM):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.scaling = torch.tensor(self.cfm.jet_coordinates_options.scaling)
-        assert not self.cfm.add_constituents or not self.cfm.transpose
 
     def sample_base(self, x0, generator=None):
         sample = torch.randn(
