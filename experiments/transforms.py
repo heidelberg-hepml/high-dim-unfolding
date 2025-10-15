@@ -414,7 +414,7 @@ class M2_to_LogM2(BaseTransform):
 
 
 class Pt_to_ClampedPt(BaseTransform):
-    def __init__(self, pt_min, pt_pos=0):
+    def __init__(self, pt_min=0.0, pt_pos=0):
         super().__init__()
         self.pt_min = pt_min
         self.pt_pos = pt_pos

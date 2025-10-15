@@ -78,20 +78,21 @@ class CFM(nn.Module):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
-        # if (
-        #     self.const_coordinates.contains_phi
-        #     and "JetScaled" not in self.cfm.const_coordinates
-        # ):
-        #     sample[..., 1] = (
-        #         torch.rand(
-        #             x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-        #         )
-        #         * 2
-        #         * torch.pi
-        #         - torch.pi
-        #     )
         if self.const_coordinates.contains_phi:
-            sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
+            if getattr(self.cfm.const_coordinates_options, "vonmises", False):
+                sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
+            elif "JetScaled" not in self.cfm.const_coordinates:
+                sample[..., 1] = (
+                    torch.rand(
+                        x0.shape[:-1],
+                        device=x0.device,
+                        dtype=x0.dtype,
+                        generator=generator,
+                    )
+                    * 2
+                    * torch.pi
+                    - torch.pi
+                )
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
         sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
         sample[~constituents_mask] = x0[~constituents_mask]  # keep jets fixed
@@ -416,15 +417,20 @@ class JetCFM(EventCFM):
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
         if self.jet_coordinates.contains_phi:
-            # sample[..., 1] = (
-            #     torch.rand(
-            #         x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-            #     )
-            #     * 2
-            #     * torch.pi
-            #     - torch.pi
-            # )
-            sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
+            if getattr(self.cfm.jet_coordinates_options, "vonmises", False):
+                sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
+            else:
+                sample[..., 1] = (
+                    torch.rand(
+                        x0.shape[:-1],
+                        device=x0.device,
+                        dtype=x0.dtype,
+                        generator=generator,
+                    )
+                    * 2
+                    * torch.pi
+                    - torch.pi
+                )
         sample = sample * self.scaling.to(x0.device, dtype=x0.dtype)
         return sample
 
@@ -760,15 +766,20 @@ class AutoregressiveCFM(EventCFM):
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
         if self.jet_coordinates.contains_phi:
-            # sample[..., 1] = (
-            #     torch.rand(
-            #         x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-            #     )
-            #     * 2
-            #     * torch.pi
-            #     - torch.pi
-            # )
-            sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
+            if getattr(self.cfm.jet_coordinates_options, "vonmises", False):
+                sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
+            else:
+                sample[..., 1] = (
+                    torch.rand(
+                        x0.shape[:-1],
+                        device=x0.device,
+                        dtype=x0.dtype,
+                        generator=generator,
+                    )
+                    * 2
+                    * torch.pi
+                    - torch.pi
+                )
         sample = sample * self.jet_scaling.to(x0.device, dtype=x0.dtype)
         return sample
 
@@ -776,20 +787,22 @@ class AutoregressiveCFM(EventCFM):
         sample = torch.randn(
             x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
         )
-        # if (
-        #     self.const_coordinates.contains_phi
-        #     and "JetScaled" not in self.cfm.const_coordinates
-        # ):
-        #     sample[..., 1] = (
-        #         torch.rand(
-        #             x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-        #         )
-        #         * 2
-        #         * torch.pi
-        #         - torch.pi
-        #     )
-        if self.const_coordinates.contains_phi:
+        if self.const_coordinates.contains_phi and getattr(
+            self.cfm.const_coordinates_options, "vonmises", False
+        ):
             sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
+        elif (
+            self.const_coordinates.contains_phi
+            and "JetScaled" not in self.cfm.const_coordinates
+        ):
+            sample[..., 1] = (
+                torch.rand(
+                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
+                )
+                * 2
+                * torch.pi
+                - torch.pi
+            )
         sample = sample * self.const_scaling.to(x0.device, dtype=x0.dtype)
         sample[..., self.cfm.masked_dims] = x0[..., self.cfm.masked_dims]
         return sample

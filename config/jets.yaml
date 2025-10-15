@@ -28,11 +28,13 @@ cfm:
   pt_min: 0.0
   masked_dims: [3]
   scaling: [1,1,1,1]
+  vonmises: false
  jet_coordinates: StandardAsinhPtPhiEtaLogM2
  jet_coordinates_options:
   pt_min: null
   masked_dims: []
   scaling: [1,1,1,1]
+  vonmises: false
  geometry:
   type: simple
   periodic: true
