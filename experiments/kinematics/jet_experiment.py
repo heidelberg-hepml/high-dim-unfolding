@@ -68,7 +68,7 @@ class JetKinematicsExperiment(BaseExperiment):
                     self.cfg.model.net_condition.in_channels = (
                         base_in_channels + self.cfg.data.mult_encoding_dim
                     )
-                    if self.cfg.cfm.transpose:
+                    if self.cfg.cfm.transpose and not self.cfg.cfm.add_constituents:
                         self.cfg.model.net_condition.in_channels += (
                             self.cfg.data.pos_encoding_dim
                         )

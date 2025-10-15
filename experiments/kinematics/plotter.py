@@ -1300,71 +1300,76 @@ def plot_t(exp, filename, model_label):
                 title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
             )
 
-        plot_ratio_histogram(
-            data={
-                "part": get_pt(gen_jets),
-                "reco": get_pt(det_jets),
-                model_label: get_pt(samples.jet_gen),
-            },
-            reference_key="part",
-            xlabel=r"p_{T,J} \text{ [GeV]}",
-            bins_range=torch.tensor([400, 800], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            logy=True,
-            file=file,
-            xrange=(390, 800),
-            legend_loc="lower left",
-            title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
-        )
+        if exp.__class__.__name__ == "JetKinematicsExperiment":
+            return
 
-        plot_ratio_histogram(
-            data={
-                "part": get_phi(gen_jets),
-                "reco": get_phi(det_jets),
-                model_label: get_phi(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"\phi_J",
-            bins_range=torch.tensor([-torch.pi, torch.pi], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            logy=False,
-            file=file,
-            legend_loc="lower right",
-            xrange=(-3.3, 3.3),
-            title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
-            yrange=(0, 0.21),
-        )
+        if "constjet" in exp.cfg.plotting.observables:
 
-        plot_ratio_histogram(
-            data={
-                "part": get_eta(gen_jets),
-                "reco": get_eta(det_jets),
-                model_label: get_eta(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"\eta_J",
-            bins_range=torch.tensor([-2.4, 2.4], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            logy=False,
-            file=file,
-            legend_loc="lower center",
-            title=r"$t\bar{t}$",
-        )
+            plot_ratio_histogram(
+                data={
+                    "part": get_pt(gen_jets),
+                    "reco": get_pt(det_jets),
+                    model_label: get_pt(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"p_{T,\text{jet}} \text{ [GeV]}",
+                bins_range=torch.tensor([400, 800], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=True,
+                file=file,
+                xrange=(390, 800),
+                legend_loc="lower left",
+                title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+            )
 
-        plot_ratio_histogram(
-            data={
-                "part": get_mass(gen_jets),
-                "reco": get_mass(det_jets),
-                model_label: get_mass(sample_jets),
-            },
-            reference_key="part",
-            xlabel=r"m_J \text{ [GeV]}",
-            bins_range=torch.tensor([140, 200], dtype=torch.float32),
-            no_ratio_keys=["reco"],
-            file=file,
-            legend_loc=None,
-            title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
-        )
+            plot_ratio_histogram(
+                data={
+                    "part": get_phi(gen_jets),
+                    "reco": get_phi(det_jets),
+                    model_label: get_phi(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"\phi_{\text{jet}}",
+                bins_range=torch.tensor([-torch.pi, torch.pi], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc="lower right",
+                xrange=(-3.3, 3.3),
+                title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+                yrange=(0, 0.21),
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": get_eta(gen_jets),
+                    "reco": get_eta(det_jets),
+                    model_label: get_eta(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"\eta_{\text{jet}}",
+                bins_range=torch.tensor([-2.4, 2.4], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc="lower center",
+                title=r"$t\bar{t}$",
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": get_mass(gen_jets),
+                    "reco": get_mass(det_jets),
+                    model_label: get_mass(sample_jets),
+                },
+                reference_key="part",
+                xlabel=r"m_{\text{jet}} \text{ [GeV]}",
+                bins_range=torch.tensor([140, 200], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                file=file,
+                legend_loc=None,
+                title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+            )
 
         for i in range(1, exp.cfg.plotting.n_pt + 1):
             gen_const_i = get_constituent(truth.x_gen, truth.x_gen_ptr, i)
@@ -1425,6 +1430,7 @@ def plot_t(exp, filename, model_label):
             )
 
         if "nsubjettiness" in exp.cfg.plotting.observables:
+            LOGGER.info("Calculating n-subjettiness")
             gen_tau1 = tau1(truth.x_gen, truth.x_gen_batch, R0=0.4)
             det_tau1 = tau1(truth.x_det, truth.x_det_batch, R0=0.4)
             sample_tau1 = tau1(samples.x_gen, samples.x_gen_batch, R0=0.4)
@@ -1492,6 +1498,7 @@ def plot_t(exp, filename, model_label):
             )
 
         if "softdropmass" in exp.cfg.plotting.observables:
+            LOGGER.info("Calculating softdrop mass")
             gen_rho = sd_mass(truth.x_gen, truth.x_gen_batch, R0=0.8)
             det_rho = sd_mass(truth.x_det, truth.x_det_batch, R0=0.8)
             sample_rho = sd_mass(samples.x_gen, samples.x_gen_batch, R0=0.8)
@@ -1513,6 +1520,7 @@ def plot_t(exp, filename, model_label):
             )
 
         if "momentumfraction" in exp.cfg.plotting.observables:
+            LOGGER.info("Calculating groomed jet momentum fraction")
             gen_zg = compute_zg(truth.x_gen, truth.x_gen_batch, R0=0.8)
             det_zg = compute_zg(truth.x_det, truth.x_det_batch, R0=0.8)
             sample_zg = compute_zg(samples.x_gen, samples.x_gen_batch, R0=0.8)
@@ -1536,6 +1544,7 @@ def plot_t(exp, filename, model_label):
             )
 
         if "eec" in exp.cfg.plotting.observables:
+            LOGGER.info("Calculating EEC")
             gen_eecs = calculate_eec(truth.x_gen, truth.x_gen_ptr)
             det_eecs = calculate_eec(truth.x_det, truth.x_det_ptr)
             sample_eecs = calculate_eec(samples.x_gen, samples.x_gen_ptr)

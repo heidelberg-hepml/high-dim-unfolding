@@ -375,9 +375,13 @@ class JetConditionalTransformerCFM(JetCFM):
             gen_batch_idx = torch.repeat_interleave(
                 torch.arange(batch.num_graphs, device=batch.jet_gen.device), 4
             )
-            det_batch_idx = torch.repeat_interleave(
-                torch.arange(batch.num_graphs, device=batch.jet_det.device), 4
-            )
+            if self.cfm.add_constituents:
+                det_batch_idx = batch.x_det_batch
+            else:
+                det_batch_idx = torch.repeat_interleave(
+                    torch.arange(batch.num_graphs, device=batch.jet_det.device), 4
+                )
+
         else:
             gen_batch_idx = torch.arange(batch.num_graphs, device=batch.jet_gen.device)
             if self.cfm.add_constituents:
@@ -399,7 +403,7 @@ class JetConditionalTransformerCFM(JetCFM):
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
-        if self.cfm.transpose:
+        if self.cfm.transpose and not self.cfm.add_constituents:
             input = torch.flatten(batch.jet_det).unsqueeze(-1)
             pe = self.pe.repeat(batch.jet_det.shape[0], 1).to(
                 batch.jet_det.device, dtype=batch.jet_det.dtype
