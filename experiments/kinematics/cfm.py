@@ -380,6 +380,8 @@ class EventCFM(CFM):
         self.condition_const_coordinates = getattr(c, self.cfm.const_coordinates)(
             **self.cfm.const_coordinates_options
         )
+        if getattr(self.cfm.const_coordinates_options, "vonmises", False):
+            self.scaling[1] = self.scaling[1] / self.const_coordinates.phi_std
         self.jet_coordinates = getattr(c, self.cfm.jet_coordinates)(
             **self.cfm.jet_coordinates_options
         )

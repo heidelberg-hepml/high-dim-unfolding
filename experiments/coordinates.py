@@ -41,6 +41,7 @@ class BaseCoordinates(torch.nn.Module):
             circular_var = 1 - torch.sqrt(c**2 + s**2)
             concentration = kappa_from_Vc(circular_var.item())
             self.phi_dist = VonMises(loc=loc, concentration=concentration)
+            self.phi_std = x[mask][:, 1].std().item()
         self.transforms[-1].init_fit(x, mask=mask, **kwargs)
 
     def fourmomenta_to_x(self, a_in, **kwargs):
