@@ -200,9 +200,6 @@ class JetKinematicsExperiment(BaseExperiment):
         # initialize cfm (requires data)
         self.model.init_coordinates()
 
-        # initialize geometry
-        self.model.init_geometry()
-
         # For jet-level learning, we fit on the jet momenta directly
         # We create a simple mask where each jet is treated as a single particle
         train_gen_mask = torch.ones(train_idx, 1, dtype=torch.bool)
@@ -247,6 +244,9 @@ class JetKinematicsExperiment(BaseExperiment):
                     ),
                 )
             )
+
+        # initialize geometry
+        self.model.init_geometry()
 
         gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
 
@@ -334,9 +334,6 @@ class JetKinematicsExperiment(BaseExperiment):
 
         # initialize cfm (requires data)
         self.model.init_coordinates()
-
-        # initialize geometry
-        self.model.init_geometry()
 
         files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
         num_events = self.cfg.data.length
@@ -444,6 +441,9 @@ class JetKinematicsExperiment(BaseExperiment):
                         det_jets[:train_idx], det_mults[:train_idx], dim=0
                     ),
                 )
+
+            # initialize geometry
+            self.model.init_geometry()
 
         if self.cfg.cfm.add_constituents:
             det_mask = (

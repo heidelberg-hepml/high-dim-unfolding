@@ -359,9 +359,6 @@ class KinematicsExperiment(BaseExperiment):
         # initialize cfm
         self.model.init_coordinates()
 
-        # initialize geometry
-        self.model.init_geometry()
-
         files = sorted(glob.glob(os.path.join(data_path, "new_ttbar*.parquet")))
         num_events = self.cfg.data.length
         for i in range(len(files)):
@@ -463,6 +460,9 @@ class KinematicsExperiment(BaseExperiment):
                 ),
             )
             self.model.condition_jet_coordinates.init_fit(det_jets[:train_idx])
+
+            # initialize geometry
+            self.model.init_geometry()
 
         gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
         gen_particles[gen_mask] = self.model.const_coordinates.fourmomenta_to_x(
