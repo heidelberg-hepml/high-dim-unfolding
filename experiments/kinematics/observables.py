@@ -4,15 +4,19 @@ import tqdm
 try:
     from fastjet_contribs import (
         compute_nsubjettiness,
-        apply_soft_drop,
     )
 
-    FASTJET_AVAIL = True
+    NSUB_AVAIL = True
 except ImportError:
-    LOGGER.info(
-        "fastjet_contribs is not available. Some observables cannot be computed."
-    )
-    FASTJET_AVAIL = False
+    LOGGER.info("compute_nsubjettiness is not available.")
+    NSUB_AVAIL = False
+try:
+    from fastjet_contribs import apply_soft_drop
+
+    SOFTDROP_AVAIL = True
+except ImportError:
+    LOGGER.info("apply_soft_drop is not available.")
+    SOFTDROP_AVAIL = False
 
 import torch
 import numpy as np
@@ -181,31 +185,28 @@ def deltaR(i, j):
     return deltaR_ij
 
 
-def tau1(constituents, batch_idx, other_batch_idx=None, R0=R0, **kwargs):
+def tau(
+    constituents,
+    batch_idx,
+    other_batch_idx=None,
+    N=1,
+    beta=1.0,
+    R0=R0,
+    axis_mode=3,
+    **kwargs
+):
     constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
     batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     taus = []
+    axis_modes = {"onepass_kt": 2}
     for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         tau = compute_nsubjettiness(
             jet=event[..., [1, 2, 3, 0]],
-            N=1,
-            beta=1.0,
+            N=N,
+            beta=beta,
             R0=R0,
-            axis_mode=3,
-        )
-        taus.append(tau)
-    return torch.tensor(taus)
-
-
-def tau2(constituents, batch_idx, other_batch_idx=None, R0=R0, **kwargs):
-    constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
-    batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
-    taus = []
-    for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
-        event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-        tau = compute_nsubjettiness(
-            event[..., [1, 2, 3, 0]], N=2, beta=1.0, R0=R0, axis_mode=3
+            axis_mode=axis_mode,
         )
         taus.append(tau)
     return torch.tensor(taus)

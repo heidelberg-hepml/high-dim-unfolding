@@ -15,6 +15,7 @@ outputs/
 scripts/
 logs/
 notebooks/
+fastjet/
 *~
 
 .claude/

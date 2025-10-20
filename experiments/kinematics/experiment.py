@@ -29,11 +29,10 @@ from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
 import experiments.kinematics.observables as obs
 from experiments.kinematics.observables import (
-    FASTJET_AVAIL,
+    # FASTJET_AVAIL,
     create_partial_jet,
     compute_angles,
-    tau1,
-    tau2,
+    tau,
     dimass,
     deltaR,
     sd_mass,
