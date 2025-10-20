@@ -80,7 +80,10 @@ class CFM(nn.Module):
         )
         if self.const_coordinates.contains_phi:
             if getattr(self.cfm.const_coordinates_options, "vonmises", False):
-                sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
+                sample[..., 1] = (
+                    self.const_coordinates.phi_dist.sample(x0.shape[:-1])
+                    / self.const_coordinates.phi_std
+                )
             elif "JetScaled" not in self.cfm.const_coordinates:
                 sample[..., 1] = (
                     torch.rand(
@@ -133,7 +136,9 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, constituents_mask, _ = add_jet_to_sequence(batch)
+            new_batch, constituents_mask, det_constituents_mask = add_jet_to_sequence(
+                batch
+            )
         else:
             new_batch = batch
             constituents_mask = torch.ones(
@@ -380,14 +385,18 @@ class EventCFM(CFM):
         self.condition_const_coordinates = getattr(c, self.cfm.const_coordinates)(
             **self.cfm.const_coordinates_options
         )
-        if getattr(self.cfm.const_coordinates_options, "vonmises", False):
-            self.scaling[1] = self.scaling[1] / self.const_coordinates.phi_std
         self.jet_coordinates = getattr(c, self.cfm.jet_coordinates)(
             **self.cfm.jet_coordinates_options
         )
         self.condition_jet_coordinates = getattr(c, self.cfm.jet_coordinates)(
             **self.cfm.jet_coordinates_options
         )
+        if self.cfm.const_coordinates_options.vonmises:
+            self.condition_const_coordinates.vonmises = True
+            self.const_coordinates.vonmises = True
+        if self.cfm.jet_coordinates_options.vonmises:
+            self.jet_coordinates.vonmises = True
+            self.condition_jet_coordinates.vonmises = True
         if self.cfm.transforms_float64:
             self.const_coordinates.to(torch.float64)
             self.condition_const_coordinates.to(torch.float64)
@@ -395,12 +404,17 @@ class EventCFM(CFM):
             self.condition_jet_coordinates.to(torch.float64)
 
     def init_geometry(self):
+
         # placeholder for any initialization that needs to be done
+        if self.cfm.const_coordinates_options.vonmises:
+            scale = self.scaling[1].item() / self.const_coordinates.phi_std
+        else:
+            scale = self.scaling[1].item()
         if self.cfm.geometry.type == "simple":
             self.geometry = SimplePossiblyPeriodicGeometry(
                 contains_phi=self.const_coordinates.contains_phi,
                 periodic=self.cfm.geometry.periodic,
-                scale=self.scaling[1].item(),
+                scale=scale,
             )
         else:
             raise ValueError(f"geometry={self.cfm.geometry} not implemented")

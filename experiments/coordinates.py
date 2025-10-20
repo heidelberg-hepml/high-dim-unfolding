@@ -3,6 +3,7 @@ from torch.distributions import VonMises
 
 import experiments.transforms as tr
 from experiments.utils import kappa_from_Vc
+from experiments.logger import LOGGER
 
 DTYPE = torch.float64
 
@@ -19,6 +20,7 @@ class BaseCoordinates(torch.nn.Module):
         self.contains_phi = False
         self.contains_mass = False
         self.transforms = []
+        self.vonmises = False
 
     def init_fit(self, fourmomenta, mask=None, **kwargs):
         if mask is None:
@@ -34,7 +36,7 @@ class BaseCoordinates(torch.nn.Module):
             ).all(), (
                 f"Transform {transform.__class__.__name__} produced non-finite values."
             )
-        if self.contains_phi:
+        if self.vonmises:
             c = torch.cos(x[mask][:, 1]).mean()
             s = torch.sin(x[mask][:, 1]).mean()
             loc = torch.atan2(s, c).item()
@@ -42,6 +44,10 @@ class BaseCoordinates(torch.nn.Module):
             concentration = kappa_from_Vc(circular_var.item())
             self.phi_dist = VonMises(loc=loc, concentration=concentration)
             self.phi_std = x[mask][:, 1].std().item()
+            try:
+                setattr(self.transforms[-1], "contains_phi", False)
+            except:
+                pass
         self.transforms[-1].init_fit(x, mask=mask, **kwargs)
 
     def fourmomenta_to_x(self, a_in, **kwargs):

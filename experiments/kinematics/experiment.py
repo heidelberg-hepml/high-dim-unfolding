@@ -222,9 +222,6 @@ class KinematicsExperiment(BaseExperiment):
         # initialize cfm (might require data)
         self.model.init_coordinates()
 
-        # initialize geometry
-        self.model.init_geometry()
-
         train_gen_mask = (
             torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         )
@@ -250,6 +247,9 @@ class KinematicsExperiment(BaseExperiment):
         )
 
         self.model.condition_jet_coordinates.init_fit(det_jets[:train_idx])
+
+        # initialize geometry
+        self.model.init_geometry()
 
         gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
         gen_particles[gen_mask] = self.model.const_coordinates.fourmomenta_to_x(
