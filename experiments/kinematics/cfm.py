@@ -391,10 +391,10 @@ class EventCFM(CFM):
         self.condition_jet_coordinates = getattr(c, self.cfm.jet_coordinates)(
             **self.cfm.jet_coordinates_options
         )
-        if self.cfm.const_coordinates_options.vonmises:
+        if getattr(self.cfm.const_coordinates_options, "vonmises", False):
             self.condition_const_coordinates.vonmises = True
             self.const_coordinates.vonmises = True
-        if self.cfm.jet_coordinates_options.vonmises:
+        if getattr(self.cfm.jet_coordinates_options, "vonmises", False):
             self.jet_coordinates.vonmises = True
             self.condition_jet_coordinates.vonmises = True
         if self.cfm.transforms_float64:
