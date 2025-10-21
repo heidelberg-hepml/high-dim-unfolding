@@ -406,7 +406,7 @@ class EventCFM(CFM):
     def init_geometry(self):
 
         # placeholder for any initialization that needs to be done
-        if self.cfm.const_coordinates_options.vonmises:
+        if getattr(self.cfm.const_coordinates_options, "vonmises", False):
             scale = self.scaling[1].item() / self.const_coordinates.phi_std
         else:
             scale = self.scaling[1].item()
