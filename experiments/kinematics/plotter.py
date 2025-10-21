@@ -1002,13 +1002,23 @@ def plot_z(exp, filename, model_label):
 
         if "nsubjettiness" in exp.cfg.plotting.observables and NSUB_AVAIL:
             LOGGER.info("Calculating n-subjettiness")
-            gen_tau1 = tau(truth.x_gen, truth.x_gen_batch, N=1, R0=0.4)
-            det_tau1 = tau(truth.x_det, truth.x_det_batch, N=1, R0=0.4)
-            sample_tau1 = tau(samples.x_gen, samples.x_gen_batch, N=1, R0=0.4)
+            gen_tau1 = tau(truth.x_gen, truth.x_gen_batch, N=1, R0=0.4, axis_mode=1)
+            det_tau1 = tau(truth.x_det, truth.x_det_batch, N=1, R0=0.4, axis_mode=1)
+            sample_tau1 = tau(
+                samples.x_gen, samples.x_gen_batch, N=1, R0=0.4, axis_mode=1
+            )
 
-            gen_tau2 = tau(truth.x_gen, truth.x_gen_batch, N=2, R0=0.4)
-            det_tau2 = tau(truth.x_det, truth.x_det_batch, N=2, R0=0.4)
-            sample_tau2 = tau(samples.x_gen, samples.x_gen_batch, N=2, R0=0.4)
+            gen_tau2 = tau(truth.x_gen, truth.x_gen_batch, N=2, R0=0.4, axis_mode=1)
+            det_tau2 = tau(truth.x_det, truth.x_det_batch, N=2, R0=0.4, axis_mode=1)
+            sample_tau2 = tau(
+                samples.x_gen, samples.x_gen_batch, N=2, R0=0.4, axis_mode=1
+            )
+
+            gen_tau3 = tau(truth.x_gen, truth.x_gen_batch, N=3, R0=0.4, axis_mode=1)
+            det_tau3 = tau(truth.x_det, truth.x_det_batch, N=3, R0=0.4, axis_mode=1)
+            sample_tau3 = tau(
+                samples.x_gen, samples.x_gen_batch, N=3, R0=0.4, axis_mode=1
+            )
 
             gen_tau21 = torch.where(
                 gen_tau1 > 0, gen_tau2 / gen_tau1, torch.tensor(0.0)
@@ -1018,6 +1028,16 @@ def plot_z(exp, filename, model_label):
             )
             sample_tau21 = torch.where(
                 sample_tau1 > 0, sample_tau2 / sample_tau1, torch.tensor(0.0)
+            )
+
+            gen_tau32 = torch.where(
+                gen_tau2 > 0, gen_tau3 / gen_tau2, torch.tensor(0.0)
+            )
+            det_tau32 = torch.where(
+                det_tau2 > 0, det_tau3 / det_tau2, torch.tensor(0.0)
+            )
+            sample_tau32 = torch.where(
+                sample_tau2 > 0, sample_tau3 / sample_tau2, torch.tensor(0.0)
             )
 
             plot_ratio_histogram(
@@ -1049,7 +1069,23 @@ def plot_z(exp, filename, model_label):
                 logy=False,
                 file=file,
                 title={"title": "Z+jets", "x": 0.18, "y": 0.95},
-                yrange=[0, 16],
+                yrange=[0, 17],
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": gen_tau3,
+                    "reco": det_tau3,
+                    model_label: sample_tau3,
+                },
+                reference_key="part",
+                xlabel=r"\tau_3^{\beta=1}",
+                bins_range=torch.tensor([0, 0.18], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                title={"title": "Z+jets", "x": 0.18, "y": 0.95},
+                yrange=[0, 21],
             )
 
             plot_ratio_histogram(
@@ -1060,8 +1096,24 @@ def plot_z(exp, filename, model_label):
                 },
                 reference_key="part",
                 xlabel=r"\tau_{21}^{\beta=1}",
-                bins_range=torch.tensor([0, 1.4], dtype=torch.float32),
-                yrange=(0, 2.1),
+                bins_range=torch.tensor([0.1, 0.93], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                legend_loc=None,
+                file=file,
+                title={"title": "Z+jets", "x": 0.18, "y": 0.95},
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": gen_tau32,
+                    "reco": det_tau32,
+                    model_label: sample_tau32,
+                },
+                reference_key="part",
+                xlabel=r"\tau_{32}^{\beta=1}",
+                # bins_range=torch.tensor([0, 1.4], dtype=torch.float32),
+                # yrange=(0, 2.1),
                 no_ratio_keys=["reco"],
                 logy=False,
                 legend_loc=None,
@@ -1432,13 +1484,29 @@ def plot_t(exp, filename, model_label):
 
         if "nsubjettiness" in exp.cfg.plotting.observables and NSUB_AVAIL:
             LOGGER.info("Calculating n-subjettiness")
-            gen_tau1 = tau(truth.x_gen, truth.x_gen_batch, N=1, R0=0.4)
-            det_tau1 = tau(truth.x_det, truth.x_det_batch, N=1, R0=0.4)
-            sample_tau1 = tau(samples.x_gen, samples.x_gen_batch, N=1, R0=0.4)
+            gen_tau1 = tau(truth.x_gen, truth.x_gen_batch, N=1, R0=0.4, axis_mode=1)
+            det_tau1 = tau(truth.x_det, truth.x_det_batch, N=1, R0=0.4, axis_mode=1)
+            sample_tau1 = tau(
+                samples.x_gen, samples.x_gen_batch, N=1, R0=0.4, axis_mode=1
+            )
 
-            gen_tau2 = tau(truth.x_gen, truth.x_gen_batch, N=2, R0=0.4)
-            det_tau2 = tau(truth.x_det, truth.x_det_batch, N=2, R0=0.4)
-            sample_tau2 = tau(samples.x_gen, samples.x_gen_batch, N=2, R0=0.4)
+            gen_tau2 = tau(truth.x_gen, truth.x_gen_batch, N=2, R0=0.4, axis_mode=1)
+            det_tau2 = tau(truth.x_det, truth.x_det_batch, N=2, R0=0.4, axis_mode=1)
+            sample_tau2 = tau(
+                samples.x_gen, samples.x_gen_batch, N=2, R0=0.4, axis_mode=1
+            )
+
+            gen_tau3 = tau(truth.x_gen, truth.x_gen_batch, N=3, R0=0.4, axis_mode=1)
+            det_tau3 = tau(truth.x_det, truth.x_det_batch, N=3, R0=0.4, axis_mode=1)
+            sample_tau3 = tau(
+                samples.x_gen, samples.x_gen_batch, N=3, R0=0.4, axis_mode=1
+            )
+
+            gen_tau4 = tau(truth.x_gen, truth.x_gen_batch, N=4, R0=0.4, axis_mode=1)
+            det_tau4 = tau(truth.x_det, truth.x_det_batch, N=4, R0=0.4, axis_mode=1)
+            sample_tau4 = tau(
+                samples.x_gen, samples.x_gen_batch, N=4, R0=0.4, axis_mode=1
+            )
 
             gen_tau21 = torch.where(
                 gen_tau1 > 0, gen_tau2 / gen_tau1, torch.tensor(0.0)
@@ -1448,6 +1516,26 @@ def plot_t(exp, filename, model_label):
             )
             sample_tau21 = torch.where(
                 sample_tau1 > 0, sample_tau2 / sample_tau1, torch.tensor(0.0)
+            )
+
+            gen_tau32 = torch.where(
+                gen_tau2 > 0, gen_tau3 / gen_tau2, torch.tensor(0.0)
+            )
+            det_tau32 = torch.where(
+                det_tau2 > 0, det_tau3 / det_tau2, torch.tensor(0.0)
+            )
+            sample_tau32 = torch.where(
+                sample_tau2 > 0, sample_tau3 / sample_tau2, torch.tensor(0.0)
+            )
+
+            gen_tau43 = torch.where(
+                gen_tau3 > 0, gen_tau4 / gen_tau3, torch.tensor(0.0)
+            )
+            det_tau43 = torch.where(
+                det_tau3 > 0, det_tau4 / det_tau3, torch.tensor(0.0)
+            )
+            sample_tau43 = torch.where(
+                sample_tau3 > 0, sample_tau4 / sample_tau3, torch.tensor(0.0)
             )
 
             plot_ratio_histogram(
@@ -1484,6 +1572,38 @@ def plot_t(exp, filename, model_label):
 
             plot_ratio_histogram(
                 data={
+                    "part": gen_tau3,
+                    "reco": det_tau3,
+                    model_label: sample_tau3,
+                },
+                reference_key="part",
+                xlabel=r"\tau_3^{\beta=1}",
+                # bins_range=torch.tensor([0.03, 0.7], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc=None,
+                title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": gen_tau4,
+                    "reco": det_tau4,
+                    model_label: sample_tau4,
+                },
+                reference_key="part",
+                xlabel=r"\tau_4^{\beta=1}",
+                # bins_range=torch.tensor([0.03, 0.7], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc=None,
+                title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+            )
+
+            plot_ratio_histogram(
+                data={
                     "part": gen_tau21,
                     "reco": det_tau21,
                     model_label: sample_tau21,
@@ -1496,6 +1616,38 @@ def plot_t(exp, filename, model_label):
                 file=file,
                 legend_loc=None,
                 title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": gen_tau32,
+                    "reco": det_tau32,
+                    model_label: sample_tau32,
+                },
+                reference_key="part",
+                xlabel=r"\tau_{32}^{\beta=1}",
+                # bins_range=torch.tensor([0.07, 0.9], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc=None,
+                title={"title": r"$t\bar{t}$", "x": 0.93, "y": 0.95},
+            )
+
+            plot_ratio_histogram(
+                data={
+                    "part": gen_tau43,
+                    "reco": det_tau43,
+                    model_label: sample_tau43,
+                },
+                reference_key="part",
+                xlabel=r"\tau_{43}^{\beta=1}",
+                # bins_range=torch.tensor([0.07, 0.9], dtype=torch.float32),
+                no_ratio_keys=["reco"],
+                logy=False,
+                file=file,
+                legend_loc=None,
+                title={"title": r"$t\bar{t}$", "x": 0.09, "y": 0.95},
             )
 
         if "softdropmass" in exp.cfg.plotting.observables and SOFTDROP_AVAIL:
@@ -1565,7 +1717,7 @@ def plot_t(exp, filename, model_label):
                 logy=True,
                 file=file,
                 legend_loc="lower right",
-                title={"title": r"$t\bar{t}$", "x": 0.18, "y": 0.95},
+                title={"title": r"$t\bar{t}$", "x": 0.09, "y": 0.95},
                 weights={
                     "part": gen_eecs[:, 1],
                     "reco": det_eecs[:, 1],

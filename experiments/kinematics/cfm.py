@@ -232,6 +232,7 @@ class CFM(nn.Module):
 
         loss = loss.mean()
 
+        # add velocity loss in the mass direction
         # if self.cfm.add_mass:
         #     gen_jets = torch.repeat_interleave(
         #         batch.jet_gen, batch.x_gen_ptr.diff(), dim=0
@@ -281,13 +282,13 @@ class CFM(nn.Module):
 
         Parameters
         ----------
-        batch : tuple of Batch graphs
+        batch : Batch with gen and det graphs
         device : torch.device
         dtype : torch.dtype
 
         Returns
         -------
-        x0 : torch.tensor with shape shape = (batchsize, 4)
+        x0 : torch.tensor with shape (batchsize, 4)
             Generated events
         """
 
@@ -404,8 +405,6 @@ class EventCFM(CFM):
             self.condition_jet_coordinates.to(torch.float64)
 
     def init_geometry(self):
-
-        # placeholder for any initialization that needs to be done
         if getattr(self.cfm.const_coordinates_options, "vonmises", False):
             scale = self.scaling[1].item() / self.const_coordinates.phi_std
         else:

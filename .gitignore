@@ -16,6 +16,7 @@ scripts/
 logs/
 notebooks/
 fastjet/
+!fastjet/script.sh
 *~
 
 .claude/

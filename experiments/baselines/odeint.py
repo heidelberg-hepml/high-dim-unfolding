@@ -1,13 +1,31 @@
 import torch
+from collections.abc import Callable
 
 
-def custom_rk4(func, y1, t, step_size=0.01):
+def custom_rk4(
+    func: Callable[[torch.Tensor, torch.Tensor, torch.Tensor], torch.Tensor],
+    y1: tuple[torch.Tensor, torch.Tensor],
+    t: torch.Tensor,
+    step_size: float,
+) -> list[torch.Tensor]:
+    """
+    Runge-Kutta 4th order ODE solver with explicit velocity input for self conditioning.
+    Parameters
+    ----------
+        func: function defining the ODE (takes in time, position, velocity, return velocity)
+        y1: tuple of (initial position, initial velocity)
+        t: torch.Tensor of (start time, end time).
+        step_size: integration step size.
+    Returns
+    -------
+        List of torch.Tensor positions at each integration step.
+    """
     x1, v1 = y1
     xs = [x1]
     vs = [v1]
     if (t[1] - t[0]).item() * step_size < 0:
         step_size = -step_size
-    t_list = torch.arange(t[0], t[1], step_size)
+    t_list = torch.arange(start=t[0].item(), end=t[1].item(), step=step_size)
     for t in t_list:
         x = xs[-1]
         v = vs[-1]

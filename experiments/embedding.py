@@ -26,9 +26,14 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
 
     Returns
     -------
-    embedding: dict
-        Embedded data
-        Includes keys for multivectors, scalars and ptr
+    multivectors: torch.tensor of shape (n_particles (+ n_spurions*batchsize)), n_ga_features, n_channels)
+        Embedded multivectors, with the spurions added as tokens or channels as specified
+    scalars: torch.tensor of shape (n_particles (+ n_spurions*batchsize), n_features (+ n_spurions))
+        Scalars with spurions one-hot encoding added if specified
+    batch: torch.tensor of shape (n_particles (+ n_spurions*batchsize))
+        Batch indices for each particle
+    mask: torch.tensor of shape (n_particles (+ n_spurions*batchsize))
+        Mask indicating which entries are spurions (False for spurions, True for original data)
     """
     batchsize = len(ptr) - 1
     arange = torch.arange(batchsize, device=fourmomenta.device)
@@ -105,6 +110,23 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
 
 
 def add_jet_to_sequence(batch):
+    """
+    Add exactly one token per sequence in both x_gen and x_det (the jet four-momentum),
+    and append exactly one new scalars_gen/det channel that flags those tokens.
+
+    Parameters
+    ----------
+    batch: Batch object
+        The original batch to modify
+    Returns
+    -------
+    new_batch: Batch object
+        The modified batch with jet tokens added for x_gen and x_det
+    ~insert_gen_jets: torch.tensor of shape (gen_mult + batchsize)
+        Mask indicating which entries in x_gen are original data (True) vs inserted jet tokens (False)
+    ~insert_det_jets: torch.tensor of shape (det_mult + batchsize)
+        Mask indicating which entries in x_det are original data (True) vs inserted jet tokens (False)
+    """
     new_batch = batch.clone()
 
     batchsize = len(new_batch.x_gen_ptr) - 1
@@ -176,9 +198,6 @@ def add_jet_to_sequence(batch):
     new_batch.x_det_batch = get_batch_from_ptr(new_batch.x_det_ptr)
 
     return new_batch, ~insert_gen_jets, ~insert_det_jets
-
-
-import torch
 
 
 def add_jet_det_and_stop_to_x_gen(batch):

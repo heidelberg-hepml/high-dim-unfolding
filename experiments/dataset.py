@@ -455,7 +455,7 @@ class SameSizeBatchSampler(BatchSampler):
         self,
         dataset,
         batch_size,
-        drop_last=False,  # otherwise drop for each multiplicity so too many events
+        drop_last=False,  # otherwise drop last for each multiplicity so too many events
         num_replicas=1,
         rank=0,
         shuffle=False,
