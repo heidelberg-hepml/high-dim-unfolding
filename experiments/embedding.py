@@ -2,6 +2,7 @@ import torch
 from lgatr.interface import embed_vector, get_spurions
 
 from experiments.utils import get_batch_from_ptr
+from experiments.coordinates import jetmomenta_to_fourmomenta
 
 
 def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
@@ -35,7 +36,6 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
     multivectors = multivectors.unsqueeze(-2)
 
     if ga_cfg is not None:
-        # beam reference
         spurions = get_spurions(
             ga_cfg.beam_spurion,
             ga_cfg.add_time_spurion,
@@ -74,9 +74,9 @@ def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
         scalars[~insert_spurion] = scalars_buffer
         new_ptr[1:] = new_ptr[1:] + (arange + 1) * n_spurions
 
-        mask = ~insert_spurion
+        mask = insert_spurion
     else:
-        mask = torch.ones(
+        mask = torch.zeros(
             multivectors.shape[0],
             dtype=torch.bool,
             device=multivectors.device,
@@ -109,6 +109,7 @@ def add_jet_to_sequence(batch):
         device=new_batch.x_gen.device,
     )
     x_gen[~insert_gen_jets] = new_batch.x_gen
+
     x_gen[insert_gen_jets] = new_batch.jet_gen
     scalars_gen = torch.zeros(
         x_gen.shape[0],

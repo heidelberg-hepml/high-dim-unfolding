@@ -1,9 +1,10 @@
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 import torch
 from torch.distributions import Categorical, Gamma, Normal
-from matplotlib.backends.backend_pdf import PdfPages
+import einops
 
 from experiments.base_plots import plot_loss
 from experiments.multiplicity.distributions import (
@@ -16,13 +17,13 @@ plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
 plt.rcParams["text.latex.preamble"] = (
-    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath} \usepackage{siunitx}"
+    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"  # \usepackage{siunitx}"
 )
 
 FONTSIZE = 18
 FONTSIZE_LEGEND = FONTSIZE
 FONTSIZE_TICK = FONTSIZE
-TICKLABELSIZE = 10
+TICKLABELSIZE = 13
 
 colors = ["black", "#0343DE", "#A52A2A", "darkorange"]
 
@@ -49,12 +50,12 @@ def plot_mixer(cfg, plot_path, plot_dict):
 
     if cfg.evaluate:
         if cfg.data.dataset == "zplusjet":
-            xrange = [0, 70]
+            xrange = [5, 60]
             diff_xrange = [-5, 30]
         elif cfg.data.dataset == "ttbar":
             xrange = [30, 130]
-            diff_xrange = [0, 50]
-        if cfg.plotting.distributions:
+            diff_xrange = [5, 40]
+        if cfg.plotting.n_distributions > 0:
             file = f"{plot_path}/distributions.pdf"
             if cfg.dist.diff:
                 plot_distributions(
@@ -139,7 +140,7 @@ def plot_histogram(
     xrange,
     model_label,
     logy=False,
-    error_range=[0.85, 1.15],
+    error_range=[0.8, 1.2],
     error_ticks=[0.9, 1.0, 1.1],
 ):
     """
@@ -160,7 +161,8 @@ def plot_histogram(
     # construct labels and colors
     labels = ["Truth", model_label]
     colors = ["black", "#A52A2A"]
-    bins = np.arange(int(xrange[0]), int(xrange[1]) + 1)
+    step = 2 if (xrange[1] - xrange[0]) > 50 else 1
+    bins = np.arange(int(xrange[0]), int(xrange[1]) + 1, step=step)
 
     # construct histograms
     y_trn, _ = np.histogram(train, bins=bins, range=xrange)
@@ -262,7 +264,7 @@ def plot_histogram(
         )
 
     axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
-    axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
+    axs[0].set_ylabel("Density", fontsize=FONTSIZE)
 
     if logy:
         axs[0].set_yscale("log")
@@ -477,6 +479,11 @@ def plot_components(file, params, samples, xrange, distribution_label, diff, n_p
     elif distribution_label == "Categorical":
         LOGGER.info("Not plotting components for categorical distribution")
         return
+
+    if params.ndim == 2:
+        params = einops.rearrange(
+            params, "... (n_mix n_params) -> ... n_mix n_params", n_params=3
+        )
 
     with PdfPages(file) as pdf:
 

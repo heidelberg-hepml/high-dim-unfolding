@@ -12,8 +12,9 @@ from experiments.kinematics.plots import (
 )
 from experiments.utils import get_range
 from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
+from experiments.logger import LOGGER
 
-N_SAMPLES = 100000
+N_SAMPLES = -1
 
 
 def plot_losses(exp, filename, model_label):
@@ -129,44 +130,67 @@ def plot_classifier(exp, filename, model_label):
         )
 
 
-def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
+def plot_fourmomenta(
+    exp, filename, model_label, jet=False, weights=None, mask_dict=None
+):
+
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
+
+    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
+    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
+    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr[max_n]
+
+    part_batch_idx = exp.data_raw["truth"].x_gen_batch[:part_max_n_ptr]
+    det_batch_idx = exp.data_raw["truth"].x_det_batch[:det_max_n_ptr]
+    model_batch_idx = exp.data_raw["samples"].x_gen_batch[:model_max_n_ptr]
+
+    part_x = exp.data_raw["truth"].x_gen[:part_max_n_ptr]
+    det_x = exp.data_raw["truth"].x_det[:det_max_n_ptr]
+    model_x = exp.data_raw["samples"].x_gen[:model_max_n_ptr]
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
-            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
-            max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
-            det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            det_lvl = (
-                extract(
-                    exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                    exp.data_raw["samples"].jet_det[:max_n],
-                )[0]
-                .cpu()
-                .detach()
-            )
-            part_lvl = (
-                extract(
-                    exp.data_raw["truth"].x_gen[:max_n_ptr],
-                    exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                    exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
-                    exp.data_raw["truth"].jet_gen[:max_n],
-                )[0][: len(det_lvl)]
-                .cpu()
-                .detach()
-            )
-            model = (
-                extract(
-                    exp.data_raw["samples"].x_gen[:max_n_ptr],
-                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                    exp.data_raw["samples"].jet_gen[:max_n],
-                )[0][: len(det_lvl)]
-                .cpu()
-                .detach()
-            )
+
+            if not jet:
+                det_lvl = (
+                    extract(
+                        det_x,
+                        det_batch_idx,
+                        part_batch_idx,
+                        exp.data_raw["truth"].jet_det[:max_n],
+                    )[0]
+                    .cpu()
+                    .detach()
+                )
+                part_lvl = (
+                    extract(
+                        part_x,
+                        part_batch_idx,
+                        det_batch_idx,
+                        exp.data_raw["truth"].jet_gen[:max_n],
+                    )[0][: len(det_lvl)]
+                    .cpu()
+                    .detach()
+                )
+                model = (
+                    extract(
+                        model_x,
+                        model_batch_idx,
+                        det_batch_idx,
+                        exp.data_raw["samples"].jet_gen[:max_n],
+                    )[0][: len(det_lvl)]
+                    .cpu()
+                    .detach()
+                )
+            else:
+                det_lvl = exp.data_raw["truth"].jet_det[:max_n]
+                part_lvl = exp.data_raw["truth"].jet_gen[:max_n]
+                model = exp.data_raw["samples"].jet_gen[:max_n]
 
             obs_names = [
                 "E_{" + name + "}",
@@ -214,32 +238,54 @@ def plot_fourmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     )
 
 
-def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
+def plot_jetmomenta(
+    exp, filename, model_label, jet=False, weights=None, mask_dict=None
+):
+
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
+
+    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr  # [max_n]
+    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr  # [max_n]
+    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr  # [max_n]
+
+    part_batch_idx = exp.data_raw["truth"].x_gen_batch  # [:part_max_n_ptr]
+    det_batch_idx = exp.data_raw["truth"].x_det_batch  # [:det_max_n_ptr]
+    model_batch_idx = exp.data_raw["samples"].x_gen_batch  # [:model_max_n_ptr]
+
+    part_x = exp.data_raw["truth"].x_gen  # [:part_max_n_ptr]
+    det_x = exp.data_raw["truth"].x_det  # [:det_max_n_ptr]
+    model_x = exp.data_raw["samples"].x_gen  # [:model_max_n_ptr]
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
-            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
-            max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
-            det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
-            det_lvl = extract(
-                exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                true_jet=exp.data_raw["samples"].jet_det[:max_n],
-            )[0]
-            part_lvl = extract(
-                exp.data_raw["truth"].x_gen[:max_n_ptr],
-                exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
-                true_jet=exp.data_raw["truth"].jet_gen[:max_n],
-            )[0][: len(det_lvl)]
-            model = extract(
-                exp.data_raw["samples"].x_gen[:max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                true_jet=exp.data_raw["samples"].jet_gen[:max_n],
-            )[0]
+            if not jet:
+                det_lvl = extract(
+                    det_x,
+                    det_batch_idx,
+                    part_batch_idx,
+                    exp.data_raw["truth"].jet_det,  # [:max_n],
+                )[0]
+                part_lvl = extract(
+                    part_x,
+                    part_batch_idx,
+                    det_batch_idx,
+                    exp.data_raw["truth"].jet_gen,  # [:max_n],
+                )[0][: len(det_lvl)]
+                model = extract(
+                    model_x,
+                    model_batch_idx,
+                    det_batch_idx,
+                    exp.data_raw["samples"].jet_gen,  # [:max_n],
+                )[0][: len(det_lvl)]
+            else:
+                det_lvl = exp.data_raw["truth"].jet_det.clone()  # [:max_n]
+                part_lvl = exp.data_raw["truth"].jet_gen.clone()  # [:max_n]
+                model = exp.data_raw["samples"].jet_gen.clone()  # [:max_n]
 
             part_lvl = fourmomenta_to_jetmomenta(part_lvl).cpu().detach()
             det_lvl = fourmomenta_to_jetmomenta(det_lvl).cpu().detach()
@@ -269,6 +315,8 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
                     logy = True
                 else:
                     logy = False
+                if channel == 3 and exp.cfg.data.dataset == "ttbar":
+                    xrange = np.array([120.0, 210.0])
                 plot_histogram(
                     file=file,
                     train=part_lvl[..., channel],
@@ -298,27 +346,49 @@ def plot_jetmomenta(exp, filename, model_label, weights=None, mask_dict=None):
 
 def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
 
-    coords = exp.model.coordinates
-    det_lvl_coords = exp.model.condition_coordinates
+    coords = exp.model.const_coordinates
+    det_lvl_coords = exp.model.condition_const_coordinates
+
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
+
+    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
+    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
+    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr[max_n]
+
+    part_batch_idx = exp.data_raw["truth"].x_gen_batch[:part_max_n_ptr]
+    det_batch_idx = exp.data_raw["truth"].x_det_batch[:det_max_n_ptr]
+    model_batch_idx = exp.data_raw["samples"].x_gen_batch[:model_max_n_ptr]
+
+    part_x = exp.data_raw["truth"].x_gen[:part_max_n_ptr]
+    det_x = exp.data_raw["truth"].x_det[:det_max_n_ptr]
+    model_x = exp.data_raw["samples"].x_gen[:model_max_n_ptr]
 
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
             det_lvl = extract(
-                exp.data_raw["samples"].x_det,
-                exp.data_raw["samples"].x_det_batch,
-                exp.data_raw["samples"].x_gen_batch,
+                det_x,
+                det_batch_idx,
+                part_batch_idx,
             )[0]
             part_lvl = extract(
-                exp.data_raw["truth"].x_gen,
-                exp.data_raw["truth"].x_gen_batch,
-                exp.data_raw["truth"].x_det_batch,
-            )[0][: len(det_lvl)]
+                part_x,
+                part_batch_idx,
+                det_batch_idx,
+            )[
+                0
+            ][: len(det_lvl)]
             model = extract(
-                exp.data_raw["samples"].x_gen,
-                exp.data_raw["samples"].x_gen_batch,
-                exp.data_raw["samples"].x_det_batch,
-            )[0][: len(det_lvl)]
+                model_x,
+                model_batch_idx,
+                det_batch_idx,
+            )[
+                0
+            ][: len(det_lvl)]
 
             part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
             det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl).cpu().detach()
@@ -378,28 +448,44 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
     coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
     condition_coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
 
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
+
+    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
+    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
+    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr[max_n]
+
+    part_batch_idx = exp.data_raw["truth"].x_gen_batch[:part_max_n_ptr]
+    det_batch_idx = exp.data_raw["truth"].x_det_batch[:det_max_n_ptr]
+    model_batch_idx = exp.data_raw["samples"].x_gen_batch[:model_max_n_ptr]
+
+    part_x = exp.data_raw["truth"].x_gen[:part_max_n_ptr]
+    det_x = exp.data_raw["truth"].x_det[:det_max_n_ptr]
+    model_x = exp.data_raw["samples"].x_gen[:model_max_n_ptr]
+
     with PdfPages(filename) as file:
         for name in exp.obs_coords.keys():
             extract = exp.obs_coords[name]
-            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
-            max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
-            det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
+
             det_lvl, det_lvl_jet, det_lvl_ptr, det_lvl_pos = extract(
-                exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                true_jet=exp.data_raw["samples"].jet_det[:max_n],
+                det_x,
+                det_batch_idx,
+                part_batch_idx,
+                true_jet=exp.data_raw["truth"].jet_det[:max_n],
             )
             part_lvl, part_lvl_jet, part_lvl_ptr, part_lvl_pos = extract(
-                exp.data_raw["truth"].x_gen[:max_n_ptr],
-                exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                part_x,
+                part_batch_idx,
+                det_batch_idx,
                 true_jet=exp.data_raw["truth"].jet_gen[:max_n],
             )
             model, model_jet, model_ptr, model_pos = extract(
-                exp.data_raw["samples"].x_gen[:max_n_ptr],
-                exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                model_x,
+                model_batch_idx,
+                det_batch_idx,
                 true_jet=exp.data_raw["samples"].jet_gen[:max_n],
             )
 
@@ -435,10 +521,10 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
             )
 
             obs_names = [
-                r"\frac{p_{T," + name + r"}}{p_{T,\text{ jet}}}",
-                r"\phi_{" + name + r"} - \phi_{\text{ jet}}",
-                r"\eta_{" + name + r"} - \eta_{\text{ jet}}",
-                r"m_{" + name + r"}",
+                r"\log{p_{T," + name + r"}} - \log{p_{T,\text{ jet}}}",
+                r"\phi_{" + name + r"} - \phi_{\text{jet}}",
+                r"\eta_{" + name + r"} - \eta_{\text{jet}}",
+                r"\log m_{" + name + r"}^2 - \log m_{\text{jet}}^2",
             ]
             for channel in range(4):
                 xlabel = obs_names[channel]
@@ -484,8 +570,8 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
 
 def plot_correlations(exp, filename, model_label, weights=None, mask_dict=None):
 
-    coords = exp.model.coordinates
-    det_lvl_coords = exp.model.condition_coordinates
+    coords = exp.model.const_coordinates
+    det_lvl_coords = exp.model.condition_const_coordinates
 
     with PdfPages(filename) as file:
         for name in exp.corr.keys():
@@ -565,39 +651,66 @@ def plot_observables(
     weights=None,
     mask_dict=None,
 ):
+    max_n = (
+        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+        if N_SAMPLES > 0
+        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    )
+
+    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
+    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
+    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr[max_n]
+
+    part_batch_idx = exp.data_raw["truth"].x_gen_batch[:part_max_n_ptr]
+    det_batch_idx = exp.data_raw["truth"].x_det_batch[:det_max_n_ptr]
+    model_batch_idx = exp.data_raw["samples"].x_gen_batch[:model_max_n_ptr]
+
+    part_consts = exp.data_raw["truth"].x_gen[:part_max_n_ptr]
+    det_consts = exp.data_raw["truth"].x_det[:det_max_n_ptr]
+    model_consts = exp.data_raw["samples"].x_gen[:model_max_n_ptr]
+
     with PdfPages(filename) as file:
         for name in exp.obs.keys():
+            LOGGER.info(f"Plotting observable {name}")
             extract = exp.obs[name]
-            max_n = min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
-            max_n_ptr = exp.data_raw["truth"].x_gen_ptr[max_n]
-            det_max_n_ptr = exp.data_raw["truth"].x_det_ptr[max_n]
             det_lvl = (
                 extract(
-                    exp.data_raw["samples"].x_det[:det_max_n_ptr],
-                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
-                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
+                    det_consts,
+                    det_batch_idx,
+                    part_batch_idx,
                 )
                 .cpu()
                 .detach()
             )
             part_lvl = (
                 extract(
-                    exp.data_raw["truth"].x_gen[:max_n_ptr],
-                    exp.data_raw["truth"].x_gen_batch[:max_n_ptr],
-                    exp.data_raw["truth"].x_det_batch[:det_max_n_ptr],
+                    part_consts,
+                    part_batch_idx,
+                    det_batch_idx,
                 )
                 .cpu()
                 .detach()
             )
             model = (
                 extract(
-                    exp.data_raw["samples"].x_gen[:max_n_ptr],
-                    exp.data_raw["samples"].x_gen_batch[:max_n_ptr],
-                    exp.data_raw["samples"].x_det_batch[:det_max_n_ptr],
+                    model_consts,
+                    model_batch_idx,
+                    det_batch_idx,
                 )
                 .cpu()
                 .detach()
             )
+
+            min_length = min(det_lvl.shape[0], part_lvl.shape[0], model.shape[0])
+            nan_filter = (
+                torch.isnan(det_lvl[:min_length])
+                | torch.isnan(part_lvl[:min_length])
+                | torch.isnan(model[:min_length])
+            ).squeeze()
+
+            det_lvl = det_lvl[:min_length][~nan_filter]
+            part_lvl = part_lvl[:min_length][~nan_filter]
+            model = model[:min_length][~nan_filter]
 
             xrange = np.array(
                 get_range(
@@ -611,6 +724,12 @@ def plot_observables(
 
             if name == "z_g":
                 xrange[0] = 0.0
+            if "phi" in name or "eta" in name:
+                xrange[0] = -0.06
+                xrange[1] = 0.06
+            if "Delta R" in name:
+                xrange[0] = 0.0
+                xrange[1] = 0.1
             xlabel = name
             logy = False
 

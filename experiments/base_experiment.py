@@ -19,7 +19,7 @@ import lgatr.layers.linear
 import lgatr.layers.mlp.geometric_bilinears
 import lgatr.layers.mlp.mlp
 import lgatr.primitives.linear
-from experiments.utils import get_device, flatten_dict
+from experiments.utils import get_device, flatten_dict, remove_prefix
 import experiments.logger
 from experiments.logger import LOGGER, MEMORY_HANDLER, FORMATTER, RankFilter
 from experiments.mlflow import log_mlflow
@@ -34,7 +34,9 @@ cs.store(name="base_mlp", node=MLPConfig)
 
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
-MIN_STEP_SKIP = 1000
+
+GRAD_AVG_SCALE = 4
+MAX_GRAD_SKIPS = 5  # max consecutive gradient skips before forcing update
 
 
 class BaseExperiment:
@@ -140,6 +142,7 @@ class BaseExperiment:
     def init_model(self):
         # initialize model
         self.model = instantiate(self.cfg.model)
+
         num_parameters = sum(
             p.numel() for p in self.model.parameters() if p.requires_grad
         )
@@ -169,12 +172,14 @@ class BaseExperiment:
                     model_path, map_location="cpu", weights_only=False
                 )["model"]
                 LOGGER.info(f"Loading model from {model_path}")
+                state_dict = remove_prefix(state_dict)
                 self.model.load_state_dict(state_dict)
                 if self.ema is not None:
                     LOGGER.info(f"Loading EMA from {model_path}")
                     state_dict = torch.load(
                         model_path, map_location="cpu", weights_only=False
                     )["ema"]
+                    state_dict = remove_prefix(state_dict)
                     self.ema.load_state_dict(state_dict)
             except FileNotFoundError:
                 LOGGER.warning(
@@ -182,6 +187,8 @@ class BaseExperiment:
                 )
 
         self.model.to(self.device, dtype=self.dtype)
+        self.model = torch.compile(self.model)
+
         if self.ema is not None:
             self.ema.to(self.device)
 
@@ -212,9 +219,13 @@ class BaseExperiment:
 
         if not self.warm_start:
             if self.cfg.run_name is None:
-                modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
-                rnd_number = np.random.randint(low=0, high=9999)
-                run_name = f"{modelname}_{rnd_number:04}"
+                try:
+                    modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+                    rnd_number = np.random.randint(low=0, high=9999)
+                    run_name = f"{modelname}_{rnd_number:04}"
+                except AttributeError:
+                    LOGGER.warning("Model name could not be determined")
+                    run_name = f"run_{rnd_number:04}"
             else:
                 run_name = self.cfg.run_name
 
@@ -227,6 +238,10 @@ class BaseExperiment:
         else:
             run_name = self.cfg.run_name
             run_idx = self.cfg.run_idx + 1
+            while os.path.isfile(
+                os.path.join(self.cfg.exp_name, run_name, f"config_{run_idx}.yaml")
+            ):
+                run_idx += 1
             LOGGER.info(
                 f"Warm-starting from existing experiment {self.cfg.exp_name}/{run_name} for run {run_idx}"
             )
@@ -234,7 +249,6 @@ class BaseExperiment:
         with open_dict(self.cfg):
             self.cfg.run_idx = run_idx
             if not self.warm_start:
-                self.cfg.warm_start_idx = 0
                 self.cfg.run_name = run_name
                 self.cfg.run_dir = run_dir
 
@@ -384,9 +398,6 @@ class BaseExperiment:
         torch.backends.cuda.enable_mem_efficient_sdp(
             self.cfg.training.enable_mem_efficient_sdp
         )
-        if self.cfg.training.force_xformers:
-            LOGGER.debug("Forcing use of xformers' attention implementation")
-            lgatr.primitives.attention.FORCE_XFORMERS = True
 
     def _init_optimizer(self, param_groups=None):
         if param_groups is None:
@@ -450,27 +461,44 @@ class BaseExperiment:
                 )
 
     def _init_scheduler(self):
+        if self.cfg.training.scheduler_warmup_factor > 0:
+            scheduler_warmup_steps = int(
+                self.cfg.training.iterations
+                * self.cfg.training.scheduler_scale
+                * self.cfg.training.scheduler_warmup_factor
+            )
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=0.1,
+                total_iters=scheduler_warmup_steps,
+            )
+            scheduler_steps = (
+                int(self.cfg.training.iterations * self.cfg.training.scheduler_scale)
+                - scheduler_warmup_steps
+            )
+        else:
+            warmup_scheduler = None
+            scheduler_steps = int(
+                self.cfg.training.iterations * self.cfg.training.scheduler_scale
+            )
+
         if self.cfg.training.scheduler is None:
-            self.scheduler = None  # constant lr
+            scheduler = None  # constant lr
         elif self.cfg.training.scheduler == "OneCycleLR":
-            self.scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            scheduler = torch.optim.lr_scheduler.OneCycleLR(
                 self.optimizer,
                 max_lr=self.cfg.training.lr * self.cfg.training.onecycle_max_lr,
                 pct_start=self.cfg.training.onecycle_pct_start,
-                total_steps=int(
-                    self.cfg.training.iterations * self.cfg.training.scheduler_scale
-                ),
+                total_steps=scheduler_steps,
             )
         elif self.cfg.training.scheduler == "CosineAnnealingLR":
-            self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
-                T_max=int(
-                    self.cfg.training.iterations * self.cfg.training.scheduler_scale
-                ),
+                T_max=scheduler_steps,
                 eta_min=self.cfg.training.cosanneal_eta_min,
             )
         elif self.cfg.training.scheduler == "ReduceLROnPlateau":
-            self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 self.optimizer,
                 factor=self.cfg.training.reduceplateau_factor,
                 patience=self.cfg.training.reduceplateau_patience,
@@ -481,6 +509,16 @@ class BaseExperiment:
             )
 
         LOGGER.debug(f"Using learning rate scheduler {self.cfg.training.scheduler}")
+
+        if scheduler is not None:
+            if warmup_scheduler is None:
+                self.scheduler = scheduler
+            else:
+                self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+                    self.optimizer,
+                    schedulers=[warmup_scheduler, scheduler],
+                    milestones=[scheduler_warmup_steps],
+                )
 
         # load existing scheduler if specified
         if self.warm_start and self.scheduler is not None:
@@ -534,14 +572,21 @@ class BaseExperiment:
 
         iterator = iter(cycle(self.train_loader))
 
+        if self.cfg.training.mixed_precision:
+            self.scaler = torch.amp.GradScaler()
+
+        self.model.train()
+
+        self.grad_skip_counter = 0
+
         # with torch.profiler.profile(
         #     activities=[
         #         torch.profiler.ProfilerActivity.CPU,
         #         torch.profiler.ProfilerActivity.CUDA,
         #     ],
-        #     schedule=torch.profiler.schedule(wait=1, warmup=1, active=3, repeat=1),
-        #     on_trace_ready=torch.profiler.tensorboard_trace_handler(
-        #         os.path.join(self.cfg.run_dir, "profiler")
+        #     schedule=torch.profiler.schedule(wait=3, warmup=3, active=3, repeat=1),
+        #     on_trace_ready=lambda prof: prof.export_chrome_trace(
+        #         os.path.join(self.cfg.run_dir, f"trace_{prof.step_num}.json")
         #     ),
         #     record_shapes=True,
         #     profile_memory=True,
@@ -551,12 +596,12 @@ class BaseExperiment:
 
         for step in range(self.cfg.training.iterations):
             # training
-            self.model.train()
             data = next(iterator)
             self._step(data, step)
 
             # validation (and early stopping)
             if (step + 1) % self.cfg.training.validate_every_n_steps == 0:
+                self.model.eval()
                 val_loss = self._validate(step)
                 if val_loss < smallest_val_loss:
                     smallest_val_loss = val_loss
@@ -578,10 +623,12 @@ class BaseExperiment:
 
                 if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
                     self.scheduler.step(val_loss)
+                self.model.train()
 
-            # gc.collect()
-            # if self.device == torch.device("cuda"):
-            #     torch.cuda.empty_cache()
+            if (step + 1) % self.cfg.training.clear_every_n_steps == 0:
+                gc.collect()
+                if self.device == torch.device("cuda"):
+                    torch.cuda.empty_cache()
 
             # output
             dt = time.time() - self.training_start_time
@@ -592,7 +639,7 @@ class BaseExperiment:
                     f"training time estimate: {dt_estimate/60:.2f}min "
                     f"= {dt_estimate/60**2:.2f}h"
                 )
-            # prof.step()
+                # prof.step()
 
         dt = time.time() - self.training_start_time
         LOGGER.info(
@@ -625,9 +672,18 @@ class BaseExperiment:
 
     def _step(self, data, step):
         # actual update step
-        loss, metrics = self._batch_loss(data)
+        if self.cfg.training.mixed_precision:
+            with torch.amp.autocast(device_type=self.device.type, dtype=torch.bfloat16):
+                loss, metrics = self._batch_loss(data)
+        else:
+            loss, metrics = self._batch_loss(data)
         self.optimizer.zero_grad()
-        loss.backward()
+
+        if self.cfg.training.mixed_precision:
+            self.scaler.scale(loss).backward()
+        else:
+            loss.backward()
+
         if self.cfg.training.clip_grad_value is not None:
             # clip gradients at a certain value (this is dangerous!)
             torch.nn.utils.clip_grad_value_(
@@ -648,14 +704,35 @@ class BaseExperiment:
             .cpu()
             .item()
         )
-        if step > MIN_STEP_SKIP and self.cfg.training.max_grad_norm is not None:
-            if grad_norm > self.cfg.training.max_grad_norm:
-                LOGGER.warning(
-                    f"Skipping update, gradient norm {grad_norm} exceeds maximum {self.cfg.training.max_grad_norm}"
-                )
-                return
+        if self.cfg.training.grad_norm_avg > 0 and step > max(
+            int(
+                self.cfg.training.iterations
+                * self.cfg.training.scheduler_scale
+                * self.cfg.training.scheduler_warmup_factor
+            ),
+            self.cfg.training.grad_norm_avg,
+        ):
+            if np.log(grad_norm) > np.mean(
+                np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg :])
+            ) + GRAD_AVG_SCALE * np.std(
+                np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg :])
+            ):
+                # self.scheduler.step()  # ensure correct total steps
+                self.grad_skip_counter += 1
+                if self.grad_skip_counter < MAX_GRAD_SKIPS:
+                    LOGGER.warning(
+                        f"Skipping update at {step +1}, log gradient norm {np.log(grad_norm):.2f} exceeds {self.cfg.training.grad_norm_avg} previous steps mean {np.mean(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f} + {GRAD_AVG_SCALE} * std {np.std(np.log(self.train_grad_norm[-self.cfg.training.grad_norm_avg:])):.2f}"
+                    )
+                    return
+                else:
+                    self.grad_skip_counter = 0
 
-        self.optimizer.step()
+        if self.cfg.training.mixed_precision:
+            self.scaler.step(self.optimizer)
+            self.scaler.update()
+        else:
+            self.optimizer.step()
+
         if self.ema is not None:
             self.ema.update()
 
@@ -716,12 +793,8 @@ class BaseExperiment:
         #     self.val_metrics[key].append(np.mean(values))
         if self.cfg.use_mlflow:
             log_mlflow("val.loss", val_loss, step=step)
-            for key, values in self.val_metrics.items():
-                log_mlflow(f"val.{key}", values[-1], step=step)
-
-        gc.collect()
-        if self.device == torch.device("cuda"):
-            torch.cuda.empty_cache()
+            # for key, values in self.val_metrics.items():
+            #     log_mlflow(f"val.{key}", values[-1], step=step)
 
         return val_loss
 
@@ -777,7 +850,7 @@ class BaseExperiment:
     def _init_loss(self):
         raise NotImplementedError()
 
-    def _batch_loss(self, data):
+    def _batch_loss(self, batch):
         raise NotImplementedError()
 
     def _init_metrics(self):

@@ -5,6 +5,8 @@ import math
 from torch import nn
 import numpy as np
 
+from experiments.logger import LOGGER
+
 
 class GaussianFourierProjection(nn.Module):
     def __init__(self, embed_dim, input_dim=1, scale=30.0):
@@ -29,7 +31,7 @@ EPS1 = 1e-5
 EPS2 = 1e-10
 
 # exp(x) -> exp(x.clamp(max=CUTOFF))
-CUTOFF = 10
+CUTOFF = 15
 
 
 def unpack_last(x):
@@ -141,23 +143,36 @@ def pid_encoding(float_pids: torch.Tensor) -> torch.Tensor:
     return encoded
 
 
-def get_range(input):
+def get_range(input, quantile=5e-3, boundary_scale=5e-2):
     if type(input) in [list, tuple]:
-        tensor = torch.cat(input, dim=0)
+        if isinstance(input[0], np.ndarray):
+            tensor = torch.cat([torch.from_numpy(element) for element in input], dim=0)
+        else:
+            tensor = torch.cat(input, dim=0)
     elif isinstance(input, np.ndarray):
         tensor = torch.from_numpy(input)
     elif isinstance(input, torch.Tensor):
         tensor = input
     else:
         raise ValueError("Input must be a list, tuple, numpy array, or torch tensor")
+    dtype = tensor.dtype
+    tensor = tensor.flatten().to(torch.float32)
+
     if tensor.size(0) > 1000000:
         tensor = tensor[torch.randperm(tensor.size(0))][:1000000]
     quantiles = torch.quantile(
-        tensor, torch.tensor([0.005, 0.995], device=tensor.device, dtype=tensor.dtype)
+        tensor,
+        torch.tensor(
+            [quantile, 1 - quantile], device=tensor.device, dtype=tensor.dtype
+        ),
     )
-    scale = quantiles[1] - quantiles[0]
-    quantiles[0] -= 0.05 * scale
-    quantiles[1] += 0.05 * scale
+    quantile_range = quantiles[1] - quantiles[0]
+    quantiles[0] -= boundary_scale * quantile_range
+    quantiles[1] += boundary_scale * quantile_range
+
+    if dtype in [torch.int8, torch.int16, torch.int32, torch.int64]:
+        quantiles = quantiles.round().to(dtype)
+
     return quantiles
 
 
@@ -187,6 +202,7 @@ def xformers_mask(batch, batch_condition=None, materialize=False):
     else:
         bincounts_condition = bincounts
         batch_condition = batch
+
     mask = BlockDiagonalMask.from_seqlens(bincounts, bincounts_condition)
     if materialize:
         # materialize mask to torch.tensor (only for testing purposes)
@@ -219,3 +235,19 @@ def flatten_dict(d, parent_key="", sep="."):
         else:
             items.append((new_key, v))
     return dict(items)
+
+
+def fix_mass(constituents, mass=0.0):
+    new_constituents = constituents.clone().to(torch.float64)
+    new_constituents[..., 0] = torch.sqrt(
+        torch.sum(new_constituents[..., 1:] ** 2, dim=-1) + mass**2
+    )
+    return new_constituents.to(constituents.dtype)
+
+
+def remove_prefix(state_dict, prefix="_orig_mod."):
+    # strip only if the key starts with the prefix
+    return {
+        k[len(prefix) :] if k.startswith(prefix) else k: v
+        for k, v in state_dict.items()
+    }
