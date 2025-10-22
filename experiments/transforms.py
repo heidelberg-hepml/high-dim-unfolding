@@ -615,7 +615,13 @@ class StandardNormal(BaseTransform):
     # standardize to unit normal distribution
     # particle- and process-wise mean and std are determined by initial_fit
     # note: this transform will always come last in the self.transforms list of a coordinates class
-    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4), contains_phi=False):
+    def __init__(
+        self,
+        fixed_dims=[],
+        scaling=torch.ones(1, 4),
+        shift=torch.zeros(1, 4),
+        contains_phi=False,
+    ):
         super().__init__()
         self.fixed_dims = fixed_dims
         self.mean = torch.zeros(1, 4)
@@ -625,6 +631,7 @@ class StandardNormal(BaseTransform):
         else:
             self.scaling = scaling
         self.contains_phi = contains_phi
+        self.shift = shift
 
     def init_fit(self, x, mask=None, **kwargs):
         if mask is None:
@@ -637,6 +644,7 @@ class StandardNormal(BaseTransform):
             self.mean[:, 1] = 0
             self.std[:, 1] = 1
         self.std = self.std / self.scaling.to(x.device, dtype=x.dtype)
+        self.mean = self.mean - self.shift.to(x.device, dtype=x.dtype)
 
     def _forward(self, x, **kwargs):
         xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(

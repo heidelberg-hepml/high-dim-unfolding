@@ -345,7 +345,12 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.M2_to_LogM2(),
-            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
+            tr.StandardNormal(
+                fixed_dims,
+                scaling,
+                # shift=torch.tensor([[10, 0, 0, 10]]),
+                contains_phi=True,
+            ),
         ]
 
 
