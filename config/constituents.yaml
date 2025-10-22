@@ -81,7 +81,7 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass"]
+ observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass","eec"]
  n_pt: 3
  angles: [[1,2],[1,3],[2,3],[3,4]]
  correlations: false
