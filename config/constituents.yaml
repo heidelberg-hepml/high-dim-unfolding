@@ -29,7 +29,7 @@ cfm:
   masked_dims: [3]
   scaling: [1,1,1,1]
   vonmises: false
- jet_coordinates: StandardLogPtPhiEtaLogM2
+ jet_coordinates: PtPhiEtaM2
  jet_coordinates_options:
   pt_min: null
   masked_dims: []

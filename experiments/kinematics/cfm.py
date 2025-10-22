@@ -146,6 +146,11 @@ class CFM(nn.Module):
                 device=new_batch.x_gen.device,
                 dtype=torch.bool,
             )
+            det_constituents_mask = torch.ones(
+                new_batch.x_det.shape[0],
+                device=new_batch.x_det.device,
+                dtype=torch.bool,
+            )
 
         x0 = new_batch.x_gen
         t = torch.rand(
