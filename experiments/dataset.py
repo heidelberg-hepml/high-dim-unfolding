@@ -1,24 +1,31 @@
 import torch
+from torch import nn
+from torch.utils.data import BatchSampler
 from torch_geometric.data import Data
 import energyflow
 import numpy as np
 import awkward as ak
 import os
+import glob
+from collections import defaultdict
 
+from experiments.logger import LOGGER
 from experiments.utils import (
     ensure_angle,
+    fix_mass,
+    get_mass,
     pid_encoding,
+    GaussianFourierProjection,
 )
-from experiments.coordinates import (
-    jetmomenta_to_fourmomenta,
-)
+from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_jetmomenta
 
 
 class Dataset(torch.utils.data.Dataset):
-    def __init__(self, dtype, pos_encoding_dim=0):
+    def __init__(self, dtype, pos_encoding=None, mult_encoding=None):
         self.dtype = dtype
-        if pos_encoding_dim > 0:
-            self.pos_encoding = positional_encoding(pe_dim=pos_encoding_dim)
+        self.pos_encoding = pos_encoding
+        self.mult_encoding = mult_encoding
+        self.data_list = []
 
     def __len__(self):
         return len(self.data_list)
@@ -26,7 +33,7 @@ class Dataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.data_list[idx]
 
-    def create_data_list(
+    def append(
         self,
         det_particles,
         det_pids,
@@ -38,7 +45,6 @@ class Dataset(torch.utils.data.Dataset):
         gen_jets,
     ):
 
-        self.data_list = []
         for i in range(det_particles.shape[0]):
 
             det_event = det_particles[i, : det_mults[i]]
@@ -46,21 +52,33 @@ class Dataset(torch.utils.data.Dataset):
             gen_event = gen_particles[i, : gen_mults[i]]
             gen_event_scalars = gen_pids[i, : gen_mults[i]]
 
-            if hasattr(self, "pos_encoding"):
+            if self.pos_encoding is not None:
                 det_event_scalars = torch.cat(
                     [det_event_scalars, self.pos_encoding[: det_mults[i]]], dim=-1
                 )
                 gen_event_scalars = torch.cat(
                     [gen_event_scalars, self.pos_encoding[: gen_mults[i]]], dim=-1
                 )
+            if self.mult_encoding is not None:
+                jet_scalars_det = self.mult_encoding(
+                    torch.tensor([[det_mults[i]]], dtype=self.dtype)
+                ).detach()
+                jet_scalars_gen = self.mult_encoding(
+                    torch.tensor([[gen_mults[i]]], dtype=self.dtype)
+                ).detach()
+            else:
+                jet_scalars_det = torch.empty(1, 0, dtype=self.dtype)
+                jet_scalars_gen = torch.empty(1, 0, dtype=self.dtype)
 
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_event_scalars,
                 jet_det=det_jets[i : i + 1],
+                jet_scalars_det=jet_scalars_det,
                 x_gen=gen_event,
                 scalars_gen=gen_event_scalars,
                 jet_gen=gen_jets[i : i + 1],
+                jet_scalars_gen=jet_scalars_gen,
             )
 
             self.data_list.append(graph)
@@ -70,28 +88,35 @@ def load_dataset(dataset_name):
     if dataset_name == "zplusjet":
         max_num_particles = 152
         diff = [-53, 78]
-        pt_min = 0.0
+        pt_min = 0.01
+        jet_pt_min = 10.0
         masked_dim = [3]
         load_fn = load_zplusjet
+
     elif dataset_name == "cms":
         max_num_particles = 3
         diff = [0, 0]
         pt_min = 30.0
+        jet_pt_min = 350.0
         masked_dim = []
         load_fn = load_cms
 
     elif dataset_name == "ttbar":
         max_num_particles = 238
         diff = [-35, 101]
-        pt_min = 0.0
+        pt_min = 0.01
+        jet_pt_min = 400.0
         masked_dim = [3]
         load_fn = load_ttbar
-    return max_num_particles, diff, pt_min, masked_dim, load_fn
+    else:
+        raise ValueError(f"Unknown dataset: {dataset_name}")
+    return max_num_particles, diff, pt_min, jet_pt_min, masked_dim, load_fn
 
 
 def load_zplusjet(data_path, cfg, dtype):
     data = energyflow.zjets_delphes.load(
-        "Herwig",
+        "Pythia26",
+        # "Herwig",
         num_data=cfg.length,
         pad=True,
         cache_dir=data_path,
@@ -105,6 +130,14 @@ def load_zplusjet(data_path, cfg, dtype):
     gen_particles = torch.tensor(data["gen_particles"], dtype=dtype)
     gen_jets = torch.tensor(data["gen_jets"], dtype=dtype)
     gen_mults = torch.tensor(data["gen_mults"], dtype=torch.int)
+
+    mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    det_particles = det_particles[mult_mask]
+    det_jets = det_jets[mult_mask]
+    det_mults = det_mults[mult_mask]
+    gen_particles = gen_particles[mult_mask]
+    gen_jets = gen_jets[mult_mask]
+    gen_mults = gen_mults[mult_mask]
 
     # undo the dataset scaling
     det_particles[..., 1:3] = det_particles[..., 1:3] + det_jets[:, None, 1:3]
@@ -134,16 +167,77 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
+    det_mask = (
+        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    ).unsqueeze(-1)
+    gen_mask = (
+        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+    ).unsqueeze(-1)
 
-    det_particles = jetmomenta_to_fourmomenta(det_particles)
-    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+
+    det_jets = (det_particles * det_mask).sum(dim=1)
+    gen_jets = (gen_particles * gen_mask).sum(dim=1)
+
+    if cfg.pt_cut > 0:
+        det_mask = det_jets[..., 0] > cfg.pt_cut
+        gen_mask = gen_jets[..., 0] > cfg.pt_cut
+        mask = det_mask & gen_mask
+
+        det_jets = det_jets[mask]
+        det_particles = det_particles[mask]
+        det_mults = det_mults[mask]
+        det_pids = det_pids[mask]
+        gen_jets = gen_jets[mask]
+        gen_particles = gen_particles[mask]
+        gen_mults = gen_mults[mask]
+        gen_pids = gen_pids[mask]
+
+    if getattr(cfg, "use_sampled_jets", False):
+        train = torch.load(
+            "/remote/gpu04/petitjean/high-dim-unfolding/runs/long_jets_6/z_Tr_Lion2-4_1024_noconst_2481358/samples_4/samples_train.pt",
+            weights_only=False,
+            map_location=gen_jets.device,
+        )
+        val = torch.load(
+            "/remote/gpu04/petitjean/high-dim-unfolding/runs/long_jets_6/z_Tr_Lion2-4_1024_noconst_2481358/samples_4/samples_val.pt",
+            weights_only=False,
+            map_location=gen_jets.device,
+        )
+        test = torch.load(
+            "/remote/gpu04/petitjean/high-dim-unfolding/runs/long_jets_6/z_Tr_Lion2-4_1024_noconst_2481358/samples_4/samples_test.pt",
+            weights_only=False,
+            map_location=gen_jets.device,
+        )
+        LOGGER.info(
+            f"Using sampled jets from {train.jet_gen.shape[0]} train, {val.jet_gen.shape[0]} val, {test.jet_gen.shape[0]} test events"
+        )
+
+        det_jets = det_jets[:-1]
+        det_particles = det_particles[:-1]
+        det_mults = det_mults[:-1]
+        det_pids = det_pids[:-1]
+        gen_jets = gen_jets[:-1]
+        gen_particles = gen_particles[:-1]
+        gen_mults = gen_mults[:-1]
+        gen_pids = gen_pids[:-1]
+
+        sampled_jets = torch.cat([train.jet_gen, val.jet_gen, test.jet_gen], dim=0)
+        gen_jets = sampled_jets
+
+    if cfg.part_to_jet:
+        det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
+        det_mults = torch.ones(det_jets.shape[0], dtype=torch.int)
+        gen_particles = jetmomenta_to_fourmomenta(gen_jets.unsqueeze(1))
+        gen_mults = torch.ones(gen_jets.shape[0], dtype=torch.int)
 
     return {
+        "det_jets": det_jets,
         "det_particles": det_particles,
         "det_mults": det_mults,
         "det_pids": det_pids,
+        "gen_jets": gen_jets,
         "gen_particles": gen_particles,
         "gen_mults": gen_mults,
         "gen_pids": gen_pids,
@@ -177,12 +271,12 @@ def load_cms(data_path, cfg, dtype):
 
 
 def load_ttbar(data_path, cfg, dtype):
-    part1 = ak.from_parquet(os.path.join(data_path, "ttbar-t.parquet"))
-    part2 = ak.from_parquet(os.path.join(data_path, "ttbar-tbar.parquet"))
-    data = ak.concatenate([part1, part2], axis=0)[: cfg.length]
+    parquet_files = sorted(glob.glob(os.path.join(data_path, "ttbar*.parquet")))
+    data_parts = [ak.from_parquet(file) for file in parquet_files]
+    data = ak.concatenate(data_parts, axis=0)[: cfg.length]
 
     size = cfg.length if cfg.length > 0 else len(data)
-    shape = (size, 238, 4)
+    shape = (size, 240, 4)
 
     det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
     det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)
@@ -204,22 +298,123 @@ def load_ttbar(data_path, cfg, dtype):
         gen_particles[i, :length] = array[start:stop]
         start = stop
 
+    mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    det_particles = det_particles[mult_mask]
+    det_jets = det_jets[mult_mask]
+    det_mults = det_mults[mult_mask]
+    gen_particles = gen_particles[mult_mask]
+    gen_jets = gen_jets[mult_mask]
+    gen_mults = gen_mults[mult_mask]
+
     det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
     gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
-
-    det_particles[..., 3] = cfg.mass**2
-    gen_particles[..., 3] = cfg.mass**2
 
     det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
     gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_particles = jetmomenta_to_fourmomenta(det_particles)
-    gen_particles = jetmomenta_to_fourmomenta(gen_particles)
+    det_mask = (
+        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    ).unsqueeze(-1)
+    gen_mask = (
+        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+    ).unsqueeze(-1)
 
-    det_jets = jetmomenta_to_fourmomenta(det_jets)
-    gen_jets = jetmomenta_to_fourmomenta(gen_jets)
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+
+    det_jets = (det_particles * det_mask).sum(dim=1)
+    gen_jets = (gen_particles * gen_mask).sum(dim=1)
+
+    if cfg.part_to_jet:
+        det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
+        det_mults = torch.ones(det_jets.shape[0], dtype=torch.int)
+        gen_particles = jetmomenta_to_fourmomenta(gen_jets.unsqueeze(1))
+        gen_mults = torch.ones(gen_jets.shape[0], dtype=torch.int)
+
+    return {
+        "det_particles": det_particles,
+        "det_jets": det_jets,
+        "det_mults": det_mults,
+        "det_pids": det_pids,
+        "gen_particles": gen_particles,
+        "gen_jets": gen_jets,
+        "gen_mults": gen_mults,
+        "gen_pids": gen_pids,
+    }
+
+
+def load_ttbar_file(file, cfg, dtype, length):
+    data = ak.from_parquet(file)
+    mult_mask = (ak.num(data["rec_particles"], axis=1) >= cfg.min_mult) * (
+        ak.num(data["gen_particles"], axis=1) >= cfg.min_mult
+    )
+    data = data[mult_mask]
+
+    size = (
+        min(cfg.length, len(data["rec_particles"]))
+        if cfg.length > 0
+        else len(data["rec_particles"])
+    )
+    data = data[:size]
+    det_shape = (size, 182, 4)
+    gen_shape = (size, 240, 4)
+
+    det_mults = ak.to_torch(ak.num(data["rec_particles"], axis=1))
+    det_jets = (ak.to_torch(data["rec_jets"])).to(dtype)
+    det_particles = torch.empty(det_shape, dtype=dtype)
+    array = ak.to_torch(ak.flatten(data["rec_particles"], axis=1))
+    start = 0
+    for i, length in enumerate(det_mults):
+        stop = start + length
+        det_particles[i, :length] = array[start:stop]
+        start = stop
+
+    gen_mults = ak.to_torch(ak.num(data["gen_particles"], axis=1))
+    gen_jets = (ak.to_torch(data["gen_jets"])).to(dtype)
+    gen_particles = torch.empty(gen_shape, dtype=dtype)
+    array = ak.to_torch(ak.flatten(data["gen_particles"], axis=1))
+    start = 0
+    for i, length in enumerate(gen_mults):
+        stop = start + length
+        gen_particles[i, :length] = array[start:stop]
+        start = stop
+
+    # mult_mask = (det_mults >= cfg.min_mult) * (gen_mults >= cfg.min_mult)
+    # det_particles = det_particles[mult_mask]
+    # det_jets = det_jets[mult_mask]
+    # det_mults = det_mults[mult_mask]
+    # gen_particles = gen_particles[mult_mask]
+    # gen_jets = gen_jets[mult_mask]
+    # gen_mults = gen_mults[mult_mask]
+
+    det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
+    gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
+
+    det_idx = torch.argsort(det_particles[..., 0], descending=True, dim=1, stable=True)
+    gen_idx = torch.argsort(gen_particles[..., 0], descending=True, dim=1, stable=True)
+    det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
+    gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
+
+    det_mask = (
+        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
+    ).unsqueeze(-1)
+    gen_mask = (
+        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
+    ).unsqueeze(-1)
+
+    det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
+    gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
+
+    det_jets = (det_particles * det_mask).sum(dim=1)
+    gen_jets = (gen_particles * gen_mask).sum(dim=1)
+
+    if cfg.part_to_jet:
+        det_particles = jetmomenta_to_fourmomenta(det_jets.unsqueeze(1))
+        det_mults = torch.ones(det_jets.shape[0], dtype=torch.int)
+        gen_particles = jetmomenta_to_fourmomenta(gen_jets.unsqueeze(1))
+        gen_mults = torch.ones(gen_jets.shape[0], dtype=torch.int)
 
     return {
         "det_particles": det_particles,
@@ -248,3 +443,67 @@ def positional_encoding(seq_length=256, pe_dim=16):
     pe[:, 0::2] = torch.sin(position * div_term)
     pe[:, 1::2] = torch.cos(position * div_term)
     return pe
+
+
+class SameSizeBatchSampler(BatchSampler):
+    """
+    Batch sampler that batches graphs of the same size together.
+    Ensure same multiplicity in each batch.
+    """
+
+    def __init__(
+        self,
+        dataset,
+        batch_size,
+        drop_last=False,  # otherwise drop last for each multiplicity so too many events
+        num_replicas=1,
+        rank=0,
+        shuffle=False,
+    ):
+        self.dataset = dataset
+        self.batch_size = batch_size
+        self.drop_last = drop_last
+        self.num_replicas = num_replicas
+        self.rank = rank
+        self.shuffle = shuffle
+
+        # bucket indices by node count
+        buckets = defaultdict(list)
+        for idx, g in enumerate(dataset):
+            # index of event for each multiplicity
+            buckets[g.num_nodes].append(idx)
+
+        # build all batches
+        bucket_batches = []
+        for idxs in buckets.values():
+            if shuffle:
+                idxs = torch.randperm(len(idxs)).tolist()
+            batches = [
+                idxs[i : i + batch_size] for i in range(0, len(idxs), batch_size)
+            ]
+            if drop_last and len(batches[-1]) < batch_size:
+                batches.pop()
+            bucket_batches.append(batches)
+
+        # interleave batches from each multiplicity
+        self.batches = []
+        max_len = max(len(b) for b in bucket_batches)
+        for i in range(max_len):
+            for batches in bucket_batches:
+                if i < len(batches):
+                    self.batches.append(batches[i])
+
+        # split batches across replicas
+        self.batches = self.batches[rank::num_replicas]
+
+    def __iter__(self):
+        if self.shuffle:  # shuffle multiplicity and batches within
+            order = torch.randperm(len(self.batches)).tolist()
+            for i in order:
+                yield self.batches[i]
+        else:
+            for b in self.batches:
+                yield b
+
+    def __len__(self):
+        return len(self.batches)

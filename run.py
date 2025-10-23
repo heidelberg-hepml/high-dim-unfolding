@@ -1,4 +1,8 @@
-import fastjet_contribs  # needed here to import fastjet contribs in the other files
+try:
+    import fastjet_contribs  # needed here to import fastjet contribs in the other files
+except ImportError:
+    print("fastjet_contribs not found, skipping import")
+    fastjet_contribs = None
 import hydra
 import torch
 import torch.multiprocessing as mp
@@ -6,6 +10,8 @@ import torch.distributed as dist
 
 from experiments.multiplicity.experiment import MultiplicityExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
+from experiments.kinematics.jet_experiment import JetKinematicsExperiment
+from experiments.chain.experiment import ChainExperiment
 
 
 @hydra.main(config_path="config", config_name="constituents", version_base=None)
@@ -34,8 +40,12 @@ def ddp_worker(rank, cfg, world_size):
 
     if cfg.exp_type == "multiplicity":
         constructor = MultiplicityExperiment
-    elif cfg.exp_type == "constituents" or cfg.exp_type == "jets":
+    elif cfg.exp_type == "constituents":
         constructor = KinematicsExperiment
+    elif cfg.exp_type == "jets":
+        constructor = JetKinematicsExperiment
+    elif cfg.exp_type == "chain":
+        constructor = ChainExperiment
     else:
         raise ValueError(f"exp_type {cfg.exp_type} not implemented")
 

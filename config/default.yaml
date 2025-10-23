@@ -27,9 +27,13 @@ training:
  es_load_best_model: true
  validate_every_n_steps: 100
 
+ clear_every_n_steps: 1000
+
  clip_grad_norm: 5
  clip_grad_value: null
- max_grad_norm: null
+ grad_norm_avg: 1000
+ grad_norm_avg_scale: 4
+ grad_norm_max_skips: 5
  log_every_n_steps: 100
 
  optimizer : Adam
@@ -41,6 +45,7 @@ training:
  
  scheduler: null
  scheduler_scale: 1
+ scheduler_warmup_factor: 0.03
  cosanneal_eta_min: 0
  reduceplateau_factor: 0.1
  reduceplateau_patience: 50
@@ -54,6 +59,7 @@ training:
  enable_math_sdp: true
  enable_mem_efficient_sdp: false
  force_xformers: false
+ mixed_precision: false
 
 evaluate: true
 evaluation:

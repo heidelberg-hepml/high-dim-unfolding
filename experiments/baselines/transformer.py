@@ -38,18 +38,6 @@ class ContextualLayerNorm(nn.Module):
         self.condition_proj = nn.Linear(context_channels, in_channels * 2)
 
     def forward(self, inputs: torch.Tensor, condition: torch.Tensor) -> torch.Tensor:
-        """Forward pass.
-
-        Parameters
-        ----------
-        inputs : Tensor
-            Input data
-
-        Returns
-        -------
-        outputs : Tensor
-            Normalized inputs.
-        """
         weight, bias = self.condition_proj(condition).unsqueeze(1).chunk(2, dim=-1)
         return (
             torch.nn.functional.layer_norm(

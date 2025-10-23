@@ -1,0 +1,10 @@
+_target_: experiments.kinematics.cfm.JetMLPCFM
+
+net:
+  _target_: experiments.baselines.MLP
+
+  in_shape: null
+  out_shape: null
+  hidden_channels: 256
+  hidden_layers: 8
+  dropout_prob: 0.1

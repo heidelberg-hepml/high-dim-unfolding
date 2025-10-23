@@ -24,7 +24,7 @@ net:
  out_s_channels: 4
  hidden_s_channels: 64
 
- num_blocks: 4
+ num_blocks: 8
  dropout_prob: null
 
  attention:
@@ -53,7 +53,7 @@ net_condition:
  out_s_channels: null
  hidden_s_channels: 64
 
- num_blocks: 3
+ num_blocks: 6
  dropout_prob: null
 
  attention:
@@ -64,6 +64,7 @@ net_condition:
 
  mlp:
   increase_hidden_channels: 2
+
 defaults:
  - /base_attention@net.attention
  - /base_attention_condition@net_condition.attention

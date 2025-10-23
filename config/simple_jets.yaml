@@ -1,5 +1,5 @@
-exp_type: constituents
-exp_name: consts_z
+exp_type: jets
+exp_name: simplecondtest
 
 use_mlflow: false
 
@@ -7,45 +7,31 @@ data:
  data_dir: data/
  dataset: zplusjet
  length: -1
- train_val_test: [0.8, 0.05, 0.15]
+ train_val_test: [0.8, 0.1, 0.1]
  max_num_particles: null
  max_constituents: -1
- min_mult: 2
- pt_cut: 0.0
  add_pid: false
  pt_min: null
- mass: 0.1
+ mass: 1.0
  pos_encoding_dim: 8
- mult_encoding_dim: 0
- part_to_jet: false
- use_sampled_jets: false
+ mult_encoding_dim: 8
 
 cfm:
  embed_t_dim: 8
  embed_t_scale: 30.0
- const_coordinates: StandardJetScaledLogPtPhiEtaM2
- const_coordinates_options:
-  pt_min: 0.0
-  masked_dims: [3]
-  scaling: [1,1,1,1]
-  vonmises: false
- jet_coordinates: PtPhiEtaM2
- jet_coordinates_options:
-  pt_min: null
-  masked_dims: []
-  scaling: [1,1,1,1]
-  vonmises: false
+ coordinates: StandardLogPtPhiEtaLogM2
  geometry:
   type: simple
   periodic: true
  transforms_float64: true
+ masked_dims: []
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
- add_jet: true
+ add_constituents: false
  add_mass: false
- weight: 0.0
- sort: true
- rescale: false
+ scaling: [1.0, 1.0, 1.0, 1.0]
+ ot: false
+ transpose: false
 
 odeint:
  method: rk4
@@ -56,12 +42,11 @@ odeint:
 
 train: true
 training:
- iterations: 200000
+ iterations: 100000
  batchsize: 1024
- optimizer: Lion
- lr: 2e-4
+ lr: 1e-3
  scheduler: CosineAnnealingLR
- validate_every_n_steps: 5000
+ validate_every_n_steps: 1000
  clip_grad_norm: 5.
 
 evaluate: true
@@ -81,12 +66,11 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass","eec"]
+ observables: []
  n_pt: 3
- angles: [[1,2],[1,3],[2,3],[3,4]]
  correlations: false
 
 defaults:
- - model: cond_tr_constituents
+ - model: cond_tr_jets
  - default
  - _self_

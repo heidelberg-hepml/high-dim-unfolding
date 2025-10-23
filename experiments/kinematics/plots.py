@@ -1,9 +1,11 @@
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 from matplotlib.backends.backend_pdf import PdfPages
 
 from experiments.utils import get_range
+from experiments.logger import LOGGER
 
 # load fonts
 import matplotlib.font_manager as font_manager
@@ -13,18 +15,17 @@ for font in font_manager.findSystemFonts(font_dir):
     font_manager.fontManager.addfont(font)
 font_manager.findSystemFonts(fontpaths=None, fontext="ttf")
 
-# setup matplotlib
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
 plt.rcParams["text.usetex"] = True
 plt.rcParams["text.latex.preamble"] = (
-    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"
+    r"\usepackage[bitstream-charter]{mathdesign} \usepackage{amsmath}"  # \usepackage{siunitx}"
 )
 
-# fontsize
 FONTSIZE = 18
 FONTSIZE_LEGEND = FONTSIZE
-TICKLABELSIZE = 10
+FONTSIZE_TICK = FONTSIZE
+TICKLABELSIZE = 14
 
 
 def plot_histogram(
@@ -37,7 +38,7 @@ def plot_histogram(
     xrange,
     model_label,
     logy=False,
-    n_bins=60,
+    n_bins=40,
     error_range=[0.85, 1.15],
     error_ticks=[0.9, 1.0, 1.1],
     weights=None,
@@ -96,11 +97,11 @@ def plot_histogram(
 
     if mask_dict is None:
         fig, axs = plt.subplots(
-            3,
+            2,
             1,
             sharex=True,
             figsize=(6, 4),
-            gridspec_kw={"height_ratios": [3, 1, 1], "hspace": 0.00},
+            gridspec_kw={"height_ratios": [3, 1], "hspace": 0.00},
         )
     else:
         fig, ax = plt.subplots(figsize=(6, 4))
@@ -190,23 +191,6 @@ def plot_histogram(
                 step="post",
             )
 
-            delta = np.fabs(ratio - 1) * 100
-            delta_err = ratio_err * 100
-
-            markers, caps, bars = axs[2].errorbar(
-                (bins[:-1] + bins[1:]) / 2,
-                delta,
-                yerr=delta_err,
-                ecolor=color,
-                color=color,
-                elinewidth=0.5,
-                linewidth=0,
-                fmt=".",
-                capsize=2,
-            )
-            [cap.set_alpha(0.5) for cap in caps]
-            [bar.set_alpha(0.5) for bar in bars]
-
     axs[0].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
     axs[0].set_ylabel("Density", fontsize=FONTSIZE)
 
@@ -240,39 +224,7 @@ def plot_histogram(
         axs[1].axhline(y=error_ticks[0], c="black", ls="dotted", lw=0.5)
         axs[1].axhline(y=error_ticks[1], c="black", ls="--", lw=0.7)
         axs[1].axhline(y=error_ticks[2], c="black", ls="dotted", lw=0.5)
-
-        axs[2].set_ylim((0.05, 20))
-        axs[2].set_yscale("log")
-        axs[2].set_yticks([0.1, 1.0, 10.0])
-        axs[2].set_yticklabels([r"$0.1$", r"$1.0$", "$10.0$"])
-        axs[2].set_yticks(
-            [
-                0.2,
-                0.3,
-                0.4,
-                0.5,
-                0.6,
-                0.7,
-                0.8,
-                0.9,
-                2.0,
-                3.0,
-                4.0,
-                5.0,
-                6.0,
-                7.0,
-                8.0,
-                9.0,
-            ],
-            minor=True,
-        )
-
-        axs[2].axhline(y=1.0, linewidth=0.5, linestyle="--", color="grey")
-        axs[2].axhspan(0, 1.0, facecolor="#cccccc", alpha=0.3)
-        axs[2].set_ylabel(r"$\delta [\%]$", fontsize=FONTSIZE)
-
         axs[1].tick_params(axis="both", labelsize=TICKLABELSIZE)
-        axs[2].tick_params(axis="both", labelsize=TICKLABELSIZE)
 
     plt.savefig(file, bbox_inches="tight", format="pdf")
     plt.close()
@@ -394,14 +346,29 @@ def simple_histogram(
     plt.close()
 
 
-def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
-    with PdfPages(path + "/" + filename) as pdf:
+def plot_kinematics(
+    path, true_reco, true_gen, true_model=None, filename="kinematics.pdf", sqrt=False
+):
+    reco = true_reco.clone().detach().cpu().view(-1, 4).numpy()
+    gen = true_gen.clone().detach().cpu().view(-1, 4).numpy()
+    model = (
+        true_model.clone().detach().cpu().view(-1, 4).numpy()
+        if true_model is not None
+        else None
+    )
+    if sqrt:
+        reco[..., 3] = np.sqrt(reco[..., 3])
+        gen[..., 3] = np.sqrt(gen[..., 3])
+        if model is not None:
+            model[..., 3] = np.sqrt(model[..., 3])
+    os.makedirs(path, exist_ok=True)
+    with PdfPages(os.path.join(path, filename)) as pdf:
         fig, axs = plt.subplots(2, 2, figsize=(8, 8))
         for i, ax in enumerate(axs.flatten()):
-            xlims = np.array(get_range([reco[..., i], gen[..., i]]))
+            xlims = np.array(get_range([reco[..., i]]))
             bins = np.linspace(xlims[0], xlims[1], 40)
             ax.hist(
-                reco[:, i].cpu(),
+                reco[:, i],
                 bins=bins,
                 range=None,
                 label="reco",
@@ -409,7 +376,7 @@ def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
                 histtype="step",
             )
             ax.hist(
-                gen[:, i].cpu(),
+                gen[:, i],
                 bins=bins,
                 range=None,
                 alpha=0.5,
@@ -419,7 +386,7 @@ def plot_kinematics(path, reco, gen, model=None, filename="kinematics.pdf"):
             )
             if model is not None:
                 ax.hist(
-                    model[:, i].cpu(),
+                    model[:, i],
                     bins=bins,
                     range=None,
                     alpha=0.5,

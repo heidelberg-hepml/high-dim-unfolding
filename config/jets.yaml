@@ -1,5 +1,5 @@
-exp_type: constituents
-exp_name: consts_z
+exp_type: jets
+exp_name: jets
 
 use_mlflow: false
 
@@ -16,9 +16,9 @@ data:
  pt_min: null
  mass: 0.1
  pos_encoding_dim: 8
- mult_encoding_dim: 0
+ mult_encoding_dim: 8
  part_to_jet: false
- use_sampled_jets: false
+
 
 cfm:
  embed_t_dim: 8
@@ -29,7 +29,7 @@ cfm:
   masked_dims: [3]
   scaling: [1,1,1,1]
   vonmises: false
- jet_coordinates: PtPhiEtaM2
+ jet_coordinates: StandardAsinhPtPhiEtaLogM2
  jet_coordinates_options:
   pt_min: null
   masked_dims: []
@@ -41,11 +41,12 @@ cfm:
  transforms_float64: true
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
- add_jet: true
+ add_constituents: false
  add_mass: false
  weight: 0.0
- sort: true
- rescale: false
+ transpose: false
+ unconditional: false
+
 
 odeint:
  method: rk4
@@ -66,7 +67,7 @@ training:
 
 evaluate: true
 evaluation:
- batchsize: 4096
+ batchsize: 8192
  classifier: false
  sample: true
  n_batches: -1
@@ -81,12 +82,10 @@ plotting:
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass","eec"]
- n_pt: 3
- angles: [[1,2],[1,3],[2,3],[3,4]]
+ observables: ["jet"]
  correlations: false
 
 defaults:
- - model: cond_tr_constituents
+ - model: cond_tr_jets
  - default
  - _self_

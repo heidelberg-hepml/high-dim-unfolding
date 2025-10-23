@@ -1,0 +1,35 @@
+exp_type: chain
+exp_name: chain_sampling
+
+use_mlflow: false
+
+# Paths to the three previous experiment directories
+# Each should contain config.yaml and models/model_run*.pt
+experiment_paths:
+  multiplicity: /path/to/multiplicity  # Path to multiplicity experiment directory
+  jets: /path/to/jets  # Path to jets experiment directory
+  constituents: /path/to/constituents  # Path to constituents experiment directory
+
+# Which run index to use for model loading from each experiment
+model_run_indices:
+  multiplicity: 0
+  jets: 0
+  constituents: 0
+
+data:
+ pt_cut: 0.0
+ length: -1
+
+use_true_mult: false
+use_true_jet: false
+jet_smearing: [0,0,0,0]
+
+constituents_cfg:
+ evaluation:
+  n_batches: -1
+ cfm:
+  sort: true
+
+defaults:
+  - default
+  - _self_
