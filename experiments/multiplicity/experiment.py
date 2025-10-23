@@ -1,12 +1,10 @@
 import torch
-from torch import nn
 from torch_geometric.loader import DataLoader
 from torch.distributions import Categorical
 import numpy as np
 
 import os, time, glob
 from omegaconf import open_dict
-from itertools import chain
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
@@ -23,7 +21,6 @@ from experiments.multiplicity.distributions import (
 from experiments.multiplicity.plots import plot_mixer
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-from experiments.utils import GaussianFourierProjection
 
 MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 

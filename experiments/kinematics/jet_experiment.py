@@ -6,7 +6,6 @@ from torch_geometric.data import Batch
 from lgatr.interface import get_spurions
 import os, time, glob
 from omegaconf import open_dict
-from itertools import chain
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
@@ -18,9 +17,6 @@ from experiments.dataset import (
 import experiments.kinematics.plotter as plotter
 from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
-from experiments.kinematics.observables import create_partial_jet
-from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
-from experiments.utils import GaussianFourierProjection
 
 
 class JetKinematicsExperiment(BaseExperiment):
@@ -134,22 +130,6 @@ class JetKinematicsExperiment(BaseExperiment):
                         self.cfg.model.net.in_s_channels += 1
                     if getattr(self.cfg.model.GA_config, "condition_spurions", True):
                         self.cfg.model.net_condition.in_s_channels += 1
-
-            elif self.cfg.modelname == "JetMLP":
-                base_in_channels = 4
-                self.cfg.model.net.in_shape = (
-                    base_in_channels
-                    + self.cfg.cfm.embed_t_dim
-                    + self.cfg.data.mult_encoding_dim
-                )
-                self.cfg.model.net.out_shape = base_in_channels
-
-                if not self.cfg.cfm.unconditional:
-                    self.cfg.model.net.in_shape += (
-                        base_in_channels + self.cfg.data.mult_encoding_dim
-                    )
-                if self.cfg.cfm.self_condition_prob > 0.0:
-                    self.cfg.model.net.in_channels += base_in_channels
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -723,8 +703,6 @@ class JetKinematicsExperiment(BaseExperiment):
             model_label = "Transf."
         elif self.cfg.modelname == "JetConditionalLGATr":
             model_label = "L-GATr"
-        elif self.cfg.modelname == "JetMLP":
-            model_label = "MLP"
         else:
             model_label = self.cfg.modelname
         kwargs = {
@@ -747,25 +725,6 @@ class JetKinematicsExperiment(BaseExperiment):
                 plotter.plot_z(filename=filename, **kwargs)
             elif self.cfg.data.dataset == "ttbar":
                 plotter.plot_t(filename=filename, **kwargs)
-            # if self.cfg.plotting.fourmomenta:
-            #     filename = os.path.join(path, "fourmomenta.pdf")
-            #     plotter.plot_fourmomenta(
-            #         filename=filename,
-            #         **kwargs,
-            #         jet=True,
-            #         weights=weights,
-            #         mask_dict=mask_dict,
-            #     )
-
-            # if self.cfg.plotting.jetmomenta:
-            #     filename = os.path.join(path, "jetmomenta.pdf")
-            #     plotter.plot_jetmomenta(
-            #         filename=filename,
-            #         **kwargs,
-            #         jet=True,
-            #         weights=weights,
-            #         mask_dict=mask_dict,
-            #     )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
     def _init_loss(self):

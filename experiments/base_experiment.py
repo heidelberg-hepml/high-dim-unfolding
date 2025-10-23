@@ -14,7 +14,6 @@ import mlflow
 from torch_ema import ExponentialMovingAverage
 import pytorch_optimizer
 
-import lgatr.primitives.attention
 import lgatr.layers.linear
 import lgatr.layers.mlp.geometric_bilinears
 import lgatr.layers.mlp.mlp

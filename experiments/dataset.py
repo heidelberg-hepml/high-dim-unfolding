@@ -1,23 +1,18 @@
 import torch
-from torch import nn
-from torch.utils.data import BatchSampler
 from torch_geometric.data import Data
 import energyflow
 import numpy as np
 import awkward as ak
 import os
 import glob
-from collections import defaultdict
 
 from experiments.logger import LOGGER
 from experiments.utils import (
     ensure_angle,
     fix_mass,
-    get_mass,
     pid_encoding,
-    GaussianFourierProjection,
 )
-from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_jetmomenta
+from experiments.coordinates import jetmomenta_to_fourmomenta
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -443,67 +438,3 @@ def positional_encoding(seq_length=256, pe_dim=16):
     pe[:, 0::2] = torch.sin(position * div_term)
     pe[:, 1::2] = torch.cos(position * div_term)
     return pe
-
-
-class SameSizeBatchSampler(BatchSampler):
-    """
-    Batch sampler that batches graphs of the same size together.
-    Ensure same multiplicity in each batch.
-    """
-
-    def __init__(
-        self,
-        dataset,
-        batch_size,
-        drop_last=False,  # otherwise drop last for each multiplicity so too many events
-        num_replicas=1,
-        rank=0,
-        shuffle=False,
-    ):
-        self.dataset = dataset
-        self.batch_size = batch_size
-        self.drop_last = drop_last
-        self.num_replicas = num_replicas
-        self.rank = rank
-        self.shuffle = shuffle
-
-        # bucket indices by node count
-        buckets = defaultdict(list)
-        for idx, g in enumerate(dataset):
-            # index of event for each multiplicity
-            buckets[g.num_nodes].append(idx)
-
-        # build all batches
-        bucket_batches = []
-        for idxs in buckets.values():
-            if shuffle:
-                idxs = torch.randperm(len(idxs)).tolist()
-            batches = [
-                idxs[i : i + batch_size] for i in range(0, len(idxs), batch_size)
-            ]
-            if drop_last and len(batches[-1]) < batch_size:
-                batches.pop()
-            bucket_batches.append(batches)
-
-        # interleave batches from each multiplicity
-        self.batches = []
-        max_len = max(len(b) for b in bucket_batches)
-        for i in range(max_len):
-            for batches in bucket_batches:
-                if i < len(batches):
-                    self.batches.append(batches[i])
-
-        # split batches across replicas
-        self.batches = self.batches[rank::num_replicas]
-
-    def __iter__(self):
-        if self.shuffle:  # shuffle multiplicity and batches within
-            order = torch.randperm(len(self.batches)).tolist()
-            for i in order:
-                yield self.batches[i]
-        else:
-            for b in self.batches:
-                yield b
-
-    def __len__(self):
-        return len(self.batches)

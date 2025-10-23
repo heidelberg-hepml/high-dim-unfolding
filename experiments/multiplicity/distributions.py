@@ -1,11 +1,9 @@
 import torch
 import torch.distributions as D
-from torch.autograd import Function
 import einops
 import inspect
 
 from experiments.utils import EPS2
-from experiments.logger import LOGGER
 
 
 def cross_entropy(distribution, target):

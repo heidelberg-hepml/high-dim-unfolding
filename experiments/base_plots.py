@@ -2,13 +2,7 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from torch_geometric.utils import scatter
-import sklearn
-import scipy
-import energyflow
 from matplotlib.backends.backend_pdf import PdfPages
-import os
-import tqdm
 
 from experiments.utils import get_range
 

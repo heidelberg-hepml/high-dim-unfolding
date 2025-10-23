@@ -11,7 +11,6 @@ from experiments.utils import (
     get_eta,
     ensure_angle,
 )
-from experiments.logger import LOGGER
 
 
 class BaseTransform(nn.Module):

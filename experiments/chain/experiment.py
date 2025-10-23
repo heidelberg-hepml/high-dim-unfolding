@@ -174,21 +174,10 @@ class ChainExperiment(BaseExperiment):
             :, :1
         ].to(dtype=torch.int64)
 
-        if self.cfg.use_true_mult:
-            self.sampled_multiplicities = None
-
         LOGGER.info("Step 2: Sampling jet kinematics...")
         self.jet_exp.evaluate(self.sampled_multiplicities)
 
         self.sampled_jets = self.jet_exp.data_raw["samples"].jet_gen
-
-        if self.cfg.use_true_jet:
-            self.sampled_jets = self.jet_exp.data_raw["truth"].jet_gen
-            if torch.tensor(self.cfg.jet_smearing).max() > 0:
-                noise = torch.randn_like(self.sampled_jets) * torch.tensor(
-                    [self.cfg.jet_smearing], device=self.device
-                )
-                self.sampled_jets += noise * self.sampled_jets
 
         LOGGER.info("Step 3: Sampling constituents...")
 

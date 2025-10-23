@@ -1,13 +1,10 @@
 import numpy as np
 import torch
-from torch import nn
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
-from torch_geometric.utils import scatter
 from lgatr.interface import get_spurions
 import os, time, glob
 from omegaconf import open_dict
-from itertools import chain
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
@@ -18,28 +15,9 @@ from experiments.dataset import (
 )
 from experiments.utils import (
     fix_mass,
-    get_batch_from_ptr,
-    get_mass,
-    get_pt,
-    GaussianFourierProjection,
 )
-from experiments.coordinates import fourmomenta_to_jetmomenta, jetmomenta_to_fourmomenta
 import experiments.kinematics.plotter as plotter
-from experiments.kinematics.plots import plot_kinematics
 from experiments.logger import LOGGER
-import experiments.kinematics.observables as obs
-from experiments.kinematics.observables import (
-    # FASTJET_AVAIL,
-    create_partial_jet,
-    compute_angles,
-    tau,
-    dimass,
-    deltaR,
-    sd_mass,
-    compute_zg,
-    jet_mass,
-    create_jet_norm,
-)
 
 
 class KinematicsExperiment(BaseExperiment):
@@ -139,38 +117,6 @@ class KinematicsExperiment(BaseExperiment):
                         self.cfg.model.net.in_s_channels += 1
                     if getattr(self.cfg.model.GA_config, "condition_spurions", True):
                         self.cfg.model.net_condition.in_s_channels += 1
-
-            elif self.cfg.modelname == "AutoregressiveTransformer":
-                self.cfg.model.net.in_channels = 4 + self.cfg.data.pos_encoding_dim
-                self.cfg.model.net_condition.in_channels = (
-                    4 + self.cfg.data.pos_encoding_dim
-                )
-                self.cfg.model.net_condition.out_channels = (
-                    self.cfg.model.net.hidden_channels
-                )
-                if self.cfg.data.add_pid:
-                    self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net_condition.in_channels += 6
-                # one hot jet_det jet_gen
-                self.cfg.model.net.in_channels += 2
-                # one hot jet_det
-                self.cfg.model.net_condition.in_channels += 1
-                # mlp
-                self.cfg.model.mlp.in_shape = (
-                    4  # fourmomenta
-                    + self.cfg.cfm.embed_t_dim
-                    + self.cfg.data.pos_encoding_dim
-                    + self.cfg.model.net.out_channels
-                    + 2  # one hot jet_det jet_gen
-                )
-                if self.cfg.cfm.self_condition_prob > 0.0:
-                    self.cfg.model.mlp.in_shape += 4
-                if self.cfg.cfm.stop_token:
-                    self.cfg.model.mlp.in_shape += 1
-                    self.cfg.net.in_channels += 1
-                else:
-                    self.cfg.model.net.out_channels += 1
-                self.cfg.cfm.max_seq_len = self.cfg.data.max_constituents
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint
@@ -786,8 +732,6 @@ class KinematicsExperiment(BaseExperiment):
             model_label = "Transf."
         elif self.cfg.modelname == "ConditionalLGATr":
             model_label = "L-GATr"
-        elif self.cfg.modelname == "AutoregressiveTransformer":
-            model_label = "AR-Transf."
         kwargs = {
             "exp": self,
             "model_label": model_label,
@@ -808,36 +752,6 @@ class KinematicsExperiment(BaseExperiment):
                 plotter.plot_z(filename=filename, **kwargs)
             elif self.cfg.data.dataset == "ttbar":
                 plotter.plot_t(filename=filename, **kwargs)
-            # if self.cfg.plotting.fourmomenta:
-            #     LOGGER.info("Plotting fourmomenta")
-            #     filename = os.path.join(path, "fourmomenta.pdf")
-            #     plotter.plot_fourmomenta(
-            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-            #     )
-
-            # if self.cfg.plotting.jetmomenta:
-            #     LOGGER.info("Plotting jetmomenta")
-            #     filename = os.path.join(path, "jetmomenta.pdf")
-            #     plotter.plot_jetmomenta(
-            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-            #     )
-
-            # if self.cfg.plotting.preprocessed:
-            #     filename = os.path.join(path, "preprocessed.pdf")
-            #     plotter.plot_preprocessed(
-            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-            #     )
-            # if self.cfg.plotting.jetscaled:
-            #     LOGGER.info("Plotting jetscaled")
-            #     filename = os.path.join(path, "jetscaled.pdf")
-            #     plotter.plot_jetscaled(
-            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-            #     )
-            # if len(self.obs.keys()) > 0:
-            #     filename = os.path.join(path, "observables.pdf")
-            #     plotter.plot_observables(
-            #         filename=filename, **kwargs, weights=weights, mask_dict=mask_dict
-            #     )
         LOGGER.info(f"Plotting done in {time.time() - t0:.2f} seconds")
 
     def _init_loss(self):
@@ -851,136 +765,15 @@ class KinematicsExperiment(BaseExperiment):
         assert torch.isfinite(loss).all()
         metrics = {"mse": mse}
 
-        if "Autoregressive" in self.cfg.modelname:
-            for k in range(4):
-                metrics[f"jet_mse_{k}"] = component_loss[k].cpu().item()
-                metrics[f"const_mse_{k}"] = component_loss[k + 4].cpu().item()
-            if not getattr(self.cfg.cfm, "stop_token", False):
-                metrics["BCE_stop_loss"] = component_loss[4].cpu().item()
-        else:
-            for k in range(4):
-                metrics[f"mse_{k}"] = component_loss[k].cpu().item()
+        for k in range(4):
+            metrics[f"mse_{k}"] = component_loss[k].cpu().item()
         return loss, metrics
 
     def _init_metrics(self):
         metrics = {"mse": []}
-        if "Autoregressive" in self.cfg.modelname:
-            for k in range(4):
-                metrics[f"jet_mse_{k}"] = []
-                metrics[f"const_mse_{k}"] = []
-            if not getattr(self.cfg.cfm, "stop_token", False):
-                metrics["BCE_stop_loss"] = []
-        else:
-            for k in range(4):
-                metrics[f"mse_{k}"] = []
+        for k in range(4):
+            metrics[f"mse_{k}"] = []
         return metrics
 
     def define_process_specifics(self):
         pass
-
-    #     if self.cfg.data.max_constituents >= self.cfg.data.max_num_particles:
-    #         n_const = "All"
-    #     else:
-    #         n_const = str(self.cfg.data.max_constituents)
-    #     # self.plot_title = n_const + " constituents"
-    #     self.plot_title = None
-
-    #     self.obs_coords = {}
-
-    #     if "jet" in self.cfg.plotting.observables:
-
-    #         self.obs_coords[r"\text{jet}"] = create_partial_jet(0.0, 1.0)
-
-    #     if "slices" in self.cfg.plotting.observables:
-    #         self.obs_coords[r"1-5"] = create_partial_jet(0, 5)
-    #         self.obs_coords[r"6-10"] = create_partial_jet(5, 10)
-    #         self.obs_coords[r"11-15"] = create_partial_jet(10, 15)
-    #         self.obs_coords[r"16-20"] = create_partial_jet(15, 20)
-    #         self.obs_coords[r"1-10"] = create_partial_jet(0, 10)
-    #         self.obs_coords[r"11-20"] = create_partial_jet(10, 20)
-
-    #     if self.cfg.plotting.n_pt > 0:
-    #         if self.cfg.data.max_constituents == -1:
-    #             n_pt = self.cfg.plotting.n_pt
-    #         else:
-    #             n_pt = min(self.cfg.data.max_constituents, self.cfg.plotting.n_pt)
-
-    #         for i in range(n_pt):
-
-    #             self.obs_coords[str(i + 1) + r"\text{ highest } p_T"] = (
-    #                 create_partial_jet(start=i, end=i + 1)
-    #             )
-
-    #     self.obs = {}
-
-    #     if "angle" in self.cfg.plotting.observables:
-    #         self.obs[r"\Delta \phi_{1,2}"] = compute_angles(0, 1, 1, 2, "phi")
-    #         self.obs[r"\Delta \phi_{1,3}"] = compute_angles(0, 1, 2, 3, "phi")
-    #         # self.obs[r"\Delta \phi_{1,4}"] = compute_angles(0, 1, 3, 4, "phi")
-    #         # self.obs[r"\Delta \phi_{1,5}"] = compute_angles(0, 1, 4, 5, "phi")
-    #         self.obs[r"\Delta \phi_{2,3}"] = compute_angles(1, 2, 2, 3, "phi")
-    #         self.obs[r"\Delta \phi_{3,4}"] = compute_angles(2, 3, 3, 4, "phi")
-    #         # self.obs[r"\Delta \phi_{2,5}"] = compute_angles(1, 2, 4, 5, "phi")
-
-    #     if "dimass" in self.cfg.plotting.observables:
-    #         # dijet mass (only for CMS dataset with 3 jets)
-
-    #         for i in range(3):
-    #             for j in range(i + 1, 3):
-    #                 self.obs[r"M_{" + str(i + 1) + str(j + 1) + "}"] = dimass(i, j)
-
-    #     if "deltaR" in self.cfg.plotting.observables:
-
-    #         for i in range(3):
-    #             for j in range(i + 1, 3):
-    #                 self.obs[r"\Delta R_{" + str(i + 1) + str(j + 1) + "}"] = deltaR(
-    #                     i, j
-    #                 )
-
-    #     if self.cfg.data.dataset == "zplusjet":
-    #         obs.R0 = 0.4
-    #         obs.R0SoftDrop = 0.8
-    #     elif self.cfg.data.dataset == "cms":
-    #         obs.R0 = 1.2
-    #         obs.R0SoftDrop = 1.2
-    #     elif self.cfg.data.dataset == "ttbar":
-    #         obs.R0 = 1.2
-    #         obs.R0SoftDrop = 1.2
-
-    #     if "tau1" in self.cfg.plotting.observables and FASTJET_AVAIL:
-    #         self.obs[r"\tau_1"] = tau1
-    #     if "tau2" in self.cfg.plotting.observables and FASTJET_AVAIL:
-    #         self.obs[r"\tau_2"] = tau2
-    #     if "tau21" in self.cfg.plotting.observables and FASTJET_AVAIL:
-    #         self.obs[r"\tau_{21}"] = (
-    #             lambda constituents, batch_idx, other_batch_idx: torch.where(
-    #                 tau1(constituents, batch_idx, other_batch_idx) != 0,
-    #                 tau2(constituents, batch_idx, other_batch_idx)
-    #                 / tau1(constituents, batch_idx, other_batch_idx),
-    #                 torch.tensor(0.0),
-    #             )
-    #         )
-    #     if "sd_mass" in self.cfg.plotting.observables and FASTJET_AVAIL:
-    #         self.obs[r"\log \rho"] = sd_mass
-
-    #     if "momentum_fraction" in self.cfg.plotting.observables and FASTJET_AVAIL:
-    #         self.obs[r"z_g"] = compute_zg
-
-    #     if "jet_mass" in self.cfg.plotting.observables:
-    #         self.obs[r"M_{jet}"] = jet_mass
-
-    #     if "norm" in self.cfg.plotting.observables:
-    #         self.obs[
-    #             r"\sqrt{E_{\text{jet}}^2 + p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
-    #         ] = create_jet_norm()
-    #         self.obs[
-    #             r"\sqrt{p_{x,\text{jet}}^2 + p_{y,\text{jet}}^2 + p_{z,\text{jet}}^2}"
-    #         ] = create_jet_norm([1, 2, 3])
-    #         self.obs[r"p_{T,\text{jet}}"] = create_jet_norm([1, 2])
-    #         self.obs[r"M_{\text{jet}}"] = create_jet_norm([0], [1, 2, 3])
-    #         self.obs[
-    #             r"\sqrt{E_{\text{jet}}^2 - p_{x,\text{jet}}^2 - p_{y,\text{jet}}^2}"
-    #         ] = create_jet_norm([0], [1, 2])
-    #         self.obs[r"\sqrt{E_{\text{jet}}^2 - p_{z,\text{jet}}^2}"] = create_jet_norm(
-    #             [0], [3]
-    #         )
