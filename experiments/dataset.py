@@ -114,9 +114,15 @@ def load_dataset(dataset_name):
 
 
 def load_zplusjet(data_path, cfg, dtype):
+    dataset_generator = getattr(cfg, "dataset_generator", "pythia")
+    if dataset_generator.lower() == "pythia":
+        dataset_generator = "Pythia26"
+    elif dataset_generator.lower() == "herwig":
+        dataset_generator = "Herwig"
+    else:
+        raise ValueError(f"Unknown dataset generator: {dataset_generator}")
     data = energyflow.zjets_delphes.load(
-        "Pythia26",
-        # "Herwig",
+        dataset_generator,
         num_data=cfg.length,
         pad=True,
         cache_dir=data_path,
