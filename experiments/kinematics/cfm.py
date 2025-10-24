@@ -345,7 +345,7 @@ class CFM(nn.Module):
             x0 = custom_rk4(
                 velocity,
                 (x1, v1),
-                torch.tensor([1.0, 0.0], device=x1.device),
+                torch.tensor([1.0, 0.0], device=x1.device, dtype=x1.dtype),
                 step_size=self.odeint.options["step_size"],
             )[-1]
 

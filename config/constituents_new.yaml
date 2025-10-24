@@ -1,0 +1,92 @@
+exp_type: constituents
+exp_name: consts_z
+
+use_mlflow: false
+
+data:
+ data_dir: data/
+ dataset: zplusjet
+ length: -1
+ train_val_test: [0.8, 0.05, 0.15]
+ max_num_particles: null
+ max_constituents: -1
+ min_mult: 2
+ pt_cut: 0.0
+ add_pid: false
+ pt_min: null
+ mass: 0.1
+ pos_encoding_dim: 8
+ mult_encoding_dim: 0
+ part_to_jet: false
+ use_sampled_jets: false
+
+cfm:
+ embed_t_dim: 8
+ embed_t_scale: 30.0
+ const_coordinates: StandardJetScaledLogPtPhiEtaM2
+ const_coordinates_options:
+  pt_min: 0.0
+  masked_dims: [3]
+  scaling: [5,5,5,5]
+  vonmises: true
+ jet_coordinates: StandardLogPtPhiEtaLogM2
+ jet_coordinates_options:
+  pt_min: null
+  masked_dims: []
+  scaling: [10,10,10,10]
+  vonmises: false
+ geometry:
+  type: simple
+  periodic: true
+ transforms_float64: true
+ cosine_similarity_factor: 0.0
+ self_condition_prob: 0.0
+ add_jet: true
+ add_mass: false
+ weight: 0.0
+ sort: true
+ rescale: false
+
+odeint:
+ method: rk4
+ rtol: 1e-5
+ atol: 1e-5
+ options:
+  step_size: 0.01
+
+train: true
+training:
+ iterations: 300000
+ batchsize: 1024
+ optimizer: Lion
+ lr: 2e-4
+ scheduler: CosineAnnealingLR
+ validate_every_n_steps: 5000
+ clip_grad_norm: 5.
+
+evaluate: true
+evaluation:
+ batchsize: 4096
+ classifier: false
+ sample: true
+ n_batches: -1
+ eval_loss: []
+ save_samples: false
+ load_samples: false
+ overfit: false
+
+plot: true
+plotting:
+ fourmomenta: false
+ jetmomenta: true
+ jetscaled: false
+ preprocessed: false
+ observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass","eec"]
+ n_pt: 3
+ angles: [[1,2],[1,3],[2,3],[3,4]]
+ correlations: false
+
+defaults:
+ - model: cond_tr_constituents
+ - default
+ - _self_

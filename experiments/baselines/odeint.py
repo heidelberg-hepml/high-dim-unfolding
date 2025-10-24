@@ -25,7 +25,13 @@ def custom_rk4(
     vs = [v1]
     if (t[1] - t[0]).item() * step_size < 0:
         step_size = -step_size
-    t_list = torch.arange(start=t[0].item(), end=t[1].item(), step=step_size)
+    t_list = torch.arange(
+        start=t[0].item(),
+        end=t[1].item(),
+        step=step_size,
+        device=t.device,
+        dtype=t.dtype,
+    )
     for t in t_list:
         x = xs[-1]
         v = vs[-1]
