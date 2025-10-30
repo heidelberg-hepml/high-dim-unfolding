@@ -663,6 +663,11 @@ class BaseExperiment:
                 )["model"]
                 LOGGER.info(f"Loading model from {model_path}")
                 self.model.load_state_dict(state_dict)
+                old_model_path = os.path.join(
+                    self.cfg.run_dir, "models", f"model_run{self.cfg.run_idx}_*.pt"
+                )
+                if os.path.exists(old_model_path):
+                    os.remove(old_model_path)  # remove old model file if it exists
             except FileNotFoundError:
                 LOGGER.warning(
                     f"Cannot load best model (epoch {smallest_val_loss_step}) from {model_path}"
