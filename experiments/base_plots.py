@@ -700,7 +700,7 @@ def plot_2d_histogram(
         norm=mcolors.Normalize(vmin=0.5, vmax=1.5),
         rasterized=True,
     )
-    fig.colorbar(im3, ax=ax3, label="Ratio (Model/Truth)")
+    fig.colorbar(im3, ax=ax3, label=f"Ratio ({second_label}/{first_label})")
 
     ax3.set_xlabel(
         r"${%s}$" % (x2_label if x2_label is not None else x1_label),
