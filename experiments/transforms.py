@@ -766,7 +766,7 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
         jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
         # pt = pt / jet_pt
-        logpt = logpt - torch.log(jet_pt + EPS1)
+        logpt = logpt  # - torch.log(jet_pt + EPS1)
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
@@ -781,7 +781,7 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
         jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
         jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
-        logpt = logpt + torch.log(jet_pt + EPS1)
+        logpt = logpt  # + torch.log(jet_pt + EPS1)
         phi = phi + jet_phi
         phi = ensure_angle(phi)
         eta = eta + jet_eta

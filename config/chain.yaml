@@ -19,6 +19,7 @@ model_run_indices:
 data:
  pt_cut: 0.0
  length: -1
+ dataset_generator: pythia
 
 use_true_mult: false
 use_true_jet: false
