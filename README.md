@@ -30,33 +30,41 @@ jets ready for physics analysis. The codebase is forked from the original [Loren
 ## Setup
 1. **Environment**
    ```bash
-   python -m venv .venv
+   uv venv
    source .venv/bin/activate
-   pip install -r requirements.txt
+   uv sync
+   uv run pre-commit install   # install git hooks for ruff
    ```
    Ensure the PyTorch build matches your CUDA toolkit.  Installing `xformers`
    may require wheels specific to your platform.
 
-2. **Datasets**
+2. **Code quality and tests**
+   ```bash
+   uv run ruff format          # format in place
+   uv run ruff check           # lint
+   uv run pytest tests         # unit tests
+   ```
+
+3. **Datasets**
    Place the datasets under `data/`. Existing configs
    expect the EnergyFlow `zplusjet` dataset or our generated top dataset, available upon request.
    See `experiments/dataset.py` to add new datasets.
 
-3. **FastJet (optional)**
+4. **FastJet (optional)**
    Some substructure observables rely on `fastjet`/`fastjet contribs`. Our custom python bindings for `fastjet contribs` are available [here](https://github.com/AntoinePTJ/pybind_fastjet_contribs). If this package is missing from the python venv, the code will skip related imports and plots.
 
 ## Running Experiments
 
 Runs parameters are set via Hydra configs. There are different configuration files for each experiment type.
 ```bash
-python run.py --config-name multiplicity
-python run.py --config-name jets
-python run.py --config-name constituents
+uv run python run.py --config-name multiplicity
+uv run python run.py --config-name jets
+uv run python run.py --config-name constituents
 ```
 
 ### Individual runs
 ```bash
-python run.py -cn constituents \
+uv run python run.py -cn constituents \
     exp_name=z_constituents \
     run_name=lgatr_200k \
     data.dataset=zplusjet \
@@ -75,7 +83,7 @@ Outputs are stored in `runs/<exp_name>/<run_name>/`, including:
 ### Chained Generation
 Provide paths to a previous run for each experiment:
 ```bash
-python run.py --config-name chain \
+uv run python run.py --config-name chain \
     experiment_paths.multiplicity=/path/to/mult/run_dir \
     experiment_paths.jets=/path/to/jets/run_dir \
     experiment_paths.constituents=/path/to/const/run_dir \

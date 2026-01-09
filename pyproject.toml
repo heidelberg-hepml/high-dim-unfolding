@@ -1,0 +1,54 @@
+[project]
+name = "high-dim-unfolding"
+version = "0.1.0"
+description = "Generative unfolding of jets and their substructure with conditional flow-matching."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+dependencies = [
+    "awkward",
+    "einops",
+    "energyflow",
+    "h5py",
+    "hdf5plugin",
+    "hydra-core",
+    "lgatr",
+    "matplotlib",
+    "mlflow-skinny",
+    "numpy",
+    "opt_einsum",
+    "optuna",
+    "pytorch_optimizer>=3.2.0",
+    "scikit-learn",
+    "torch>=2.6.0",
+    "torch-ema",
+    "torch_geometric>=2.4.0",
+    "torchdiffeq",
+    "tqdm",
+    "xformers",
+]
+
+[dependency-groups]
+dev = ["pre-commit>=3.7",
+    "pytest",
+    "ruff",
+    "marimo",
+]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["experiments*"]
+exclude = ["tests*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["data/", "runs/", "notebooks/", "scripts/", "fastjet/"]
+
+[tool.ruff.lint]
+select = ["E","F","I","B","UP"]
+ignore = [
+    "E501", # no complaints from line length
+    "B006", # allow mutable default function arguments
+]
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["F401"]

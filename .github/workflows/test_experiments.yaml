@@ -11,21 +11,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.11'
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          python-version: '3.11'
+          enable-cache: true
 
-    # Step 3: Install dependencies
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
+      - name: Install dependencies
+        run: uv sync
 
-    # Step 4: Run tests
-    - name: Run all units tests
-      run: |
-        pytest tests
+      - name: Run format and lint checks
+        run: |
+          uv run ruff format --check .
+          uv run ruff check .
+
+      - name: Run all units tests
+        run: uv run pytest tests
