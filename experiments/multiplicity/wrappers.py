@@ -1,19 +1,18 @@
 import torch
+from lgatr.interface import extract_scalar
 from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
 
-from lgatr.interface import extract_scalar
-from experiments.logger import LOGGER
-from experiments.utils import xformers_mask
+import experiments.coordinates as c
 from experiments.embedding import add_jet_to_sequence, embed_data_into_ga
 from experiments.multiplicity.distributions import (
-    process_params,
-    cross_entropy,
-    GaussianMixture,
     GammaMixture,
+    GaussianMixture,
+    cross_entropy,
+    process_params,
     ranged_categorical,
 )
-import experiments.coordinates as c
+from experiments.utils import xformers_mask
 
 
 class MultiplicityTransformerWrapper(nn.Module):
@@ -28,9 +27,7 @@ class MultiplicityTransformerWrapper(nn.Module):
         elif distribution == "GammaMixture":
             self.distribution = GammaMixture
         elif distribution == "Categorical":
-            assert (
-                range is not None
-            ), "Range must be provided for Categorical distribution"
+            assert range is not None, "Range must be provided for Categorical distribution"
             self.distribution = ranged_categorical(*range)
         else:
             raise ValueError(f"Unknown distribution: {distribution}")
@@ -39,9 +36,9 @@ class MultiplicityTransformerWrapper(nn.Module):
         self.const_coordinates = getattr(c, self.wrapper_cfg.const_coordinates)(
             **self.wrapper_cfg.const_coordinates_options
         )
-        self.condition_const_coordinates = getattr(
-            c, self.wrapper_cfg.const_coordinates
-        )(**self.wrapper_cfg.const_coordinates_options)
+        self.condition_const_coordinates = getattr(c, self.wrapper_cfg.const_coordinates)(
+            **self.wrapper_cfg.const_coordinates_options
+        )
         self.jet_coordinates = getattr(c, self.wrapper_cfg.jet_coordinates)(
             **self.wrapper_cfg.jet_coordinates_options
         )
@@ -70,7 +67,6 @@ class MultiplicityTransformerWrapper(nn.Module):
         return outputs
 
     def batch_loss(self, batch, diff=False):
-
         output = self.forward(batch)
         params = process_params(output, self.distribution)
         predicted_dist = self.distribution(params)  # batch of mixtures

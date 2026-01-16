@@ -1,23 +1,21 @@
-import torch
-from torch import nn
-from torch.utils.data import BatchSampler
-from torch_geometric.data import Data
-import energyflow
-import numpy as np
-import awkward as ak
-import os
 import glob
+import os
 from collections import defaultdict
 
+import awkward as ak
+import energyflow
+import numpy as np
+import torch
+from torch.utils.data import BatchSampler
+from torch_geometric.data import Data
+
+from experiments.coordinates import jetmomenta_to_fourmomenta
 from experiments.logger import LOGGER
 from experiments.utils import (
     ensure_angle,
     fix_mass,
-    get_mass,
     pid_encoding,
-    GaussianFourierProjection,
 )
-from experiments.coordinates import jetmomenta_to_fourmomenta, fourmomenta_to_jetmomenta
 
 
 class Dataset(torch.utils.data.Dataset):
@@ -44,9 +42,7 @@ class Dataset(torch.utils.data.Dataset):
         gen_mults,
         gen_jets,
     ):
-
         for i in range(det_particles.shape[0]):
-
             det_event = det_particles[i, : det_mults[i]]
             det_event_scalars = det_pids[i, : det_mults[i]]
             gen_event = gen_particles[i, : gen_mults[i]]
@@ -173,12 +169,8 @@ def load_zplusjet(data_path, cfg, dtype):
         det_pids = torch.empty(*det_particles.shape[:-1], 0, dtype=dtype)
         gen_pids = torch.empty(*gen_particles.shape[:-1], 0, dtype=dtype)
 
-    det_mask = (
-        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-    ).unsqueeze(-1)
-    gen_mask = (
-        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-    ).unsqueeze(-1)
+    det_mask = (torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]).unsqueeze(-1)
+    gen_mask = (torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]).unsqueeze(-1)
 
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
@@ -320,12 +312,8 @@ def load_ttbar(data_path, cfg, dtype):
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_mask = (
-        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-    ).unsqueeze(-1)
-    gen_mask = (
-        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-    ).unsqueeze(-1)
+    det_mask = (torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]).unsqueeze(-1)
+    gen_mask = (torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]).unsqueeze(-1)
 
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
@@ -403,12 +391,8 @@ def load_ttbar_file(file, cfg, dtype, length):
     det_particles = det_particles.take_along_dim(det_idx.unsqueeze(-1), dim=1)
     gen_particles = gen_particles.take_along_dim(gen_idx.unsqueeze(-1), dim=1)
 
-    det_mask = (
-        torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-    ).unsqueeze(-1)
-    gen_mask = (
-        torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]
-    ).unsqueeze(-1)
+    det_mask = (torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]).unsqueeze(-1)
+    gen_mask = (torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:, None]).unsqueeze(-1)
 
     det_particles = fix_mass(jetmomenta_to_fourmomenta(det_particles), cfg.mass)
     gen_particles = fix_mass(jetmomenta_to_fourmomenta(gen_particles), cfg.mass)
@@ -442,9 +426,7 @@ def positional_encoding(seq_length=256, pe_dim=16):
     :return: Positional encoding tensor of shape (seq_length, pe_dim).
     """
     position = torch.arange(seq_length, dtype=torch.float).unsqueeze(1)
-    div_term = torch.exp(
-        torch.arange(0, pe_dim, 2).float() * -(np.log(10000.0) / pe_dim)
-    )
+    div_term = torch.exp(torch.arange(0, pe_dim, 2).float() * -(np.log(10000.0) / pe_dim))
     pe = torch.zeros(seq_length, pe_dim)
     pe[:, 0::2] = torch.sin(position * div_term)
     pe[:, 1::2] = torch.cos(position * div_term)
@@ -484,9 +466,7 @@ class SameSizeBatchSampler(BatchSampler):
         for idxs in buckets.values():
             if shuffle:
                 idxs = torch.randperm(len(idxs)).tolist()
-            batches = [
-                idxs[i : i + batch_size] for i in range(0, len(idxs), batch_size)
-            ]
+            batches = [idxs[i : i + batch_size] for i in range(0, len(idxs), batch_size)]
             if drop_last and len(batches[-1]) < batch_size:
                 batches.pop()
             bucket_batches.append(batches)
@@ -508,8 +488,7 @@ class SameSizeBatchSampler(BatchSampler):
             for i in order:
                 yield self.batches[i]
         else:
-            for b in self.batches:
-                yield b
+            yield from self.batches
 
     def __len__(self):
         return len(self.batches)

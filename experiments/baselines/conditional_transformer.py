@@ -1,17 +1,14 @@
-from typing import Optional
-
 import torch
 from einops import rearrange
+from lgatr.primitives.attention import scaled_dot_product_attention
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-from lgatr.primitives.attention import scaled_dot_product_attention
-
-from experiments.utils import to_nd
 
 from experiments.baselines.transformer import (
-    BaselineSelfAttention,
     BaselineLayerNorm,
+    BaselineSelfAttention,
 )
+from experiments.utils import to_nd
 
 
 class CrossAttention(nn.Module):
@@ -23,7 +20,7 @@ class CrossAttention(nn.Module):
         out_channels: int,
         num_heads: int,
         multi_query: bool = True,
-        dropout_prob: Optional[float] = None,
+        dropout_prob: float | None = None,
     ):
         super().__init__()
 
@@ -43,7 +40,7 @@ class CrossAttention(nn.Module):
         self,
         q: torch.Tensor,
         kv: torch.Tensor,
-        **kwargs: Optional[dict],
+        **kwargs: dict | None,
     ):
         q = self.q_linear(q)
         k, v = torch.tensor_split(self.kv_linear(kv), 2, dim=-1)
@@ -115,7 +112,7 @@ class ConditionalTransformerBlock(nn.Module):
         num_heads: int,
         increase_hidden_channels=1,
         multi_query: bool = True,
-        dropout_prob: Optional[float] = None,
+        dropout_prob: float | None = None,
     ) -> None:
         super().__init__()
 
@@ -202,10 +199,9 @@ class ConditionalTransformer(nn.Module):
         self,
         x: torch.Tensor,
         processed_condition: torch.Tensor,
-        attn_kwargs: Optional[dict] = None,
-        crossattn_kwargs: Optional[dict] = None,
+        attn_kwargs: dict | None = None,
+        crossattn_kwargs: dict | None = None,
     ) -> torch.Tensor:
-
         x = self.linear_in(x)
         for block in self.blocks:
             if self.checkpoint_blocks:

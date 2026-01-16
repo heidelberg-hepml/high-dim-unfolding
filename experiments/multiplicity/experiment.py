@@ -1,29 +1,28 @@
-import torch
-from torch import nn
-from torch_geometric.loader import DataLoader
-from torch.distributions import Categorical
-import numpy as np
+import glob
+import os
+import time
 
-import os, time, glob
+import numpy as np
+import torch
 from omegaconf import open_dict
-from itertools import chain
+from torch.distributions import Categorical
+from torch_geometric.loader import DataLoader
 
 from experiments.base_experiment import BaseExperiment
 from experiments.dataset import (
     Dataset,
     load_dataset,
-    positional_encoding,
     load_ttbar_file,
+    positional_encoding,
 )
+from experiments.logger import LOGGER
+from experiments.mlflow import log_mlflow
 from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
     cross_entropy,
 )
 from experiments.multiplicity.plots import plot_mixer
-from experiments.logger import LOGGER
-from experiments.mlflow import log_mlflow
-from experiments.utils import GaussianFourierProjection
 
 MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
 
@@ -33,7 +32,6 @@ class MultiplicityExperiment(BaseExperiment):
         self.loss = lambda dist, target: cross_entropy(dist, target).mean()
 
     def init_physics(self):
-
         with open_dict(self.cfg):
             self.cfg.modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
 
@@ -42,8 +40,8 @@ class MultiplicityExperiment(BaseExperiment):
                 self.cfg.evaluation.sample = False
                 self.cfg.evaluation.save_samples = False
 
-            max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = (
-                load_dataset(self.cfg.data.dataset)
+            max_num_particles, diff, pt_min, jet_pt_min, masked_dims, load_fn = load_dataset(
+                self.cfg.data.dataset
             )
 
             self.cfg.data.max_num_particles = max_num_particles
@@ -72,9 +70,7 @@ class MultiplicityExperiment(BaseExperiment):
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
-                    assert (
-                        self.cfg.dist.diff == False
-                    ), "GammaMixture requires non-negative integers"
+                    assert not self.cfg.dist.diff, "GammaMixture requires non-negative integers"
                 elif self.cfg.dist.type == "GaussianMixture":
                     self.distribution = GaussianMixture
                     self.cfg.model.net.out_channels = 3 * self.cfg.dist.n_components
@@ -96,9 +92,7 @@ class MultiplicityExperiment(BaseExperiment):
             elif self.cfg.modelname == "LGATr":
                 if self.cfg.dist.type == "GammaMixture":
                     self.distribution = GammaMixture
-                    assert (
-                        self.cfg.dist.diff == False
-                    ), "GammaMixture requires non-negative integers"
+                    assert not self.cfg.dist.diff, "GammaMixture requires non-negative integers"
                     self.cfg.model.net.out_mv_channels = 3 * self.cfg.dist.n_components
                 elif self.cfg.dist.type == "GaussianMixture":
                     self.distribution = GaussianMixture
@@ -111,9 +105,7 @@ class MultiplicityExperiment(BaseExperiment):
                         )
                         self.cfg.model.range = self.cfg.data.diff
                     else:
-                        self.cfg.model.net.out_mv_channels = (
-                            self.cfg.data.max_num_particles + 1
-                        )
+                        self.cfg.model.net.out_mv_channels = self.cfg.data.max_num_particles + 1
                         self.cfg.model.range = (
                             self.cfg.data.min_mult,
                             self.cfg.data.max_num_particles,
@@ -178,28 +170,20 @@ class MultiplicityExperiment(BaseExperiment):
         # initialize cfm (might require data)
         self.model.init_coordinates()
 
-        train_gen_mask = (
-            torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
-        )
+        train_gen_mask = torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
         self.model.const_coordinates.init_fit(
             gen_particles[:train_idx],
             mask=train_gen_mask,
-            jet=torch.repeat_interleave(
-                gen_jets[:train_idx], gen_mults[:train_idx], dim=0
-            ),
+            jet=torch.repeat_interleave(gen_jets[:train_idx], gen_mults[:train_idx], dim=0),
         )
 
         self.model.jet_coordinates.init_fit(gen_jets[:train_idx])
 
-        train_det_mask = (
-            torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
-        )
+        train_det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
         self.model.condition_const_coordinates.init_fit(
             det_particles[:train_idx],
             mask=train_det_mask,
-            jet=torch.repeat_interleave(
-                det_jets[:train_idx], det_mults[:train_idx], dim=0
-            ),
+            jet=torch.repeat_interleave(det_jets[:train_idx], det_mults[:train_idx], dim=0),
         )
 
         self.model.condition_jet_coordinates.init_fit(det_jets[:train_idx])
@@ -216,15 +200,13 @@ class MultiplicityExperiment(BaseExperiment):
         gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
 
         det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-        det_particles[det_mask] = (
-            self.model.condition_const_coordinates.fourmomenta_to_x(
-                det_particles[det_mask],
-                jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
-                ptr=torch.cumsum(
-                    torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
-                    dim=0,
-                ),
-            )
+        det_particles[det_mask] = self.model.condition_const_coordinates.fourmomenta_to_x(
+            det_particles[det_mask],
+            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
+                dim=0,
+            ),
         )
 
         det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
@@ -374,9 +356,7 @@ class MultiplicityExperiment(BaseExperiment):
         gen_jets = data["gen_jets"]
         size = len(gen_particles)
 
-        LOGGER.info(
-            f"Loaded {size} events from {file} in {time.time() - t0:.2f} seconds"
-        )
+        LOGGER.info(f"Loaded {size} events from {file} in {time.time() - t0:.2f} seconds")
         t1 = time.time()
 
         if self.cfg.data.max_constituents > 0:
@@ -389,28 +369,22 @@ class MultiplicityExperiment(BaseExperiment):
             train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])
 
             train_gen_mask = (
-                torch.arange(gen_particles.shape[1])[None, :]
-                < gen_mults[:train_idx, None]
+                torch.arange(gen_particles.shape[1])[None, :] < gen_mults[:train_idx, None]
             )
             self.model.const_coordinates.init_fit(
                 gen_particles[:train_idx],
                 mask=train_gen_mask,
-                jet=torch.repeat_interleave(
-                    gen_jets[:train_idx], gen_mults[:train_idx], dim=0
-                ),
+                jet=torch.repeat_interleave(gen_jets[:train_idx], gen_mults[:train_idx], dim=0),
             )
             self.model.jet_coordinates.init_fit(gen_jets[:train_idx])
 
             train_det_mask = (
-                torch.arange(det_particles.shape[1])[None, :]
-                < det_mults[:train_idx, None]
+                torch.arange(det_particles.shape[1])[None, :] < det_mults[:train_idx, None]
             )
             self.model.condition_const_coordinates.init_fit(
                 det_particles[:train_idx],
                 mask=train_det_mask,
-                jet=torch.repeat_interleave(
-                    det_jets[:train_idx], det_mults[:train_idx], dim=0
-                ),
+                jet=torch.repeat_interleave(det_jets[:train_idx], det_mults[:train_idx], dim=0),
             )
             self.model.condition_jet_coordinates.init_fit(det_jets[:train_idx])
 
@@ -425,21 +399,17 @@ class MultiplicityExperiment(BaseExperiment):
         gen_jets = self.model.jet_coordinates.fourmomenta_to_x(gen_jets)
 
         det_mask = torch.arange(det_particles.shape[1])[None, :] < det_mults[:, None]
-        det_particles[det_mask] = (
-            self.model.condition_const_coordinates.fourmomenta_to_x(
-                det_particles[det_mask],
-                jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
-                ptr=torch.cumsum(
-                    torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
-                    dim=0,
-                ),
-            )
+        det_particles[det_mask] = self.model.condition_const_coordinates.fourmomenta_to_x(
+            det_particles[det_mask],
+            jet=torch.repeat_interleave(det_jets, det_mults, dim=0),
+            ptr=torch.cumsum(
+                torch.cat([torch.zeros(1, dtype=torch.int64), det_mults], dim=0),
+                dim=0,
+            ),
         )
         det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
 
-        LOGGER.info(
-            f"Preprocessed {size} events from {file} in {time.time() - t1:.2f} seconds"
-        )
+        LOGGER.info(f"Preprocessed {size} events from {file} in {time.time() - t1:.2f} seconds")
         return {
             "det_particles": det_particles,
             "det_mults": det_mults,
@@ -534,9 +504,7 @@ class MultiplicityExperiment(BaseExperiment):
                 # self.results_val = self._evaluate_single(self.val_loader, "val")
                 self.results_test = self._evaluate_single(self.test_loader, "test")
             if self.cfg.evaluation.save_samples:
-                tensor_path = os.path.join(
-                    self.cfg.run_dir, f"samples_{self.cfg.run_idx}"
-                )
+                tensor_path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
                 os.makedirs(tensor_path, exist_ok=True)
                 torch.save(
                     self.results_test["samples"],

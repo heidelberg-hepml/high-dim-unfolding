@@ -3,8 +3,7 @@ import torch
 from omegaconf import OmegaConf
 
 from experiments import coordinates as c
-from experiments.dataset import load_zplusjet, load_cms, load_ttbar
-
+from experiments.dataset import load_ttbar
 
 TOLERANCES = dict(atol=1e-3, rtol=1e-4)
 
@@ -36,9 +35,7 @@ coordinates_classes = [
 @pytest.mark.parametrize("mass", [1.0])
 def test_invertibility(coordinates, dataset, data_fn, mass):
     """test invertibility of forward() and inverse() methods"""
-    cfg = OmegaConf.create(
-        {"length": -1, "add_pid": False, "mass": mass, "min_mult": 1}
-    )
+    cfg = OmegaConf.create({"length": -1, "add_pid": False, "mass": mass, "min_mult": 1})
     dtype = torch.float64
 
     data = data_fn("data/" + dataset, cfg, dtype)
@@ -52,9 +49,7 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
     particles = data["gen_particles"]
     jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
     mask = torch.arange(particles.shape[1])[None, :] < data["gen_mults"][:, None]
-    ptr = torch.cumsum(
-        torch.cat([torch.zeros(1, dtype=torch.long), data["gen_mults"]]), dim=0
-    )
+    ptr = torch.cumsum(torch.cat([torch.zeros(1, dtype=torch.long), data["gen_mults"]]), dim=0)
 
     jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)
 
@@ -70,9 +65,7 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
     fourmomenta_transformed = coord.x_to_fourmomenta(x_original, ptr=ptr, jet=jets)
     x_transformed = coord.fourmomenta_to_x(fourmomenta_transformed, ptr=ptr, jet=jets)
 
-    torch.testing.assert_close(
-        fourmomenta_original, fourmomenta_transformed, **TOLERANCES
-    )
+    torch.testing.assert_close(fourmomenta_original, fourmomenta_transformed, **TOLERANCES)
     torch.testing.assert_close(x_original, x_transformed, **TOLERANCES)
 
 
@@ -89,7 +82,6 @@ def test_invertibility(coordinates, dataset, data_fn, mass):
 def test_velocity(coordinates, dataset, data_fn, mass):
     """test velocity_forward() and velocity_inverse() methods"""
     cfg = OmegaConf.create({"length": -1, "add_pid": False, "mass": mass})
-    device = torch.device("cpu")
     dtype = torch.float64
 
     data = data_fn("data/" + dataset, cfg, dtype)
@@ -102,9 +94,7 @@ def test_velocity(coordinates, dataset, data_fn, mass):
     particles = data["gen_particles"]
     jets = c.fourmomenta_to_jetmomenta(particles.sum(dim=1))
     mask = torch.arange(particles.shape[1])[None, :] < data["gen_mults"][:, None]
-    ptr = torch.cumsum(
-        torch.cat([torch.zeros(1, dtype=torch.long), data["gen_mults"]]), dim=0
-    )
+    ptr = torch.cumsum(torch.cat([torch.zeros(1, dtype=torch.long), data["gen_mults"]]), dim=0)
 
     jets = torch.repeat_interleave(jets, ptr.diff(), dim=0)
 

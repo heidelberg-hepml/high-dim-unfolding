@@ -2,16 +2,15 @@ import torch
 from torch import nn
 
 from experiments.utils import (
-    unpack_last,
+    CUTOFF,
     EPS1,
     EPS2,
-    CUTOFF,
-    get_pt,
-    get_phi,
-    get_eta,
     ensure_angle,
+    get_eta,
+    get_phi,
+    get_pt,
+    unpack_last,
 )
-from experiments.logger import LOGGER
 
 
 class BaseTransform(nn.Module):
@@ -194,9 +193,7 @@ class EPPP_to_EPhiPtPz(BaseTransform):
         # jac_ij = dfourmomenta_i / dephiptpz_j
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_E = torch.stack((one, zero, zero, zero), dim=-1)
-        jac_phi = torch.stack(
-            (zero, -pt * torch.sin(phi), pt * torch.cos(phi), zero), dim=-1
-        )
+        jac_phi = torch.stack((zero, -pt * torch.sin(phi), pt * torch.cos(phi), zero), dim=-1)
         jac_pt = torch.stack((zero, torch.cos(phi), torch.sin(phi), zero), dim=-1)
         jac_pz = torch.stack((zero, zero, zero, one), dim=-1)
 
@@ -266,12 +263,8 @@ class EPPP_to_PtPhiEtaE(BaseTransform):
 
         # jac_ij = dfourmomenta_i / dptphietae_j
         zero, one = torch.zeros_like(E), torch.ones_like(E)
-        jac_pt = torch.stack(
-            (zero, torch.cos(phi), torch.sin(phi), torch.sinh(eta)), dim=-1
-        )
-        jac_phi = torch.stack(
-            (zero, -pt * torch.sin(phi), pt * torch.cos(phi), zero), dim=-1
-        )
+        jac_pt = torch.stack((zero, torch.cos(phi), torch.sin(phi), torch.sinh(eta)), dim=-1)
+        jac_phi = torch.stack((zero, -pt * torch.sin(phi), pt * torch.cos(phi), zero), dim=-1)
         jac_eta = torch.stack((zero, zero, zero, pt * torch.cosh(eta)), dim=-1)
         jac_E = torch.stack((one, zero, zero, zero), dim=-1)
 
@@ -325,9 +318,7 @@ class PtPhiEtaE_to_PtPhiEtaM2(BaseTransform):
         zero, one = torch.zeros_like(E), torch.ones_like(E)
         jac_pt = torch.stack((one, zero, zero, pt * torch.cosh(eta) ** 2 / E), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
-        jac_eta = torch.stack(
-            (zero, zero, one, pt**2 * torch.sinh(2 * eta) / (2 * E)), dim=-1
-        )
+        jac_eta = torch.stack((zero, zero, one, pt**2 * torch.sinh(2 * eta) / (2 * E)), dim=-1)
         jac_m2 = torch.stack((zero, zero, zero, 1 / (2 * E)), dim=-1)
 
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
@@ -542,9 +533,7 @@ class Pt_to_AsinhPt(BaseTransform):
 
         zero, one = torch.zeros_like(asinhpt), torch.ones_like(asinhpt)
         # d(pt)/d(asinhpt)
-        jac_asinhpt = torch.stack(
-            (torch.cosh(asinhpt / self.scale), zero, zero, zero), dim=-1
-        )
+        jac_asinhpt = torch.stack((torch.cosh(asinhpt / self.scale), zero, zero, zero), dim=-1)
         jac_x1 = torch.stack((zero, one, zero, zero), dim=-1)
         jac_x2 = torch.stack((zero, zero, one, zero), dim=-1)
         jac_x3 = torch.stack((zero, zero, zero, one), dim=-1)
@@ -601,9 +590,7 @@ class M2_to_AsinhM2(BaseTransform):
         jac_x1 = torch.stack((one, zero, zero, zero), dim=-1)
         jac_x2 = torch.stack((zero, one, zero, zero), dim=-1)
         jac_x3 = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_asinhm2 = torch.stack(
-            (torch.cosh(asinhm2 / self.scale), zero, zero, zero), dim=-1
-        )
+        jac_asinhm2 = torch.stack((torch.cosh(asinhm2 / self.scale), zero, zero, zero), dim=-1)
         return torch.stack((jac_x1, jac_x2, jac_x3, jac_asinhm2), dim=-1)
 
     def _detjac_forward(self, ptx, asinhptx, **kwargs):
@@ -618,19 +605,23 @@ class StandardNormal(BaseTransform):
     def __init__(
         self,
         fixed_dims=[],
-        scaling=torch.ones(1, 4),
-        shift=torch.zeros(1, 4),
+        scaling=None,
+        shift=None,
         contains_phi=False,
     ):
         super().__init__()
         self.fixed_dims = fixed_dims
         self.mean = torch.zeros(1, 4)
         self.std = torch.ones(1, 4)
-        if type(scaling) is not torch.Tensor:
+        if scaling is None:
+            self.scaling = torch.ones(1, 4)
+        elif type(scaling) is not torch.Tensor:
             self.scaling = torch.tensor([scaling])
         else:
             self.scaling = scaling
         self.contains_phi = contains_phi
+        if shift is None:
+            self.shift = torch.zeros(1, 4)
         self.shift = shift
 
     def init_fit(self, x, mask=None, **kwargs):
@@ -647,9 +638,7 @@ class StandardNormal(BaseTransform):
         self.mean = self.mean - self.shift.to(x.device, dtype=x.dtype)
 
     def _forward(self, x, **kwargs):
-        xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(
-            x.device, dtype=x.dtype
-        )
+        xunit = (x - self.mean.to(x.device, dtype=x.dtype)) / self.std.to(x.device, dtype=x.dtype)
         xunit[..., self.fixed_dims] = 0.0
         return xunit
 
@@ -734,7 +723,6 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
     def _jac_inverse(self, ptphietam2, y, jet, **kwargs):
-
         jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
@@ -754,15 +742,8 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
 class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
     def _forward(self, logptphietalogm2, jet, **kwargs):
         logpt, phi, eta, logm2 = unpack_last(logptphietalogm2)
-        jet_pt = get_pt(jet).to(
-            dtype=logptphietalogm2.dtype, device=logptphietalogm2.device
-        )
-        jet_phi = get_phi(jet).to(
-            dtype=logptphietalogm2.dtype, device=logptphietalogm2.device
-        )
-        jet_eta = get_eta(jet).to(
-            dtype=logptphietalogm2.dtype, device=logptphietalogm2.device
-        )
+        jet_phi = get_phi(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
+        jet_eta = get_eta(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
         jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
         # pt = pt / jet_pt
@@ -776,10 +757,8 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
 
     def _inverse(self, y, jet, **kwargs):
         logpt, phi, eta, logm2 = unpack_last(y)
-        jet_pt = get_pt(jet).to(dtype=y.dtype, device=y.device)
         jet_phi = get_phi(jet).to(dtype=y.dtype, device=y.device)
         jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
-        jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
         logpt = logpt  # + torch.log(jet_pt + EPS1)
         phi = phi + jet_phi
@@ -790,9 +769,9 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
         return torch.stack((logpt, phi, eta, logm2), dim=-1)
 
     def _jac_forward(self, logptphietalogm2, y, jet, **kwargs):
-
-        zero, one = torch.zeros_like(logptphietalogm2[..., 0]), torch.ones_like(
-            logptphietalogm2[..., 0]
+        zero, one = (
+            torch.zeros_like(logptphietalogm2[..., 0]),
+            torch.ones_like(logptphietalogm2[..., 0]),
         )
 
         jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
@@ -803,8 +782,9 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
         return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
 
     def _jac_inverse(self, logptphietalogm2, y, jet, **kwargs):
-        zero, one = torch.zeros_like(logptphietalogm2[..., 0]), torch.ones_like(
-            logptphietalogm2[..., 0]
+        zero, one = (
+            torch.zeros_like(logptphietalogm2[..., 0]),
+            torch.ones_like(logptphietalogm2[..., 0]),
         )
 
         jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
@@ -819,9 +799,11 @@ class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
 
 
 class IndividualNormal(BaseTransform):
-    def __init__(self, fixed_dims=[], scaling=torch.ones(1, 4), contains_phi=False):
+    def __init__(self, fixed_dims=[], scaling=None, contains_phi=False):
         super().__init__()
         self.fixed_dims = fixed_dims
+        if scaling is None:
+            scaling = torch.ones(1, 4)
         if type(scaling) is not torch.Tensor:
             self.scaling = torch.tensor([scaling])
         else:
@@ -834,9 +816,7 @@ class IndividualNormal(BaseTransform):
         mask = mask.unsqueeze(-1)
         self.mean = (x * mask).sum(dim=0) / mask.sum(dim=0)
         try:
-            first_nan = (
-                torch.isnan(self.mean).any(dim=1).nonzero(as_tuple=True)[0][0].item()
-            )
+            first_nan = torch.isnan(self.mean).any(dim=1).nonzero(as_tuple=True)[0][0].item()
             start_idx = max(first_nan - 10, 0)
             self.mean[first_nan:] = torch.mean(
                 self.mean[start_idx:][~torch.isnan(self.mean[start_idx:]).any(dim=-1)],
@@ -844,13 +824,9 @@ class IndividualNormal(BaseTransform):
             )
         except IndexError:
             pass
-        self.std = torch.sqrt(
-            ((x * mask - self.mean * mask) ** 2).sum(dim=0) / mask.sum(dim=0)
-        )
+        self.std = torch.sqrt(((x * mask - self.mean * mask) ** 2).sum(dim=0) / mask.sum(dim=0))
         try:
-            first_nan = (
-                torch.isnan(self.std).any(dim=1).nonzero(as_tuple=True)[0][0].item()
-            )
+            first_nan = torch.isnan(self.std).any(dim=1).nonzero(as_tuple=True)[0][0].item()
             start_idx = max(first_nan - 10, 0)
             self.std[first_nan:] = torch.mean(
                 self.std[start_idx:][~torch.isnan(self.std[start_idx:]).any(dim=-1)],

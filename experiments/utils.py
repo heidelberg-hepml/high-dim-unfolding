@@ -1,13 +1,10 @@
-from collections.abc import Mapping
-import torch
-from xformers.ops.fmha.attn_bias import BlockDiagonalMask, BlockDiagonalCausalMask
 import math
-from torch import nn
-import numpy as np
-from scipy.special import i0, i1
-from scipy.optimize import root_scalar
+from collections.abc import Mapping
 
-from experiments.logger import LOGGER
+import numpy as np
+import torch
+from torch import nn
+from xformers.ops.fmha.attn_bias import BlockDiagonalCausalMask, BlockDiagonalMask
 
 
 class GaussianFourierProjection(nn.Module):
@@ -164,9 +161,7 @@ def get_range(input, quantile=5e-3, boundary_scale=5e-2):
         tensor = tensor[torch.randperm(tensor.size(0))][:1000000]
     quantiles = torch.quantile(
         tensor,
-        torch.tensor(
-            [quantile, 1 - quantile], device=tensor.device, dtype=tensor.dtype
-        ),
+        torch.tensor([quantile, 1 - quantile], device=tensor.device, dtype=tensor.dtype),
     )
     quantile_range = quantiles[1] - quantiles[0]
     quantiles[0] -= boundary_scale * quantile_range
@@ -208,9 +203,7 @@ def xformers_mask(batch, batch_condition=None, materialize=False):
     mask = BlockDiagonalMask.from_seqlens(bincounts, bincounts_condition)
     if materialize:
         # materialize mask to torch.tensor (only for testing purposes)
-        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(
-            batch.device
-        )
+        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(batch.device)
 
     return mask
 
@@ -252,9 +245,7 @@ def get_device() -> torch.device:
 
 def to_nd(tensor, d):
     """Make tensor n-dimensional, group extra dimensions in first."""
-    return tensor.view(
-        -1, *(1,) * (max(0, d - 1 - tensor.dim())), *tensor.shape[-(d - 1) :]
-    )
+    return tensor.view(-1, *(1,) * (max(0, d - 1 - tensor.dim())), *tensor.shape[-(d - 1) :])
 
 
 def flatten_dict(d, parent_key="", sep="."):
@@ -279,10 +270,7 @@ def fix_mass(constituents, mass=0.0):
 
 def remove_prefix(state_dict, prefix="_orig_mod."):
     # strip only if the key starts with the prefix
-    return {
-        k[len(prefix) :] if k.startswith(prefix) else k: v
-        for k, v in state_dict.items()
-    }
+    return {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
 
 
 def kappa_from_Vc(Vc):

@@ -1,10 +1,9 @@
 import math
+
 import torch
 from lgatr.interface import embed_vector, get_spurions
 
 from experiments.utils import get_batch_from_ptr
-from experiments.coordinates import jetmomenta_to_fourmomenta
-from experiments.logger import LOGGER
 
 
 def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):
@@ -378,8 +377,6 @@ def sample_stop_tokens(
     theta0: float = 0.0,
 ) -> torch.Tensor:
     # θ ~ von Mises
-    u1 = torch.rand(n, device=device)
-    u2 = torch.rand(n, device=device)
     a = 1.0 + math.sqrt(1.0 + 4.0 * kappa**2)
     b = (a - math.sqrt(2 * a)) / (2 * kappa)
     r = (1 + b**2) / (2 * b)
@@ -400,19 +397,19 @@ def sample_stop_tokens(
 
 def stop_threshold_fn(
     token,
-    mu=torch.tensor([5.0, 5.0, 5.0]),
+    mu=None,
     sigma=0.08,
     theta0=0.0,
     kappa=200.0,
     tau=10.0,
 ):
+    if mu is None:
+        mu = torch.tensor([5.0, 5.0, 5.0], device=token.device, dtype=token.dtype)
     # token: shape [4]  (theta, z1, z2, z3)
     theta = token[0]
     z = token[1:]
     # circular difference wrapped to [-pi,pi]
     dtheta = ((theta - theta0 + math.pi) % (2 * math.pi)) - math.pi
     sigma_theta = 1.0 / math.sqrt(kappa)  # von Mises -> approx Normal
-    d2 = (dtheta**2) / (sigma_theta**2) + ((z - mu.to(z.device)) ** 2).sum() / (
-        sigma**2
-    )
+    d2 = (dtheta**2) / (sigma_theta**2) + ((z - mu.to(z.device)) ** 2).sum() / (sigma**2)
     return d2 < tau

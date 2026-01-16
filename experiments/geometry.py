@@ -1,5 +1,3 @@
-import torch
-
 from experiments.utils import ensure_angle
 
 

@@ -1,9 +1,8 @@
-from typing import Optional
 import torch
 from einops import rearrange
+from lgatr.primitives.attention import scaled_dot_product_attention
 from torch import nn
 from torch.utils.checkpoint import checkpoint
-from lgatr.primitives.attention import scaled_dot_product_attention
 
 from experiments.utils import to_nd
 
@@ -25,9 +24,7 @@ class BaselineLayerNorm(nn.Module):
         outputs : Tensor
             Normalized inputs.
         """
-        return torch.nn.functional.layer_norm(
-            inputs, normalized_shape=inputs.shape[-1:]
-        )
+        return torch.nn.functional.layer_norm(inputs, normalized_shape=inputs.shape[-1:])
 
 
 class ContextualLayerNorm(nn.Module):
@@ -130,9 +127,7 @@ class MultiQueryQKVLinear(nn.Module):
             "... items (hidden_channels num_heads) -> ... num_heads items hidden_channels",
             num_heads=self.num_heads,
         )
-        k = self.k_linear(inputs)[
-            ..., None, :, :
-        ]  # (..., head=1, item, hidden_channels)
+        k = self.k_linear(inputs)[..., None, :, :]  # (..., head=1, item, hidden_channels)
         v = self.v_linear(inputs)[..., None, :, :]
         return q, k, v
 
@@ -182,7 +177,7 @@ class BaselineSelfAttention(nn.Module):
     def forward(
         self,
         inputs: torch.Tensor,
-        **kwargs: Optional[dict],
+        **kwargs: dict | None,
     ) -> torch.Tensor:
         """Forward pass.
 
@@ -196,9 +191,7 @@ class BaselineSelfAttention(nn.Module):
         outputs : Tensor
             Outputs
         """
-        q, k, v = self.qkv_linear(
-            inputs
-        )  # each: (..., num_heads, num_items, num_channels, 16)
+        q, k, v = self.qkv_linear(inputs)  # each: (..., num_heads, num_items, num_channels, 16)
 
         # Attention layer
         h = self._attend(q, k, v, **kwargs)

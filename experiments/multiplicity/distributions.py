@@ -1,17 +1,16 @@
-import torch
-import torch.distributions as D
-from torch.autograd import Function
-import einops
 import inspect
 
+import einops
+import torch
+import torch.distributions as D
+
 from experiments.utils import EPS2
-from experiments.logger import LOGGER
 
 
 def cross_entropy(distribution, target):
-    assert (
-        target.shape == distribution.batch_shape
-    ), f"Target shape {target.shape} does not match distribution batch shape {distribution.batch_shape}"
+    assert target.shape == distribution.batch_shape, (
+        f"Target shape {target.shape} does not match distribution batch shape {distribution.batch_shape}"
+    )
     return -distribution.log_prob(target).mean()
 
 
@@ -56,9 +55,9 @@ class RangedCategorical(D.Categorical):
     def __init__(self, low, high, probs):
         self.low = low
         self.high = high
-        assert probs.shape[-1] == (
-            high - low + 1
-        ), f"Expected probs shape {probs.shape[-1]} to match range {low} to {high}"
+        assert probs.shape[-1] == (high - low + 1), (
+            f"Expected probs shape {probs.shape[-1]} to match range {low} to {high}"
+        )
         super().__init__(probs=probs)
 
     def sample(self, *args, **kwargs):
@@ -80,9 +79,7 @@ def process_params(params, dist):
         params = torch.exp(params)
         return params
     if issubclass(dist, IntegerMixture) and len(params.shape) == 2:
-        params = einops.rearrange(
-            params, "... (n_mix n_params) -> ... n_mix n_params", n_params=3
-        )
+        params = einops.rearrange(params, "... (n_mix n_params) -> ... n_mix n_params", n_params=3)
     if dist is GaussianMixture:  # keep mean possibly negative
         mean = params[..., 0:1]
         rest = params[..., 1:]

@@ -1,17 +1,12 @@
-try:
-    import fastjet_contribs  # needed here to import fastjet contribs in the other files
-except ImportError:
-    print("fastjet_contribs not found, skipping import")
-    fastjet_contribs = None
 import hydra
 import torch
-import torch.multiprocessing as mp
 import torch.distributed as dist
+import torch.multiprocessing as mp
 
-from experiments.multiplicity.experiment import MultiplicityExperiment
+from experiments.chain.experiment import ChainExperiment
 from experiments.kinematics.experiment import KinematicsExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
-from experiments.chain.experiment import ChainExperiment
+from experiments.multiplicity.experiment import MultiplicityExperiment
 
 
 @hydra.main(config_path="config", config_name="constituents", version_base=None)

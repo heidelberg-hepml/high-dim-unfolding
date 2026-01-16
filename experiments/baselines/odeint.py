@@ -1,5 +1,6 @@
-import torch
 from collections.abc import Callable
+
+import torch
 
 
 def custom_rk4(

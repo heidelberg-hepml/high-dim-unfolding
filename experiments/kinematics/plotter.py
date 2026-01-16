@@ -1,38 +1,35 @@
-from operator import truth
-import torch
 import numpy as np
+import torch
 from matplotlib.backends.backend_pdf import PdfPages
 from torch_geometric.utils import scatter
 
 from experiments.base_plots import (
+    plot_2d_histogram,
+    plot_histogram,
     plot_loss,
     plot_metric,
-    plot_histogram,
     plot_ratio_histogram,
 )
+from experiments.coordinates import JetScaledLogPtPhiEtaLogM2, fourmomenta_to_jetmomenta
 from experiments.kinematics.observables import (
+    NSUB_AVAIL,
+    SOFTDROP_AVAIL,
+    calculate_eec,
+    compute_zg,
     get_constituent,
     get_deta,
     get_dphi,
     get_dr,
-    calculate_eec,
-    tau,
     sd_mass,
-    compute_zg,
-    NSUB_AVAIL,
-    SOFTDROP_AVAIL,
+    tau,
 )
-
-# from experiments.kinematics.plots import (
-#     plot_histogram,
-#     plot_calibration,
-#     simple_histogram,
-#     plot_roc,
-#     plot_2d_histogram,
-# )
-from experiments.utils import get_range, get_pt, get_phi, get_eta, get_mass
-from experiments.coordinates import fourmomenta_to_jetmomenta, JetScaledLogPtPhiEtaLogM2
+from experiments.kinematics.plots import (
+    plot_calibration,
+    plot_roc,
+    simple_histogram,
+)
 from experiments.logger import LOGGER
+from experiments.utils import get_eta, get_mass, get_phi, get_pt, get_range
 
 N_SAMPLES = -1
 
@@ -83,7 +80,7 @@ def plot_classifier(exp, filename, model_label):
             file,
             [exp.classifier.tracker[key] for key in ["loss", "val_loss"]],
             lr=exp.classifier.tracker["lr"],
-            labels=[f"train mse", f"val mse"],
+            labels=["train mse", "val mse"],
             logy=True,
         )
 
@@ -150,10 +147,7 @@ def plot_classifier(exp, filename, model_label):
         )
 
 
-def plot_fourmomenta(
-    exp, filename, model_label, jet=False, weights=None, mask_dict=None
-):
-
+def plot_fourmomenta(exp, filename, model_label, jet=False, weights=None, mask_dict=None):
     max_n = (
         min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
         if N_SAMPLES > 0
@@ -258,19 +252,16 @@ def plot_fourmomenta(
                     )
 
 
-def plot_jetmomenta(
-    exp, filename, model_label, jet=False, weights=None, mask_dict=None
-):
+def plot_jetmomenta(exp, filename, model_label, jet=False, weights=None, mask_dict=None):
+    # max_n = (
+    #     min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
+    #     if N_SAMPLES > 0
+    #     else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
+    # )
 
-    max_n = (
-        min(N_SAMPLES, exp.data_raw["truth"].x_gen_ptr.shape[0] - 1)
-        if N_SAMPLES > 0
-        else exp.data_raw["truth"].x_gen_ptr.shape[0] - 1
-    )
-
-    part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr  # [max_n]
-    det_max_n_ptr = exp.data_raw["truth"].x_det_ptr  # [max_n]
-    model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr  # [max_n]
+    # part_max_n_ptr = exp.data_raw["truth"].x_gen_ptr  # [max_n]
+    # det_max_n_ptr = exp.data_raw["truth"].x_det_ptr  # [max_n]
+    # model_max_n_ptr = exp.data_raw["samples"].x_gen_ptr  # [max_n]
 
     part_batch_idx = exp.data_raw["truth"].x_gen_batch  # [:part_max_n_ptr]
     det_batch_idx = exp.data_raw["truth"].x_det_batch  # [:det_max_n_ptr]
@@ -365,7 +356,6 @@ def plot_jetmomenta(
 
 
 def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
-
     coords = exp.model.const_coordinates
     det_lvl_coords = exp.model.condition_const_coordinates
 
@@ -399,16 +389,12 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
                 part_x,
                 part_batch_idx,
                 det_batch_idx,
-            )[
-                0
-            ][: len(det_lvl)]
+            )[0][: len(det_lvl)]
             model = extract(
                 model_x,
                 model_batch_idx,
                 det_batch_idx,
-            )[
-                0
-            ][: len(det_lvl)]
+            )[0][: len(det_lvl)]
 
             part_lvl = coords.fourmomenta_to_x(part_lvl).cpu().detach()
             det_lvl = det_lvl_coords.fourmomenta_to_x(det_lvl).cpu().detach()
@@ -464,7 +450,6 @@ def plot_preprocessed(exp, filename, model_label, weights=None, mask_dict=None):
 
 
 def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
-
     coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
     condition_coords = JetScaledLogPtPhiEtaLogM2(exp.cfg.data.pt_min)
 
@@ -589,10 +574,6 @@ def plot_jetscaled(exp, filename, model_label, weights=None, mask_dict=None):
 
 
 def plot_correlations(exp, filename, model_label, weights=None, mask_dict=None):
-
-    coords = exp.model.const_coordinates
-    det_lvl_coords = exp.model.condition_const_coordinates
-
     with PdfPages(filename) as file:
         for name in exp.corr.keys():
             extract_x = exp.corr[name][0]
@@ -1004,38 +985,24 @@ def plot_z(exp, filename, model_label):
             LOGGER.info("Calculating n-subjettiness")
             gen_tau1 = tau(truth.x_gen, truth.x_gen_batch, N=1, R0=0.4, axis_mode=1)
             det_tau1 = tau(truth.x_det, truth.x_det_batch, N=1, R0=0.4, axis_mode=1)
-            sample_tau1 = tau(
-                samples.x_gen, samples.x_gen_batch, N=1, R0=0.4, axis_mode=1
-            )
+            sample_tau1 = tau(samples.x_gen, samples.x_gen_batch, N=1, R0=0.4, axis_mode=1)
 
             gen_tau2 = tau(truth.x_gen, truth.x_gen_batch, N=2, R0=0.4, axis_mode=1)
             det_tau2 = tau(truth.x_det, truth.x_det_batch, N=2, R0=0.4, axis_mode=1)
-            sample_tau2 = tau(
-                samples.x_gen, samples.x_gen_batch, N=2, R0=0.4, axis_mode=1
-            )
+            sample_tau2 = tau(samples.x_gen, samples.x_gen_batch, N=2, R0=0.4, axis_mode=1)
 
             gen_tau3 = tau(truth.x_gen, truth.x_gen_batch, N=3, R0=0.4, axis_mode=1)
             det_tau3 = tau(truth.x_det, truth.x_det_batch, N=3, R0=0.4, axis_mode=1)
-            sample_tau3 = tau(
-                samples.x_gen, samples.x_gen_batch, N=3, R0=0.4, axis_mode=1
-            )
+            sample_tau3 = tau(samples.x_gen, samples.x_gen_batch, N=3, R0=0.4, axis_mode=1)
 
-            gen_tau21 = torch.where(
-                gen_tau1 > 0, gen_tau2 / gen_tau1, torch.tensor(0.0)
-            )
-            det_tau21 = torch.where(
-                det_tau1 > 0, det_tau2 / det_tau1, torch.tensor(0.0)
-            )
+            gen_tau21 = torch.where(gen_tau1 > 0, gen_tau2 / gen_tau1, torch.tensor(0.0))
+            det_tau21 = torch.where(det_tau1 > 0, det_tau2 / det_tau1, torch.tensor(0.0))
             sample_tau21 = torch.where(
                 sample_tau1 > 0, sample_tau2 / sample_tau1, torch.tensor(0.0)
             )
 
-            gen_tau32 = torch.where(
-                gen_tau2 > 0, gen_tau3 / gen_tau2, torch.tensor(0.0)
-            )
-            det_tau32 = torch.where(
-                det_tau2 > 0, det_tau3 / det_tau2, torch.tensor(0.0)
-            )
+            gen_tau32 = torch.where(gen_tau2 > 0, gen_tau3 / gen_tau2, torch.tensor(0.0))
+            det_tau32 = torch.where(det_tau2 > 0, det_tau3 / det_tau2, torch.tensor(0.0))
             sample_tau32 = torch.where(
                 sample_tau2 > 0, sample_tau3 / sample_tau2, torch.tensor(0.0)
             )
@@ -1247,9 +1214,7 @@ def plot_z(exp, filename, model_label):
                 logy=False,
                 file=file,
                 legend_loc=(
-                    "upper right"
-                    if i < 3
-                    else {"loc": "upper left", "bbox_to_anchor": (0.15, 0.7)}
+                    "upper right" if i < 3 else {"loc": "upper left", "bbox_to_anchor": (0.15, 0.7)}
                 ),
                 title={
                     "title": "Z+jets",
@@ -1357,7 +1322,6 @@ def plot_t(exp, filename, model_label):
             return
 
         if "constjet" in exp.cfg.plotting.observables:
-
             plot_ratio_histogram(
                 data={
                     "part": get_pt(gen_jets),
@@ -1486,54 +1450,34 @@ def plot_t(exp, filename, model_label):
             LOGGER.info("Calculating n-subjettiness")
             gen_tau1 = tau(truth.x_gen, truth.x_gen_batch, N=1, R0=0.4, axis_mode=1)
             det_tau1 = tau(truth.x_det, truth.x_det_batch, N=1, R0=0.4, axis_mode=1)
-            sample_tau1 = tau(
-                samples.x_gen, samples.x_gen_batch, N=1, R0=0.4, axis_mode=1
-            )
+            sample_tau1 = tau(samples.x_gen, samples.x_gen_batch, N=1, R0=0.4, axis_mode=1)
 
             gen_tau2 = tau(truth.x_gen, truth.x_gen_batch, N=2, R0=0.4, axis_mode=1)
             det_tau2 = tau(truth.x_det, truth.x_det_batch, N=2, R0=0.4, axis_mode=1)
-            sample_tau2 = tau(
-                samples.x_gen, samples.x_gen_batch, N=2, R0=0.4, axis_mode=1
-            )
+            sample_tau2 = tau(samples.x_gen, samples.x_gen_batch, N=2, R0=0.4, axis_mode=1)
 
             gen_tau3 = tau(truth.x_gen, truth.x_gen_batch, N=3, R0=0.4, axis_mode=1)
             det_tau3 = tau(truth.x_det, truth.x_det_batch, N=3, R0=0.4, axis_mode=1)
-            sample_tau3 = tau(
-                samples.x_gen, samples.x_gen_batch, N=3, R0=0.4, axis_mode=1
-            )
+            sample_tau3 = tau(samples.x_gen, samples.x_gen_batch, N=3, R0=0.4, axis_mode=1)
 
             gen_tau4 = tau(truth.x_gen, truth.x_gen_batch, N=4, R0=0.4, axis_mode=1)
             det_tau4 = tau(truth.x_det, truth.x_det_batch, N=4, R0=0.4, axis_mode=1)
-            sample_tau4 = tau(
-                samples.x_gen, samples.x_gen_batch, N=4, R0=0.4, axis_mode=1
-            )
+            sample_tau4 = tau(samples.x_gen, samples.x_gen_batch, N=4, R0=0.4, axis_mode=1)
 
-            gen_tau21 = torch.where(
-                gen_tau1 > 0, gen_tau2 / gen_tau1, torch.tensor(0.0)
-            )
-            det_tau21 = torch.where(
-                det_tau1 > 0, det_tau2 / det_tau1, torch.tensor(0.0)
-            )
+            gen_tau21 = torch.where(gen_tau1 > 0, gen_tau2 / gen_tau1, torch.tensor(0.0))
+            det_tau21 = torch.where(det_tau1 > 0, det_tau2 / det_tau1, torch.tensor(0.0))
             sample_tau21 = torch.where(
                 sample_tau1 > 0, sample_tau2 / sample_tau1, torch.tensor(0.0)
             )
 
-            gen_tau32 = torch.where(
-                gen_tau2 > 0, gen_tau3 / gen_tau2, torch.tensor(0.0)
-            )
-            det_tau32 = torch.where(
-                det_tau2 > 0, det_tau3 / det_tau2, torch.tensor(0.0)
-            )
+            gen_tau32 = torch.where(gen_tau2 > 0, gen_tau3 / gen_tau2, torch.tensor(0.0))
+            det_tau32 = torch.where(det_tau2 > 0, det_tau3 / det_tau2, torch.tensor(0.0))
             sample_tau32 = torch.where(
                 sample_tau2 > 0, sample_tau3 / sample_tau2, torch.tensor(0.0)
             )
 
-            gen_tau43 = torch.where(
-                gen_tau3 > 0, gen_tau4 / gen_tau3, torch.tensor(0.0)
-            )
-            det_tau43 = torch.where(
-                det_tau3 > 0, det_tau4 / det_tau3, torch.tensor(0.0)
-            )
+            gen_tau43 = torch.where(gen_tau3 > 0, gen_tau4 / gen_tau3, torch.tensor(0.0))
+            det_tau43 = torch.where(det_tau3 > 0, det_tau4 / det_tau3, torch.tensor(0.0))
             sample_tau43 = torch.where(
                 sample_tau3 > 0, sample_tau4 / sample_tau3, torch.tensor(0.0)
             )
@@ -1776,9 +1720,7 @@ def plot_t(exp, filename, model_label):
                 logy=False,
                 file=file,
                 legend_loc=(
-                    "upper right"
-                    if i < 3
-                    else {"loc": "upper left", "bbox_to_anchor": (0.15, 0.7)}
+                    "upper right" if i < 3 else {"loc": "upper left", "bbox_to_anchor": (0.15, 0.7)}
                 ),
                 title={
                     "title": r"$t\bar{t}$",

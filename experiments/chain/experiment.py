@@ -1,21 +1,14 @@
-import numpy as np
+import os
+
 import torch
-from torch_geometric.loader import DataLoader
-from torch_geometric.data import Batch
-from torch_geometric.utils import scatter
-import shutil
-import os, time
-from omegaconf import open_dict, OmegaConf
+from omegaconf import OmegaConf, open_dict
 
 from experiments.base_experiment import BaseExperiment
-from experiments.dataset import Dataset, load_dataset
+from experiments.kinematics.experiment import KinematicsExperiment
+from experiments.kinematics.jet_experiment import JetKinematicsExperiment
 from experiments.logger import LOGGER
 from experiments.multiplicity.experiment import MultiplicityExperiment
-from experiments.kinematics.jet_experiment import JetKinematicsExperiment
-from experiments.kinematics.experiment import KinematicsExperiment
-from experiments.kinematics.plots import plot_kinematics
-from experiments.coordinates import fourmomenta_to_jetmomenta
-from experiments.utils import get_device, GaussianFourierProjection
+from experiments.utils import get_device
 
 
 class ChainExperiment(BaseExperiment):
@@ -60,16 +53,12 @@ class ChainExperiment(BaseExperiment):
             mult_cfg.plot = False
             mult_cfg.data.update(self.cfg.data)
 
-        self.multiplicity_exp = MultiplicityExperiment(
-            mult_cfg, self.rank, self.world_size
-        )
+        self.multiplicity_exp = MultiplicityExperiment(mult_cfg, self.rank, self.world_size)
 
     def _init_jet_config(self):
         """Load jets experiment config from directory and set up for chaining"""
         jets_path = self.cfg.experiment_paths.jets
-        jets_config_path = os.path.join(
-            jets_path, f"config_{self.cfg.model_run_indices.jets}.yaml"
-        )
+        jets_config_path = os.path.join(jets_path, f"config_{self.cfg.model_run_indices.jets}.yaml")
 
         LOGGER.info(f"Loading jets config from {jets_config_path}")
         jet_cfg = OmegaConf.load(jets_config_path)
@@ -117,9 +106,7 @@ class ChainExperiment(BaseExperiment):
             const_cfg.cfm.update(self.cfg.constituents_cfg.cfm)
             const_cfg.evaluation.update(self.cfg.constituents_cfg.evaluation)
 
-        self.constituents_exp = KinematicsExperiment(
-            const_cfg, self.rank, self.world_size
-        )
+        self.constituents_exp = KinematicsExperiment(const_cfg, self.rank, self.world_size)
 
     def init_data(self):
         """Data initialization handled by individual subexperiments"""
@@ -170,9 +157,9 @@ class ChainExperiment(BaseExperiment):
         LOGGER.info("Step 1: Sampling multiplicities...")
         self.multiplicity_exp.evaluate()
 
-        self.sampled_multiplicities = self.multiplicity_exp.results_test["samples"][
-            :, :1
-        ].to(dtype=torch.int64)
+        self.sampled_multiplicities = self.multiplicity_exp.results_test["samples"][:, :1].to(
+            dtype=torch.int64
+        )
 
         if self.cfg.use_true_mult:
             self.sampled_multiplicities = None

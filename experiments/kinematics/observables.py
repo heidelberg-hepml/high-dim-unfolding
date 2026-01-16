@@ -1,5 +1,6 @@
-from experiments.logger import LOGGER
 import tqdm
+
+from experiments.logger import LOGGER
 
 try:
     from fastjet_contribs import (
@@ -18,17 +19,17 @@ except ImportError:
     LOGGER.info("apply_soft_drop is not available.")
     SOFTDROP_AVAIL = False
 
-import torch
 import numpy as np
+import torch
 
+from experiments.coordinates import fourmomenta_to_jetmomenta
 from experiments.utils import (
-    get_ptr_from_batch,
     ensure_angle,
     fix_mass,
-    get_phi,
     get_eta,
+    get_phi,
+    get_ptr_from_batch,
 )
-from experiments.coordinates import fourmomenta_to_jetmomenta
 
 R0 = None
 R0SoftDrop = None
@@ -39,7 +40,6 @@ def create_partial_jet(start, end):
     assert end > start or end == -1, "End index must be greater than start index"
 
     def form_partial_jet(constituents, batch_idx, other_batch_idx, true_jet, **kwargs):
-
         batch_ptr = get_ptr_from_batch(batch_idx)
         jets = []
         true_jets = []
@@ -58,13 +58,9 @@ def create_partial_jet(start, end):
                 end_idx = end
             if start_idx < event_size:
                 if end_idx >= event_size:
-                    jet = constituents[batch_ptr[n] + start_idx : batch_ptr[n + 1]].sum(
-                        dim=0
-                    )
+                    jet = constituents[batch_ptr[n] + start_idx : batch_ptr[n + 1]].sum(dim=0)
                 else:
-                    jet = constituents[
-                        batch_ptr[n] + start_idx : batch_ptr[n] + end_idx
-                    ].sum(dim=0)
+                    jet = constituents[batch_ptr[n] + start_idx : batch_ptr[n] + end_idx].sum(dim=0)
                 jets.append(jet)
                 true_jets.append(true_jet[n])
                 pos.append(start_idx)
@@ -83,7 +79,6 @@ def compute_angles(start1, end1, start2, end2, angle_type="R", filter=None):
     assert end1 <= start2, "end1 must be less than or equal to start2"
 
     def compute_angle(constituents, batch_idx, other_batch_idx, **kwargs):
-
         batch_ptr = get_ptr_from_batch(batch_idx)
         angles = []
         for n in range(len(batch_ptr) - 1):
@@ -101,17 +96,13 @@ def compute_angles(start1, end1, start2, end2, angle_type="R", filter=None):
             if end_idx2 > event_size:
                 continue
 
-            jet1 = constituents[
-                batch_ptr[n] + start_idx1 : batch_ptr[n] + end_idx1
-            ].sum(dim=0)
-            jet2 = constituents[
-                batch_ptr[n] + start_idx2 : batch_ptr[n] + end_idx2
-            ].sum(dim=0)
+            jet1 = constituents[batch_ptr[n] + start_idx1 : batch_ptr[n] + end_idx1].sum(dim=0)
+            jet2 = constituents[batch_ptr[n] + start_idx2 : batch_ptr[n] + end_idx2].sum(dim=0)
             jet1 = fourmomenta_to_jetmomenta(jet1)
             jet2 = fourmomenta_to_jetmomenta(jet2)
             if angle_type == "R":
                 d = torch.sqrt(
-                    ensure_angle((jet1[..., 1] - jet2[..., 1])) ** 2
+                    ensure_angle(jet1[..., 1] - jet2[..., 1]) ** 2
                     + (jet1[..., 2] - jet2[..., 2]) ** 2
                 ).item()
             elif angle_type == "phi":
@@ -125,7 +116,7 @@ def compute_angles(start1, end1, start2, end2, angle_type="R", filter=None):
 
 
 def select_pt(i, bound=None, filter=None):
-    if bound == None:
+    if bound is None:
         bound = i
     assert bound >= i, "bound must be greater than i"
 
@@ -139,9 +130,7 @@ def select_pt(i, bound=None, filter=None):
             if bound < batch_ptr[n + 1] - batch_ptr[n]:
                 if bound < other_batch_ptr[n + 1] - other_batch_ptr[n]:
                     if filter is not None:
-                        true_jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(
-                            dim=0
-                        )
+                        true_jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)
                         true_jet_pt = fourmomenta_to_jetmomenta(true_jet)[..., 0]
                         if true_jet_pt < filter[0] or true_jet_pt > filter[1]:
                             continue
@@ -155,7 +144,6 @@ def select_pt(i, bound=None, filter=None):
 def dimass(i, j):
     def dimass_ij(constituents, batch_idx, other_batch_idx, **kwargs):
         batch_ptr = get_ptr_from_batch(batch_idx)
-        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
         dimass = []
         for n in range(len(batch_ptr) - 1):
             if batch_ptr[n + 1] - batch_ptr[n] == 3:
@@ -169,7 +157,6 @@ def dimass(i, j):
 def deltaR(i, j):
     def deltaR_ij(constituents, batch_idx, other_batch_idx, **kwargs):
         batch_ptr = get_ptr_from_batch(batch_idx)
-        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
         deltaR = []
         for n in range(len(batch_ptr) - 1):
             if batch_ptr[n + 1] - batch_ptr[n] == 3:
@@ -185,20 +172,10 @@ def deltaR(i, j):
     return deltaR_ij
 
 
-def tau(
-    constituents,
-    batch_idx,
-    other_batch_idx=None,
-    N=1,
-    beta=1.0,
-    R0=R0,
-    axis_mode=3,
-    **kwargs
-):
+def tau(constituents, batch_idx, other_batch_idx=None, N=1, beta=1.0, R0=R0, axis_mode=3, **kwargs):
     constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
     batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     taus = []
-    axis_modes = {"onepass_kt": 2}
     for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         tau = compute_nsubjettiness(
@@ -218,9 +195,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **kwar
     log_rhos = []
     for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-        sd_fourm = np.array(
-            apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)
-        )
+        sd_fourm = np.array(apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1))
         mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
         pt2 = np.sum(np.sum(event[..., 1:3], axis=0) ** 2)
         log_rho = np.log(np.clip(mass2 / pt2, a_min=1e-10, a_max=None))
@@ -252,7 +227,6 @@ def jet_mass(constituents, batch_idx, other_batch_idx=None, **kwargs):
 def create_jet_norm(pos=[0, 1, 2, 3], neg=[]):
     def jet_norm(constituents, batch_idx, other_batch_idx, **kwargs):
         batch_ptr = get_ptr_from_batch(batch_idx)
-        other_batch_ptr = get_ptr_from_batch(other_batch_idx)
         jet_norms = []
         for n in range(len(batch_ptr) - 1):
             jet = constituents[batch_ptr[n] : batch_ptr[n + 1]].sum(dim=0)

@@ -1,17 +1,17 @@
-import matplotlib.pyplot as plt
+import einops
 import matplotlib.colors as mcolors
-from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
+from matplotlib.backends.backend_pdf import PdfPages
 from torch.distributions import Categorical, Gamma, Normal
-import einops
 
 from experiments.base_plots import plot_loss
+from experiments.logger import LOGGER
 from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
 )
-from experiments.logger import LOGGER
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -173,7 +173,8 @@ def plot_histogram(
     integrals = [np.sum((bins[1:] - bins[:-1]) * y) for y in hists]
     scales = [1 / integral if integral != 0.0 else 1.0 for integral in integrals]
 
-    dup_last = lambda a: np.append(a, a[-1])
+    def dup_last(a):
+        return np.append(a, a[-1])
 
     fig, axs = plt.subplots(
         2,
@@ -183,10 +184,9 @@ def plot_histogram(
         gridspec_kw={"height_ratios": [3, 1], "hspace": 0.00},
     )
 
-    for i, y, y_err, scale, label, color in zip(
-        range(len(hists)), hists, hist_errors, scales, labels, colors
+    for y, y_err, scale, label, color in zip(
+        hists, hist_errors, scales, labels, colors, strict=False
     ):
-
         axs[0].step(
             bins,
             dup_last(y) * scale,
@@ -274,12 +274,12 @@ def plot_histogram(
     axs[0].set_xlim(xrange)
     axs[0].tick_params(axis="both", labelsize=TICKLABELSIZE)
     plt.xlabel(
-        r"${%s}$" % xlabel,
+        rf"${xlabel}$",
         fontsize=FONTSIZE,
     )
 
     axs[1].set_ylabel(
-        r"$\frac{\mathrm{{%s}}}{\mathrm{Truth}}$" % model_label, fontsize=FONTSIZE
+        rf"$\frac{{\mathrm{{{model_label}}}}}{{\mathrm{{Truth}}}}$", fontsize=FONTSIZE
     )
     axs[1].set_yticks(error_ticks)
     axs[1].set_ylim(error_range)
@@ -310,9 +310,7 @@ def plot_param_histograms(
     for params in data:
         hists_mix = []
         for mixture_component in range(params.shape[1]):
-            hist_k, bins_k = np.histogram(
-                params[:, mixture_component, 0], bins=bins, range=xrange
-            )
+            hist_k, bins_k = np.histogram(params[:, mixture_component, 0], bins=bins, range=xrange)
             hist_theta, bins_theta = np.histogram(
                 params[:, mixture_component, 1], bins=bins, range=xrange
             )
@@ -328,7 +326,9 @@ def plot_param_histograms(
         hists.append(hists_mix)
 
     fig, axs = plt.subplots(3, 3, figsize=(18, 12))
-    dup_last = lambda a: np.append(a, a[-1])
+
+    def dup_last(a):
+        return np.append(a, a[-1])
 
     for i, hists_mix in enumerate(hists):
         for i_mix, hists_param in enumerate(hists_mix):
@@ -336,13 +336,11 @@ def plot_param_histograms(
                 axs[j, i].step(
                     bins_list[j],
                     dup_last(hist),
-                    label=f"{i_mix+1}",
+                    label=f"{i_mix + 1}",
                     linewidth=1.0,
                     where="post",
                 )
-                axs[j, i].legend(
-                    loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND
-                )
+                axs[j, i].legend(loc="upper right", frameon=False, fontsize=FONTSIZE_LEGEND)
                 axs[j, i].set_title(
                     f"{labels[i]} dataset, component {params_labels[j]}",
                     fontsize=FONTSIZE,
@@ -355,9 +353,7 @@ def plot_param_histograms(
 def plot_distributions(
     file, params, samples, xrange, distribution_label, diff, diff_min, n_plots=5
 ):
-
     with PdfPages(file) as pdf:
-
         if distribution_label == "GammaMixture":
             distribution = GammaMixture
         elif distribution_label == "GaussianMixture":
@@ -375,11 +371,7 @@ def plot_distributions(
                 for logits in params:
                     ax.step(bins, logits[bins] / logits.sum(), linewidth=0.5)
         else:
-            x = (
-                torch.linspace(xrange[0], xrange[1], 1000)
-                .reshape(-1, 1)
-                .repeat(1, len(params))
-            )
+            x = torch.linspace(xrange[0], xrange[1], 1000).reshape(-1, 1).repeat(1, len(params))
             dist = distribution(params)
             density = dist.log_prob(x).exp().detach().numpy()
             for j in range(len(params)):
@@ -438,9 +430,7 @@ def plot_distributions(
             pdf.savefig(fig, bbox_inches="tight")
 
 
-def plot_correlations(
-    file, det_mult, predicted_gen_mult, true_gen_mult, range, model_label
-):
+def plot_correlations(file, det_mult, predicted_gen_mult, true_gen_mult, range, model_label):
     with PdfPages(file) as pdf:
         fig, ax = plt.subplots(figsize=(6, 6))
         bins = np.arange(range[0], range[1] + 1)
@@ -471,7 +461,6 @@ def plot_correlations(
 
 
 def plot_components(file, params, samples, xrange, distribution_label, diff, n_plots=5):
-
     if distribution_label == "GammaMixture":
         distribution = Gamma
     elif distribution_label == "GaussianMixture":
@@ -481,12 +470,9 @@ def plot_components(file, params, samples, xrange, distribution_label, diff, n_p
         return
 
     if params.ndim == 2:
-        params = einops.rearrange(
-            params, "... (n_mix n_params) -> ... n_mix n_params", n_params=3
-        )
+        params = einops.rearrange(params, "... (n_mix n_params) -> ... n_mix n_params", n_params=3)
 
     with PdfPages(file) as pdf:
-
         for i in range(n_plots):
             fig, ax = plt.subplots(figsize=(6, 6))
 
@@ -497,7 +483,7 @@ def plot_components(file, params, samples, xrange, distribution_label, diff, n_p
                 ax.plot(
                     x,
                     density,
-                    label=f"Weigth {params[i, j, -1]/params[i, :, -1].sum():.2f}",
+                    label=f"Weigth {params[i, j, -1] / params[i, :, -1].sum():.2f}",
                 )
             if diff:
                 ax.axvline(

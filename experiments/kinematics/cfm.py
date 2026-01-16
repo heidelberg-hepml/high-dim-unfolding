@@ -1,23 +1,21 @@
 import torch
 from torch import nn
-from torchdiffeq import odeint
-from torch_geometric.utils import scatter
 from torch_geometric.data import Batch, Data
-import os
+from torch_geometric.utils import scatter
+from torchdiffeq import odeint
 
-from experiments.utils import GaussianFourierProjection, get_batch_from_ptr
 import experiments.coordinates as c
-from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
-from experiments.dataset import positional_encoding
 from experiments.baselines import custom_rk4
+from experiments.dataset import positional_encoding
 from experiments.embedding import (
     add_jet_to_sequence,
     add_start_token_to_x_gen,
     add_stop_token_to_x_gen,
     stop_threshold_fn,
 )
+from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.kinematics.plots import plot_kinematics
-from experiments.logger import LOGGER
+from experiments.utils import GaussianFourierProjection, get_batch_from_ptr
 
 
 class CFM(nn.Module):
@@ -34,9 +32,7 @@ class CFM(nn.Module):
     ):
         super().__init__()
         self.t_embedding = nn.Sequential(
-            GaussianFourierProjection(
-                embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale
-            ),
+            GaussianFourierProjection(embed_dim=cfm.embed_t_dim, scale=cfm.embed_t_scale),
             nn.Linear(cfm.embed_t_dim, cfm.embed_t_dim),
         )
         if cfm.mult_encoding_dim > 0:
@@ -75,9 +71,7 @@ class CFM(nn.Module):
     def sample_base(self, x0, constituents_mask=None, generator=None):
         if constituents_mask is None:
             constituents_mask = torch.ones(x0.size(0), dtype=torch.bool)
-        sample = torch.randn(
-            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
-        )
+        sample = torch.randn(x0.shape, device=x0.device, dtype=x0.dtype, generator=generator)
         if self.const_coordinates.contains_phi:
             if getattr(self.cfm.const_coordinates_options, "vonmises", False):
                 sample[..., 1] = (
@@ -136,19 +130,12 @@ class CFM(nn.Module):
         loss : torch.tensor with shape (1)
         """
         if self.cfm.add_jet:
-            new_batch, constituents_mask, det_constituents_mask = add_jet_to_sequence(
-                batch
-            )
+            new_batch, constituents_mask, _ = add_jet_to_sequence(batch)
         else:
             new_batch = batch
             constituents_mask = torch.ones(
                 new_batch.x_gen.shape[0],
                 device=new_batch.x_gen.device,
-                dtype=torch.bool,
-            )
-            det_constituents_mask = torch.ones(
-                new_batch.x_det.shape[0],
-                device=new_batch.x_det.device,
                 dtype=torch.bool,
             )
 
@@ -169,9 +156,7 @@ class CFM(nn.Module):
             t=t,
         )
 
-        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
-            new_batch
-        )
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(new_batch)
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
@@ -222,17 +207,11 @@ class CFM(nn.Module):
         else:
             loss = distance
 
-        loss = scatter(
-            loss, new_batch.x_gen_batch[constituents_mask], dim=0, reduce="mean"
-        )
+        loss = scatter(loss, new_batch.x_gen_batch[constituents_mask], dim=0, reduce="mean")
 
         if self.cfm.weight > 0.0:
-            cost = self.geometry.get_distance(
-                x0[constituents_mask], x1[constituents_mask]
-            )
-            cost = scatter(
-                cost, new_batch.x_gen_batch[constituents_mask], dim=0, reduce="mean"
-            )
+            cost = self.geometry.get_distance(x0[constituents_mask], x1[constituents_mask])
+            cost = scatter(cost, new_batch.x_gen_batch[constituents_mask], dim=0, reduce="mean")
             loss = loss * torch.exp(-self.cfm.weight * cost)
 
         loss = loss.mean()
@@ -298,9 +277,7 @@ class CFM(nn.Module):
         """
 
         if self.cfm.add_jet:
-            new_batch, constituents_mask, det_constituents_mask = add_jet_to_sequence(
-                batch
-            )
+            new_batch, constituents_mask, det_constituents_mask = add_jet_to_sequence(batch)
         else:
             new_batch = batch.clone()
             constituents_mask = torch.ones(
@@ -311,9 +288,7 @@ class CFM(nn.Module):
 
         sample_batch = batch.clone()
 
-        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
-            new_batch
-        )
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(new_batch)
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
@@ -331,9 +306,7 @@ class CFM(nn.Module):
                 self_condition=self_condition,
             )
 
-            vt = torch.where(
-                constituents_mask.unsqueeze(-1), self.handle_velocity(vt), 0.0
-            )
+            vt = torch.where(constituents_mask.unsqueeze(-1), self.handle_velocity(vt), 0.0)
 
             return vt
 
@@ -433,9 +406,7 @@ class JetCFM(EventCFM):
         self.scaling = torch.tensor(self.cfm.jet_coordinates_options.scaling)
 
     def sample_base(self, x0, generator=None):
-        sample = torch.randn(
-            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
-        )
+        sample = torch.randn(x0.shape, device=x0.device, dtype=x0.dtype, generator=generator)
         if self.jet_coordinates.contains_phi:
             if getattr(self.cfm.jet_coordinates_options, "vonmises", False):
                 sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
@@ -489,9 +460,7 @@ class JetCFM(EventCFM):
             t=t,
         )
 
-        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
-            new_batch
-        )
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(new_batch)
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
@@ -574,9 +543,7 @@ class JetCFM(EventCFM):
 
         sample_batch = batch.clone()
 
-        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
-            new_batch
-        )
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(new_batch)
 
         condition = self.get_condition(new_batch, condition_attention_mask)
 
@@ -624,7 +591,6 @@ class JetCFM(EventCFM):
 
 
 class JetMLPCFM(EventCFM):
-
     def __init__(
         self,
         net,
@@ -638,7 +604,6 @@ class JetMLPCFM(EventCFM):
         self.net = net
 
     def batch_loss(self, batch):
-
         new_batch = batch.clone()
 
         x0 = new_batch.jet_gen
@@ -699,7 +664,6 @@ class JetMLPCFM(EventCFM):
         return loss.mean(), distance_particlewise
 
     def sample(self, batch, device, dtype):
-
         new_batch = batch.clone()
 
         sample_batch = batch.clone()
@@ -767,9 +731,7 @@ class AutoregressiveCFM(EventCFM):
         self.jet_scaling = torch.tensor(self.cfm.jet_coordinates_options.scaling)
         self.const_scaling = torch.tensor(self.cfm.const_coordinates_options.scaling)
 
-    def get_condition(
-        self, batch, attention_mask, condition_attention_mask, crossattention_mask
-    ):
+    def get_condition(self, batch, attention_mask, condition_attention_mask, crossattention_mask):
         """
         Return a fixed_sized condition for the velocity field based on all previously generated tokens
         """
@@ -782,9 +744,7 @@ class AutoregressiveCFM(EventCFM):
         raise NotImplementedError
 
     def sample_base_jet(self, x0, generator=None):
-        sample = torch.randn(
-            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
-        )
+        sample = torch.randn(x0.shape, device=x0.device, dtype=x0.dtype, generator=generator)
         if self.jet_coordinates.contains_phi:
             if getattr(self.cfm.jet_coordinates_options, "vonmises", False):
                 sample[..., 1] = self.jet_coordinates.phi_dist.sample(x0.shape[:-1])
@@ -804,21 +764,14 @@ class AutoregressiveCFM(EventCFM):
         return sample
 
     def sample_base_const(self, x0, generator=None):
-        sample = torch.randn(
-            x0.shape, device=x0.device, dtype=x0.dtype, generator=generator
-        )
+        sample = torch.randn(x0.shape, device=x0.device, dtype=x0.dtype, generator=generator)
         if self.const_coordinates.contains_phi and getattr(
             self.cfm.const_coordinates_options, "vonmises", False
         ):
             sample[..., 1] = self.const_coordinates.phi_dist.sample(x0.shape[:-1])
-        elif (
-            self.const_coordinates.contains_phi
-            and "JetScaled" not in self.cfm.const_coordinates
-        ):
+        elif self.const_coordinates.contains_phi and "JetScaled" not in self.cfm.const_coordinates:
             sample[..., 1] = (
-                torch.rand(
-                    x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator
-                )
+                torch.rand(x0.shape[:-1], device=x0.device, dtype=x0.dtype, generator=generator)
                 * 2
                 * torch.pi
                 - torch.pi
@@ -900,9 +853,7 @@ class AutoregressiveCFM(EventCFM):
             t=t,
         )
 
-        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(
-            new_batch
-        )
+        attention_mask, condition_attention_mask, crossattention_mask = self.get_masks(new_batch)
 
         condition = self.get_condition(
             new_batch, attention_mask, condition_attention_mask, crossattention_mask
@@ -917,9 +868,7 @@ class AutoregressiveCFM(EventCFM):
             num_pos = target_stop_channels.sum()
             num_tokens = target_stop_channels.numel()
             pos_weight = (num_tokens - num_pos) / num_pos
-            stop_loss = nn.BCEWithLogitsLoss(pos_weight)(
-                stop_channels, target_stop_channels
-            )
+            stop_loss = nn.BCEWithLogitsLoss(pos_weight)(stop_channels, target_stop_channels)
             condition = condition[..., :-1]
 
         if self.cfm.self_condition_prob > 0.0:
@@ -980,17 +929,10 @@ class AutoregressiveCFM(EventCFM):
 
         # loss = loss.mean()
 
-        loss = (
-            self.cfm.const_scale * const_loss.mean()
-            + self.cfm.jet_scale * jet_loss.mean()
-        )
+        loss = self.cfm.const_scale * const_loss.mean() + self.cfm.jet_scale * jet_loss.mean()
 
-        const_metrics = ((vp[constituents_mask] - vt[constituents_mask]) ** 2).mean(
-            dim=0
-        ) / 2
-        jet_metrics = ((vp[~constituents_mask] - vt[~constituents_mask]) ** 2).mean(
-            dim=0
-        ) / 2
+        const_metrics = ((vp[constituents_mask] - vt[constituents_mask]) ** 2).mean(dim=0) / 2
+        jet_metrics = ((vp[~constituents_mask] - vt[~constituents_mask]) ** 2).mean(dim=0) / 2
         metrics = torch.cat([const_metrics, jet_metrics], dim=0)
 
         if self.cfm.stop_scale > 0.0 and not self.cfm.stop_token:
@@ -1011,12 +953,8 @@ class AutoregressiveCFM(EventCFM):
 
         # channels
         pe_dim = 8
-        n_flag = (
-            3 if self.cfm.stop_token else 2
-        )  # <-- one fewer channel without stop token
-        pos_enc = positional_encoding(
-            seq_length=self.cfm.max_seq_len, pe_dim=pe_dim
-        ).to(
+        # n_flag = 3 if self.cfm.stop_token else 2  # <-- one fewer channel without stop token
+        pos_enc = positional_encoding(seq_length=self.cfm.max_seq_len, pe_dim=pe_dim).to(
             device, dtype
         )  # (max_len, pe_dim)
         max_len = pos_enc.size(0)
@@ -1047,9 +985,7 @@ class AutoregressiveCFM(EventCFM):
             return torch.cat([pe, flags], dim=0).unsqueeze(0)
 
         # Seed per sequence with jet_det
-        generated_tokens = [
-            [batch.jet_det[i].to(device, dtype).unsqueeze(0)] for i in range(B)
-        ]
+        generated_tokens = [[batch.jet_det[i].to(device, dtype).unsqueeze(0)] for i in range(B)]
         generated_scalars = [[make_scalar_row(None, is_jet_det=True)] for _ in range(B)]
         active = torch.arange(B, device=device)
 
@@ -1058,9 +994,7 @@ class AutoregressiveCFM(EventCFM):
         tmp_batch = new_batch.clone()
 
         # Pre-loop: sample jet_gen with sample_base_jet
-        prefix_x = torch.cat(
-            [torch.cat(generated_tokens[i], dim=0) for i in active], dim=0
-        )
+        prefix_x = torch.cat([torch.cat(generated_tokens[i], dim=0) for i in active], dim=0)
         ptr = [0]
         for i in active.tolist():
             ptr.append(ptr[-1] + len(generated_tokens[i]))
@@ -1072,9 +1006,7 @@ class AutoregressiveCFM(EventCFM):
         )
 
         attn_mask, cond_attn_mask, cross_attn_mask = self.get_masks(tmp_batch)
-        condition = self.get_condition(
-            tmp_batch, attn_mask, cond_attn_mask, cross_attn_mask
-        )
+        condition = self.get_condition(tmp_batch, attn_mask, cond_attn_mask, cross_attn_mask)
 
         last_token_idx = [ptr[i + 1] - 1 for i in range(len(ptr) - 1)]
         last_condition = condition[last_token_idx]
@@ -1082,9 +1014,7 @@ class AutoregressiveCFM(EventCFM):
         if not self.cfm.stop_token:
             last_condition = last_condition[..., :-1]
 
-        x1 = self.sample_base_jet(
-            torch.cat([generated_tokens[i][-1] for i in active], dim=0)
-        )
+        x1 = self.sample_base_jet(torch.cat([generated_tokens[i][-1] for i in active], dim=0))
 
         def velocity_jet(t, xt, self_condition=None):
             xt = self.geometry._handle_periodic(xt)
@@ -1124,9 +1054,7 @@ class AutoregressiveCFM(EventCFM):
         stop_threshold = getattr(self.cfm, "stop_threshold", 0.5)
 
         while len(active) > 0:
-            prefix_x = torch.cat(
-                [torch.cat(generated_tokens[i], dim=0) for i in active], dim=0
-            )
+            prefix_x = torch.cat([torch.cat(generated_tokens[i], dim=0) for i in active], dim=0)
             ptr = [0]
             for i in active.tolist():
                 ptr.append(ptr[-1] + len(generated_tokens[i]))
@@ -1152,9 +1080,7 @@ class AutoregressiveCFM(EventCFM):
             tmp_batch.x_det_batch = get_batch_from_ptr(tmp_batch.x_det_ptr)
 
             attn_mask, cond_attn_mask, cross_attn_mask = self.get_masks(tmp_batch)
-            condition = self.get_condition(
-                tmp_batch, attn_mask, cond_attn_mask, cross_attn_mask
-            )
+            condition = self.get_condition(tmp_batch, attn_mask, cond_attn_mask, cross_attn_mask)
 
             last_token_idx = [ptr[i + 1] - 1 for i in range(len(ptr) - 1)]
             last_condition = condition[last_token_idx]
@@ -1164,11 +1090,9 @@ class AutoregressiveCFM(EventCFM):
                 last_condition = last_condition[..., :-1]
 
             # propose next token from last generated token
-            x1 = self.sample_base_const(
-                torch.cat([generated_tokens[i][-1] for i in active], dim=0)
-            )
+            x1 = self.sample_base_const(torch.cat([generated_tokens[i][-1] for i in active], dim=0))
 
-            def velocity_const(t, xt, self_condition=None):
+            def velocity_const(t, xt, self_condition=None, last_condition=last_condition):
                 xt = self.geometry._handle_periodic(xt)
                 t = t.view(1, 1).expand(xt.shape[0], -1)
                 vt = self.get_velocity(

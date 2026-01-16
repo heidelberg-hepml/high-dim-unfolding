@@ -1,14 +1,8 @@
-import torch
-import numpy as np
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-from torch_geometric.utils import scatter
-import sklearn
-import scipy
-import energyflow
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
 from matplotlib.backends.backend_pdf import PdfPages
-import os
-import tqdm
 
 from experiments.utils import get_range
 
@@ -52,7 +46,7 @@ def plot_loss(file, losses, lr=None, labels=None, logy=True, start_it=1000):
         labels = [labels[0]]
     iterations = range(1, len(losses[0]) + 1)
     fig, ax = plt.subplots()
-    for i, loss, label in zip(range(len(losses)), losses, labels):
+    for i, loss, label in zip(range(len(losses)), losses, labels, strict=True):
         if len(loss) == len(iterations):
             its = iterations
         else:
@@ -80,7 +74,7 @@ def plot_metric(file, metrics, metric_label, labels=None, logy=False):
     labels = [None for _ in range(len(metrics))] if labels is None else labels
     iterations = range(1, len(metrics[0]) + 1)
     fig, ax = plt.subplots()
-    for i, metric, label in zip(range(len(metrics)), metrics, labels):
+    for metric, label in zip(metrics, labels, strict=True):
         if len(metric) == len(iterations):
             its = iterations
         else:
@@ -152,21 +146,17 @@ def plot_histogram(
     hists = {}
     for key in labels:
         if weights is not None and key in weights:
-            y, _ = np.histogram(
-                data[key], bins=bins, range=bins_range, weights=weights[key]
-            )
+            y, _ = np.histogram(data[key], bins=bins, range=bins_range, weights=weights[key])
         else:
             y, _ = np.histogram(data[key], bins=bins, range=bins_range)
         hists[key] = y
     hist_errors = {key: np.sqrt(y) for key, y in hists.items()}
 
     integrals = {key: np.sum((bins[1:] - bins[:-1]) * y) for key, y in hists.items()}
-    scales = {
-        key: 1 / integral if integral != 0.0 else 1.0
-        for key, integral in integrals.items()
-    }
+    scales = {key: 1 / integral if integral != 0.0 else 1.0 for key, integral in integrals.items()}
 
-    dup_last = lambda a: np.append(a, a[-1])
+    def dup_last(a):
+        return np.append(a, a[-1])
 
     fig, ax = plt.subplots(
         figsize=figsize,
@@ -236,13 +226,9 @@ def plot_histogram(
         )
 
     if isinstance(legend_loc, dict):
-        ax.legend(
-            **legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0
-        )
+        ax.legend(**legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0)
     elif legend_loc is not None:
-        ax.legend(
-            loc=legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0
-        )
+        ax.legend(loc=legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0)
 
     if title is not None:
         if isinstance(title, str):
@@ -282,7 +268,7 @@ def plot_histogram(
     ax.tick_params(axis="both", labelsize=FONTSIZE_TICK)
 
     plt.xlabel(
-        r"${%s}$" % xlabel,
+        rf"${xlabel}$",
         fontsize=FONTSIZE,
     )
 
@@ -357,21 +343,17 @@ def plot_ratio_histogram(
     hists = {}
     for key in labels:
         if weights is not None and key in weights:
-            y, _ = np.histogram(
-                data[key], bins=bins, range=bins_range, weights=weights[key]
-            )
+            y, _ = np.histogram(data[key], bins=bins, range=bins_range, weights=weights[key])
         else:
             y, _ = np.histogram(data[key], bins=bins, range=bins_range)
         hists[key] = y
     hist_errors = {key: np.sqrt(y) for key, y in hists.items()}
 
     integrals = {key: np.sum((bins[1:] - bins[:-1]) * y) for key, y in hists.items()}
-    scales = {
-        key: 1 / integral if integral != 0.0 else 1.0
-        for key, integral in integrals.items()
-    }
+    scales = {key: 1 / integral if integral != 0.0 else 1.0 for key, integral in integrals.items()}
 
-    dup_last = lambda a: np.append(a, a[-1])
+    def dup_last(a):
+        return np.append(a, a[-1])
 
     fig, axs = plt.subplots(
         2,
@@ -535,13 +517,9 @@ def plot_ratio_histogram(
             )
 
     if isinstance(legend_loc, dict):
-        axs[0].legend(
-            **legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0
-        )
+        axs[0].legend(**legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0)
     elif legend_loc is not None:
-        axs[0].legend(
-            loc=legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0
-        )
+        axs[0].legend(loc=legend_loc, frameon=False, fontsize=FONTSIZE_LEGEND, handlelength=1.0)
 
     if title is not None:
         if isinstance(title, str):
@@ -562,7 +540,7 @@ def plot_ratio_histogram(
         )
 
     if ylabel is not None:
-        axs[0].set_ylabel(r"${%s}$" % ylabel, fontsize=FONTSIZE)
+        axs[0].set_ylabel(rf"${ylabel}$", fontsize=FONTSIZE)
     else:
         axs[0].set_ylabel("Normalized", fontsize=FONTSIZE)
     if logy:
@@ -584,7 +562,7 @@ def plot_ratio_histogram(
     axs[0].tick_params(axis="both", labelsize=FONTSIZE_TICK)
 
     plt.xlabel(
-        r"${%s}$" % xlabel,
+        rf"${xlabel}$",
         fontsize=FONTSIZE,
     )
 
@@ -658,11 +636,11 @@ def plot_2d_histogram(
     )
     vmin, vmax = im1.get_clim()
     ax1.set_xlabel(
-        r"${%s}$" % x1_label,
+        rf"${{ {x1_label} }}$",
         fontsize=FONTSIZE,
     )
     ax1.set_ylabel(
-        r"${%s}$" % y1_label,
+        rf"${{ {y1_label} }}$",
         fontsize=FONTSIZE,
     )
     ax1.set_title(first_label, fontsize=FONTSIZE)
