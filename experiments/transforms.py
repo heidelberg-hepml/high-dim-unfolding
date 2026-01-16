@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from experiments.utils import (
+from experiments.misc import (
     CUTOFF,
     EPS1,
     EPS2,
@@ -49,7 +49,7 @@ class BaseTransform(nn.Module):
         # log(det(J))
         # J = dy/dx
         logdetjac = torch.log(self._detjac_forward(x, y, **kwargs).abs() + EPS2).sum(
-            dim=-1, keepdims=True
+            dim=-1, keepdim=True
         )
         assert torch.isfinite(logdetjac).all(), self.__class__.__name__
         return logdetjac
@@ -58,7 +58,7 @@ class BaseTransform(nn.Module):
         # log(det(J^-1)) = log(1/det(J)) = -log(det(J))
         # J = dy/dx
         logdetjac = -torch.log(self._detjac_forward(x, y, **kwargs).abs() + EPS2).sum(
-            dim=-1, keepdims=True
+            dim=-1, keepdim=True
         )
         assert torch.isfinite(logdetjac).all(), self.__class__.__name__
         return logdetjac

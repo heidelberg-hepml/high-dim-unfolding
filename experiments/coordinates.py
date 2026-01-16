@@ -2,7 +2,7 @@ import torch
 from torch.distributions import VonMises
 
 import experiments.transforms as tr
-from experiments.utils import kappa_from_Vc
+from experiments.misc import kappa_from_Vc
 
 DTYPE = torch.float64
 

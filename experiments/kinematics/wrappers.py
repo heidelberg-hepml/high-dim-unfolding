@@ -5,7 +5,7 @@ from experiments.dataset import positional_encoding
 from experiments.embedding import embed_data_into_ga
 from experiments.kinematics.cfm import AutoregressiveCFM, EventCFM, JetCFM
 from experiments.logger import LOGGER
-from experiments.utils import xformers_mask
+from experiments.misc import xformers_mask
 
 
 class ConditionalTransformerCFM(EventCFM):

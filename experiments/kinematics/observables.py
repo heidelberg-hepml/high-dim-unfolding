@@ -23,7 +23,7 @@ import numpy as np
 import torch
 
 from experiments.coordinates import fourmomenta_to_jetmomenta
-from experiments.utils import (
+from experiments.misc import (
     ensure_angle,
     fix_mass,
     get_eta,

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 
-from experiments.utils import get_range
+from experiments.misc import get_range
 
 font_dir = ["src/utils/bitstream-charter-ttf/Charter/"]
 for font in font_manager.findSystemFonts(font_dir):

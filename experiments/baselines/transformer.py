@@ -4,7 +4,7 @@ from lgatr.primitives.attention import scaled_dot_product_attention
 from torch import nn
 from torch.utils.checkpoint import checkpoint
 
-from experiments.utils import to_nd
+from experiments.misc import to_nd
 
 
 class BaselineLayerNorm(nn.Module):

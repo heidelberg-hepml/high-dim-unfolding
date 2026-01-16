@@ -11,7 +11,7 @@ from torch_geometric.data import Data
 
 from experiments.coordinates import jetmomenta_to_fourmomenta
 from experiments.logger import LOGGER
-from experiments.utils import (
+from experiments.misc import (
     ensure_angle,
     fix_mass,
     pid_encoding,

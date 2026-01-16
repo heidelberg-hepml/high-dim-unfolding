@@ -29,7 +29,7 @@ from experiments.kinematics.plots import (
     simple_histogram,
 )
 from experiments.logger import LOGGER
-from experiments.utils import get_eta, get_mass, get_phi, get_pt, get_range
+from experiments.misc import get_eta, get_mass, get_phi, get_pt, get_range
 
 N_SAMPLES = -1
 

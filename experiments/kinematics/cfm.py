@@ -15,7 +15,7 @@ from experiments.embedding import (
 )
 from experiments.geometry import BaseGeometry, SimplePossiblyPeriodicGeometry
 from experiments.kinematics.plots import plot_kinematics
-from experiments.utils import GaussianFourierProjection, get_batch_from_ptr
+from experiments.misc import GaussianFourierProjection, get_batch_from_ptr
 
 
 class CFM(nn.Module):

@@ -4,7 +4,7 @@ import einops
 import torch
 import torch.distributions as D
 
-from experiments.utils import EPS2
+from experiments.misc import EPS2
 
 
 def cross_entropy(distribution, target):

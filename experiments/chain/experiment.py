@@ -8,7 +8,7 @@ from experiments.kinematics.experiment import KinematicsExperiment
 from experiments.kinematics.jet_experiment import JetKinematicsExperiment
 from experiments.logger import LOGGER
 from experiments.multiplicity.experiment import MultiplicityExperiment
-from experiments.utils import get_device
+from experiments.misc import get_device
 
 
 class ChainExperiment(BaseExperiment):

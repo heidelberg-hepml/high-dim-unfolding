@@ -1,4 +1,4 @@
-from experiments.utils import ensure_angle
+from experiments.misc import ensure_angle
 
 
 class BaseGeometry:

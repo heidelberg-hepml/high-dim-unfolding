@@ -12,7 +12,7 @@ from experiments.multiplicity.distributions import (
     process_params,
     ranged_categorical,
 )
-from experiments.utils import xformers_mask
+from experiments.misc import xformers_mask
 
 
 class MultiplicityTransformerWrapper(nn.Module):

@@ -3,7 +3,7 @@ import math
 import torch
 from lgatr.interface import embed_vector, get_spurions
 
-from experiments.utils import get_batch_from_ptr
+from experiments.misc import get_batch_from_ptr
 
 
 def embed_data_into_ga(fourmomenta, scalars, ptr, ga_cfg=None):

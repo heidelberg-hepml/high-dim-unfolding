@@ -8,7 +8,7 @@ from experiments.baselines.transformer import (
     BaselineLayerNorm,
     BaselineSelfAttention,
 )
-from experiments.utils import to_nd
+from experiments.misc import to_nd
 
 
 class CrossAttention(nn.Module):

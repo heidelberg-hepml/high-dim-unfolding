@@ -4,7 +4,7 @@ import numpy as np
 import torch
 from matplotlib.backends.backend_pdf import PdfPages
 
-from experiments.utils import get_range
+from experiments.misc import get_range
 
 plt.rcParams["font.family"] = "serif"
 plt.rcParams["font.serif"] = "Charter"
@@ -72,9 +72,9 @@ def plot_loss(file, losses, lr=None, labels=None, logy=True, start_it=1000):
 
 def plot_metric(file, metrics, metric_label, labels=None, logy=False):
     labels = [None for _ in range(len(metrics))] if labels is None else labels
-    iterations = range(1, len(metrics[0]) + 1)
     fig, ax = plt.subplots()
-    for metric, label in zip(metrics, labels, strict=True):
+    for metric, label in zip(metrics, labels, strict=False):
+        iterations = range(1, len(metric) + 1)
         if len(metric) == len(iterations):
             its = iterations
         else:
