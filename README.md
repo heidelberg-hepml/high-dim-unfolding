@@ -1,16 +1,36 @@
-# Generative Unfolding of Jets and Their Substructure
+<div align="center">
 
-This project implements the framework introduced in *Generative Unfolding of
-Jets and Their Substructure*. The code trains
-conditional flow-matching (CFM) generative models with Lorentz-equivariant
-transformers to unfold detector-level observations to particle level in
-several hundred dimensions. The pipeline factorises the task into three
-specialised stages—multiplicity, jet kinematics, and constituent structure—
-and can be chained into an end-to-end generator that produces fully unfolded
-jets ready for physics analysis. The codebase is forked from the original [Lorentz-GATr repository](https://github.com/heidelberg-hepml/lorentz-gatr.git) and uses the newer [`lgatr` library](https://github.com/heidelberg-hepml/lgatr.git) for L-GATr blocks.
+## Generative Unfolding of Jets and Their Substructure
+
+[![pytorch](https://img.shields.io/badge/PyTorch_2.0+-ee4c2c?logo=pytorch&logoColor=white)](https://pytorch.org/get-started/locally/)
+[![hydra](https://img.shields.io/badge/Config-Hydra_1.3-89b8cd)](https://hydra.cc/)
+[![uv](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/uv/main/assets/badge/v0.json)](https://github.com/astral-sh/uv)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+
+[![high-dim-unfolding](http://img.shields.io/badge/paper-arxiv.2510.19906-B31B1B.svg)](https://arxiv.org/abs/2510.19906)
+
+</div>
+
+This project implements the framework introduced in *Generative Unfolding of Jets and Their Substructure*. The code trains conditional flow-matching (CFM) generative models with Lorentz-equivariant transformers to unfold detector-level observations to particle level in several hundred dimensions. The pipeline factorises the task into three specialised stages — multiplicity, jet kinematics, and constituent structure — and can be chained into an end-to-end generator that produces fully unfolded jets ready for physics analysis. The codebase is forked from the original [Lorentz-GATr repository](https://github.com/heidelberg-hepml/lorentz-gatr.git) and uses the newer [`lgatr` library](https://github.com/heidelberg-hepml/lgatr.git) for L-GATr blocks.
+
+## Citation
+
+If you find this code useful in your research, please cite our paper
+
+```bibtex
+@article{Petitjean:2025tgk,
+    author = "Petitjean, Antoine and Butter, Anja and Greif, Kevin and Palacios Schweitzer, Sofia and Plehn, Tilman and Spinner, Jonas and Whiteson, Daniel",
+    title = "{Generative Unfolding of Jets and Their Substructure}",
+    eprint = "2510.19906",
+    archivePrefix = "arXiv",
+    primaryClass = "hep-ph",
+    month = "10",
+    year = "2025"
+}
+```
 
 ## Highlights
-- Use of `pytorch-geometric` graph objects for variable-length events with jets, constituents, scalar information for at detector-level and particle-level.
+- Use of `pytorch-geometric` graph objects for variable-length events with jets and constituents information at detector-level and particle-level.
 - Conditional flow-matching training of transformer-based architectures.
 - Lorentz-equivariant CFM models via the `lgatr` library.
 - Modular experiments (`Multiplicity`, `JetKinematics`, `Kinematics`,
@@ -52,6 +72,7 @@ jets ready for physics analysis. The codebase is forked from the original [Loren
 
 4. **FastJet (optional)**
    Some substructure observables rely on `fastjet`/`fastjet contribs`. Our custom python bindings for `fastjet contribs` are available [here](https://github.com/AntoinePTJ/pybind_fastjet_contribs). If this package is missing from the python venv, the code will skip related imports and plots.
+   A example script to easily install `fastjet`, `fastjet contribs` and the python bindings is provided in `fastjet_script.sh`. Make sure to set the correct path at the start of the script.
 
 ## Running Experiments
 
