@@ -40,13 +40,6 @@ wrapper_cfg:
  add_jet: true
 
 train: true
-training:
- iterations: 100000
- batchsize: 1024
- optimizer: Adam
- lr: 1e-3
- validate_every_n_steps: 5000
- scheduler: CosineAnnealingLR
 
 evaluate: true
 evaluation:
@@ -66,5 +59,6 @@ plotting:
 
 defaults:
  - model: tr_multiplicity
+ - training: multiplicity_t
  - default
  - _self_

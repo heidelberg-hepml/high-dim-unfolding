@@ -211,10 +211,13 @@ class MultiplicityExperiment(BaseExperiment):
 
         det_jets = self.model.condition_jet_coordinates.fourmomenta_to_x(det_jets)
 
-        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        if self.cfg.data.pos_encoding_dim > 0:
+            pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        else:
+            pos_encoding = None
 
         if self.cfg.data.mult_encoding_dim > 0:
-            mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+            mult_encoding = self.model.mult_encoding.to(det_jets.device)
         else:
             mult_encoding = None
 
@@ -268,10 +271,13 @@ class MultiplicityExperiment(BaseExperiment):
     def _init_ttbar_data(self, data_path):
         t0 = time.time()
 
-        pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        if self.cfg.data.pos_encoding_dim > 0:
+            pos_encoding = positional_encoding(pe_dim=self.cfg.data.pos_encoding_dim)
+        else:
+            pos_encoding = None
 
         if self.cfg.data.mult_encoding_dim > 0:
-            mult_encoding = self.model.mult_encoding.to(pos_encoding.device)
+            mult_encoding = self.model.mult_encoding
         else:
             mult_encoding = None
 

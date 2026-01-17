@@ -1,0 +1,9 @@
+iterations: 100000
+batchsize: 2048
+
+optimizer: Adam
+
+lr: 1e-3
+
+defaults:
+ - default

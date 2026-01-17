@@ -5,6 +5,7 @@ from torch_geometric.nn.aggr import MeanAggregation
 
 import experiments.coordinates as c
 from experiments.embedding import add_jet_to_sequence, embed_data_into_ga
+from experiments.misc import get_attention_mask
 from experiments.multiplicity.distributions import (
     GammaMixture,
     GaussianMixture,
@@ -12,7 +13,6 @@ from experiments.multiplicity.distributions import (
     process_params,
     ranged_categorical,
 )
-from experiments.misc import xformers_mask
 
 
 class MultiplicityTransformerWrapper(nn.Module):
@@ -58,10 +58,9 @@ class MultiplicityTransformerWrapper(nn.Module):
             new_batch = batch
         input = torch.cat([new_batch.x_det, new_batch.scalars_det], dim=-1)
 
-        mask = xformers_mask(new_batch.x_det_batch, materialize=not self.use_xformers)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": mask}
+        mask = get_attention_mask(new_batch.x_det_batch, attention_backend='xformers', dtype=input.dtype)
 
-        outputs = self.net(input.unsqueeze(0), **attn_kwargs)
+        outputs = self.net(input.unsqueeze(0), **mask)
         outputs = self.aggregation(outputs, new_batch.x_det_batch).squeeze(0)
 
         return outputs
@@ -79,7 +78,6 @@ class MultiplicityTransformerWrapper(nn.Module):
         else:
             loss = cross_entropy(predicted_dist, label)
 
-        assert torch.isfinite(loss).all()
         return loss
 
     def sample(self, batch, range, diff=False):
@@ -158,9 +156,8 @@ class MultiplicityLGATrWrapper(MultiplicityTransformerWrapper):
         multivector = mv.unsqueeze(0)
         scalars = s.unsqueeze(0)
 
-        mask = xformers_mask(batch_idx, materialize=not self.use_xformers)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": mask}
-        multivector_outputs, _ = self.net(multivector, scalars=scalars, **attn_kwargs)
+        mask = get_attention_mask(batch_idx, attention_backend='xformers', dtype=multivector.dtype)
+        multivector_outputs, _ = self.net(multivector, scalars=scalars, **mask)
         outputs = extract_scalar(multivector_outputs)[0, :, :, 0]
         params = self.aggregation(outputs, index=batch_idx)
 

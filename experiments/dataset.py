@@ -17,6 +17,7 @@ from experiments.misc import (
     pid_encoding,
 )
 
+energyflow.utils.fastjet_utils.fj = False  # disable fastjet usage in energyflow
 
 class Dataset(torch.utils.data.Dataset):
     def __init__(self, dtype, pos_encoding=None, mult_encoding=None):
@@ -117,7 +118,7 @@ def load_zplusjet(data_path, cfg, dtype):
         dataset_generator = "Herwig"
     else:
         raise ValueError(f"Unknown dataset generator: {dataset_generator}")
-    data = energyflow.zjets_delphes.load(
+    data = zjets_delphes.load(
         dataset_generator,
         num_data=cfg.length,
         pad=True,

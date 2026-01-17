@@ -1,10 +1,18 @@
 import math
 from collections.abc import Mapping
+from torch import nn
 
 import numpy as np
 import torch
-from torch import nn
-from xformers.ops.fmha.attn_bias import BlockDiagonalCausalMask, BlockDiagonalMask
+
+try:
+    from torch.nn.attention.flex_attention import create_block_mask
+except ModuleNotFoundError:
+    pass
+try:
+    from xformers.ops.fmha.attn_bias import BlockDiagonalCausalMask, BlockDiagonalMask
+except ModuleNotFoundError:
+    pass
 
 
 class GaussianFourierProjection(nn.Module):
@@ -31,12 +39,6 @@ EPS2 = 1e-10
 
 # exp(x) -> exp(x.clamp(max=CUTOFF))
 CUTOFF = 15
-
-
-def unpack_last(x):
-    # unpack along the last dimension
-    n = len(x.shape)
-    return torch.permute(x, (n - 1, *list(range(n - 1))))
 
 
 def ensure_angle(phi):
@@ -173,7 +175,18 @@ def get_range(input, quantile=5e-3, boundary_scale=5e-2):
     return quantiles
 
 
-def xformers_mask(batch, batch_condition=None, materialize=False):
+def flatten_dict(d, parent_key="", sep="."):
+    """Flattens a nested dictionary with str keys."""
+    items = []
+    for k, v in d.items():
+        new_key = parent_key + sep + k if parent_key else k
+        if isinstance(v, Mapping):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+def get_xformers_attention_mask(batch, batch_condition=None, materialize=False, dtype=torch.float32):
     """
     Construct attention mask that makes sure that objects only attend to each other
     within the same batch element, and not across batch elements
@@ -237,6 +250,83 @@ def xformers_causal_mask(batch, materialize=False):
 
     return mask
 
+def get_flex_attention_mask(batch: torch.Tensor):
+    """Returns a mask for the attention mechanism.
+
+    Parameters
+    ----------
+    batch : torch.Tensor
+        Batch vector, maps each token to its sequence in the batch.
+
+    Returns
+    -------
+    BlockMask
+        Block-diagonal BlockMask for flex attention, with one block per sequence.
+    """
+    N = batch.size(0)
+
+    def jagged_masking(b, h, q_idx, kv_idx):
+        return batch[q_idx] == batch[kv_idx]
+
+    mask = create_block_mask(jagged_masking, None, None, N, N, device=batch.device, _compile=True)
+    return mask
+
+def get_attention_mask(
+    batch: torch.Tensor,
+    attention_backend: str,
+    dtype: torch.dtype,
+):
+    """Returns the attention mask according to the backend.
+
+    Parameters
+    ----------
+    batch : torch.Tensor
+        Batch vector, maps each token to its sequence in the batch.
+    attention_backend : str
+        Attention backend to use ("xformers", "flex", or "flash").
+    dtype : torch.dtype
+        Data type of the attention mask (for xformers backend).
+
+    Returns
+    -------
+    dict[str, torch.Tensor | BlockMask | BlockDiagonalMask]
+        Attention mask for the specified backend.
+    """
+    on_cpu = batch.device == torch.device("cpu")
+    if attention_backend == "xformers":
+        mask = get_xformers_attention_mask(batch=batch, dtype=dtype, materialize=on_cpu)
+        if not on_cpu:
+            return {"attn_bias": mask}
+        else:
+            # fallback to default attention
+            return {"attn_mask": mask}
+    elif attention_backend == "flash":
+        seqlens = torch.bincount(batch).to(torch.int32)
+        maxlen = int(seqlens.max().item())
+        cu_seqlens = torch.cumsum(seqlens, dim=0, dtype=torch.int32)
+        cu_seqlens = torch.cat(
+            [torch.tensor([0], dtype=torch.int32, device=seqlens.device), cu_seqlens], dim=0
+        )
+        if not on_cpu:
+            return {
+                "cu_seqlens_q": cu_seqlens,
+                "cu_seqlens_k": cu_seqlens,
+                "max_seqlen_q": maxlen,
+                "max_seqlen_k": maxlen,
+            }
+        else:
+            # fallback to default attention
+            mask = get_xformers_attention_mask(batch=batch, dtype=dtype, materialize=on_cpu)
+            return {"attn_mask": mask}
+    elif attention_backend == "flex":
+        mask = get_flex_attention_mask(batch=batch)
+        return {"block_mask": mask}
+    else:
+        raise ValueError(
+            f"Unsupported attention backend: {attention_backend}. "
+            'Supported backends are "xformers", "flex", and "flash".'
+        )
+    
 
 def get_device() -> torch.device:
     """Gets CUDA if available, CPU else."""
@@ -248,29 +338,12 @@ def to_nd(tensor, d):
     return tensor.view(-1, *(1,) * (max(0, d - 1 - tensor.dim())), *tensor.shape[-(d - 1) :])
 
 
-def flatten_dict(d, parent_key="", sep="."):
-    """Flattens a nested dictionary with str keys."""
-    items = []
-    for k, v in d.items():
-        new_key = parent_key + sep + k if parent_key else k
-        if isinstance(v, Mapping):
-            items.extend(flatten_dict(v, new_key, sep=sep).items())
-        else:
-            items.append((new_key, v))
-    return dict(items)
-
-
 def fix_mass(constituents, mass=0.0):
     new_constituents = constituents.clone().to(torch.float64)
     new_constituents[..., 0] = torch.sqrt(
         torch.sum(new_constituents[..., 1:] ** 2, dim=-1) + mass**2
     )
     return new_constituents.to(constituents.dtype)
-
-
-def remove_prefix(state_dict, prefix="_orig_mod."):
-    # strip only if the key starts with the prefix
-    return {k[len(prefix) :] if k.startswith(prefix) else k: v for k, v in state_dict.items()}
 
 
 def kappa_from_Vc(Vc):

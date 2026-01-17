@@ -1,5 +1,5 @@
-exp_type: jets
-exp_name: jets
+exp_type: constituents
+exp_name: consts_z
 
 use_mlflow: false
 
@@ -17,9 +17,9 @@ data:
  pt_min: null
  mass: 0.1
  pos_encoding_dim: 8
- mult_encoding_dim: 8
+ mult_encoding_dim: 0
  part_to_jet: false
-
+ use_sampled_jets: false
 
 cfm:
  embed_t_dim: 8
@@ -30,7 +30,7 @@ cfm:
   masked_dims: [3]
   scaling: [1,1,1,1]
   vonmises: false
- jet_coordinates: StandardAsinhPtPhiEtaLogM2
+ jet_coordinates: PtPhiEtaM2
  jet_coordinates_options:
   pt_min: null
   masked_dims: []
@@ -42,12 +42,11 @@ cfm:
  transforms_float64: true
  cosine_similarity_factor: 0.0
  self_condition_prob: 0.0
- add_constituents: false
+ add_jet: true
  add_mass: false
  weight: 0.0
- transpose: false
- unconditional: false
-
+ sort: true
+ rescale: false
 
 odeint:
  method: rk4
@@ -56,19 +55,8 @@ odeint:
  options:
   step_size: 0.01
 
-train: true
-training:
- iterations: 200000
- batchsize: 1024
- optimizer: Lion
- lr: 2e-4
- scheduler: CosineAnnealingLR
- validate_every_n_steps: 5000
- clip_grad_norm: 5.
-
-evaluate: true
 evaluation:
- batchsize: 8192
+ batchsize: 4096
  classifier: false
  sample: true
  n_batches: -1
@@ -77,16 +65,18 @@ evaluation:
  load_samples: false
  overfit: false
 
-plot: true
 plotting:
  fourmomenta: false
  jetmomenta: true
  jetscaled: false
  preprocessed: false
- observables: ["jet"]
+ observables: ["multiplicity","jet","constjet","nsubjettiness","momentumfraction","softdropmass","eec"]
+ n_pt: 3
+ angles: [[1,2],[1,3],[2,3],[3,4]]
  correlations: false
 
 defaults:
- - model: cond_tr_jets
+ - model: cond_tr_constituents
+ - training: constituents_z
  - default
  - _self_

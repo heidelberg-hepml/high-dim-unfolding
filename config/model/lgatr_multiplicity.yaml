@@ -25,7 +25,5 @@ net:
   num_heads: 4
   multi_query: false
   head_scale: false
-
-defaults:
- - /base_attention@net.attention
- - /base_mlp@net.mlp
+ mlp:
+  activation: gelu

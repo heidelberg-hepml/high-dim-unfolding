@@ -18,6 +18,8 @@ dependencies = [
     "numpy",
     "opt_einsum",
     "optuna",
+    "pandas",
+    "pyarrow",
     "pytorch_optimizer>=3.2.0",
     "scikit-learn",
     "torch>=2.6.0",

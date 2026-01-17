@@ -13,12 +13,12 @@ import torch
 import torch.distributed as dist
 from hydra.utils import instantiate
 from omegaconf import OmegaConf, errors, open_dict
-from torch.cuda.amp import GradScaler
+from torch.amp import GradScaler
 from torch_ema import ExponentialMovingAverage
 
 import experiments.logger
 from experiments.logger import FORMATTER, LOGGER, MEMORY_HANDLER, RankFilter
-from experiments.misc import flatten_dict, get_device, remove_prefix
+from experiments.misc import flatten_dict
 from experiments.mlflow import log_mlflow
 
 # set to 'True' to debug autograd issues (slows down code)
@@ -615,7 +615,7 @@ class BaseExperiment:
         self.scaler.unscale_(self.optimizer)  # unscale before clipping
 
         if self.cfg.training.log_grad_norm:
-            grad_norm_net = (
+            grad_norm = (
                 torch.nn.utils.clip_grad_norm_(
                     self.model.net.parameters(),
                     float("inf"),
@@ -624,7 +624,7 @@ class BaseExperiment:
                 .to(self.device)
             )
         else:
-            grad_norm_net = torch.tensor(0.0, device=self.device)
+            grad_norm = torch.tensor(0.0, device=self.device)
 
         if self.cfg.training.clip_grad_value is not None:
             # clip gradients at a certain value (this is dangerous!)

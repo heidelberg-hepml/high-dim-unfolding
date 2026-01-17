@@ -40,23 +40,12 @@ wrapper_cfg:
  transforms_float64: true
  add_jet: true
 
-train: true
-training:
- iterations: 100000
- batchsize: 2048
- lr: 1e-3
- optimizer: Adam
- validate_every_n_steps: 5000
- scheduler: CosineAnnealingLR
-
-evaluate: true
 evaluation:
  batchsize: 4096
  save_samples: false
  load_samples: false
  save_params: 0
 
-plot: true
 plotting:
  loss: true
  histogram: true
@@ -67,5 +56,6 @@ plotting:
 
 defaults:
  - model: tr_multiplicity
+ - training: multiplicity_z
  - default
  - _self_

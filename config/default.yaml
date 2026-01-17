@@ -3,15 +3,19 @@ exp_type: ???
 run_name: null
 base_dir: .
 
+gpus: -1
 jobid: null
 seed: null
 debug: false
+use_float64: false
+float32_matmul_precision: highest
 
 warm_start_idx: null
 save: true
-use_mlflow: true
+use_mlflow: false
 save_source: true
 ema: false
+ema_decay: 0.999
 
 ga_settings:
  use_fully_connected_subgroup: true
@@ -20,46 +24,6 @@ ga_settings:
  zero_bivector: false
 
 train: true
-training:
- iterations : 20
- subsample: null
- es_patience: 100
- es_load_best_model: true
- validate_every_n_steps: 100
-
- clear_every_n_steps: 1000
-
- clip_grad_norm: 5
- clip_grad_value: null
- grad_norm_avg: 1000
- grad_norm_avg_scale: 4
- grad_norm_max_skips: 5
- log_every_n_steps: 100
-
- optimizer : Adam
- lr: 3.e-4
- batchsize: 256
- betas: [.9, .999]
- eps: 1.e-8
- weight_decay: 0
- 
- scheduler: null
- scheduler_scale: 1
- scheduler_warmup_factor: 0.03
- cosanneal_eta_min: 0
- reduceplateau_factor: 0.1
- reduceplateau_patience: 50
- onecycle_max_lr: 10
- onecycle_pct_start: 0.3
-
- ema_decay: 0.99
-
- dtype: float32
- enable_flash_sdp: false
- enable_math_sdp: true
- enable_mem_efficient_sdp: false
- force_xformers: false
- mixed_precision: false
 
 evaluate: true
 evaluation:

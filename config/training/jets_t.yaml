@@ -1,0 +1,9 @@
+iterations: 200000
+batchsize: 512
+
+optimizer: Lion
+
+lr: 2e-4
+
+defaults:
+ - default

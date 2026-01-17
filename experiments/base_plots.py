@@ -116,8 +116,6 @@ def plot_histogram(
     data: dict
         Contains keys with np.ndarray of shape (nevents)
         Keys are used as labels
-    reference_key: str
-        Key of the data to use as the reference for ratio
     xlabel: str
     xrange: tuple with 2 floats
     logy: bool

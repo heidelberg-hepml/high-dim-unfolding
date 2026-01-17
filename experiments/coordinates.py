@@ -34,9 +34,9 @@ class BaseCoordinates(torch.nn.Module):
         if self.vonmises:
             c = torch.cos(x[mask][:, 1]).mean()
             s = torch.sin(x[mask][:, 1]).mean()
-            loc = torch.atan2(s, c).item()
+            loc = torch.atan2(s, c)
             circular_var = 1 - torch.sqrt(c**2 + s**2)
-            concentration = kappa_from_Vc(circular_var.item())
+            concentration = kappa_from_Vc(circular_var)
             self.phi_dist = VonMises(loc=loc, concentration=concentration)
             if isinstance(self.transforms[-1], tr.StandardNormal):
                 self.transforms[-1].contains_phi = False
@@ -117,7 +117,7 @@ class StandardFourmomenta(BaseCoordinates):
     # (E, px, py, pz)
     def __init__(self, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.transforms = [
             tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling),
         ]
@@ -137,7 +137,7 @@ class StandardPPPM2(BaseCoordinates):
     # fitted (px, py, pz, m^2)
     def __init__(self, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PPPM2(),
@@ -161,7 +161,7 @@ class StandardEPhiPtPz(BaseCoordinates):
     # (E, phi, pt, pz)
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.transforms = [
             tr.EPPP_to_EPhiPtPz(),
@@ -197,7 +197,7 @@ class PtPhiEtaM2(BaseCoordinates):
 class StandardPtPhiEtaM2(BaseCoordinates):
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -212,7 +212,7 @@ class StandardPtPhiEtaM2(BaseCoordinates):
 class StandardJetScaledPtPhiEtaM2(BaseCoordinates):
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -241,7 +241,7 @@ class StandardPPPLogM2(BaseCoordinates):
     # fitted (px, py, pz, log(m^2))
     def __init__(self, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_mass = True
         self.transforms = [
             tr.EPPP_to_PPPM2(),
@@ -282,7 +282,7 @@ class StandardPtPhiEtaLogM2(BaseCoordinates):
     # (pt, phi, eta, log(m^2))
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -330,7 +330,7 @@ class StandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2))
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -353,7 +353,7 @@ class StandardAsinhPtPhiEtaLogM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2))
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -371,7 +371,7 @@ class StandardLogPtPhiEtaAsinhM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, log(m^2))
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -389,7 +389,7 @@ class StandardLogPtPhiEtaM2(BaseCoordinates):
     # Fitted (log(pt), phi, eta, m^2)
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -406,7 +406,7 @@ class IndividualStandardLogPtPhiEtaLogM2(BaseCoordinates):
     # Position fitted (log(pt), phi, eta, log(m^2)
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -456,7 +456,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (log(pt)-log(pt_jet), phi-phi_jet, eta-eta_jet, log(m^2) - log(m^2_jet)
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -475,7 +475,7 @@ class StandardJetScaledLogPtPhiEtaM2(BaseCoordinates):
     # (log(pt), phi-phi_jet, eta-eta_jet, m^2
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
@@ -493,7 +493,7 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
     # (pt/pt_jet, phi-phi_jet, eta-eta_jet, log(m^2))
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
-        scaling = torch.ones(1, 4) if scaling is None else scaling
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
         self.contains_phi = True
         self.contains_mass = True
         self.transforms = [
