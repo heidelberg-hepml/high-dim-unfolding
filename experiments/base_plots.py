@@ -39,7 +39,7 @@ X_LABEL_POS, Y_LABEL_POS = -0.05, -0.13
 FIGSIZE = (4.5, 4.5)
 
 
-def plot_loss(file, losses, lr=None, labels=None, logy=True, start_it=1000):
+def plot_loss(file, losses, lr=None, labels=None, logy=True, start_it=0):
     labels = [None for _ in range(len(losses))] if labels is None else labels
     if len(losses[1]) == 0:  # catch no-validations case
         losses = [losses[0]]

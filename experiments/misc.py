@@ -216,7 +216,7 @@ def get_xformers_attention_mask(batch, batch_condition=None, materialize=False, 
     mask = BlockDiagonalMask.from_seqlens(bincounts, bincounts_condition)
     if materialize:
         # materialize mask to torch.tensor (only for testing purposes)
-        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(batch.device)
+        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(batch.device, dtype=dtype)
 
     return mask
 
@@ -275,6 +275,7 @@ def get_attention_mask(
     batch: torch.Tensor,
     attention_backend: str,
     dtype: torch.dtype,
+    condition_batch: torch.Tensor | None = None,
 ):
     """Returns the attention mask according to the backend.
 
@@ -294,13 +295,14 @@ def get_attention_mask(
     """
     on_cpu = batch.device == torch.device("cpu")
     if attention_backend == "xformers":
-        mask = get_xformers_attention_mask(batch=batch, dtype=dtype, materialize=on_cpu)
+        mask = get_xformers_attention_mask(batch=batch, batch_condition=condition_batch, dtype=dtype, materialize=on_cpu)
         if not on_cpu:
             return {"attn_bias": mask}
         else:
             # fallback to default attention
             return {"attn_mask": mask}
     elif attention_backend == "flash":
+        raise NotImplementedError("Flash attention backend is not implemented yet.")
         seqlens = torch.bincount(batch).to(torch.int32)
         maxlen = int(seqlens.max().item())
         cu_seqlens = torch.cumsum(seqlens, dim=0, dtype=torch.int32)
@@ -319,6 +321,7 @@ def get_attention_mask(
             mask = get_xformers_attention_mask(batch=batch, dtype=dtype, materialize=on_cpu)
             return {"attn_mask": mask}
     elif attention_backend == "flex":
+        raise NotImplementedError("Flex attention backend is not implemented yet.")
         mask = get_flex_attention_mask(batch=batch)
         return {"block_mask": mask}
     else:

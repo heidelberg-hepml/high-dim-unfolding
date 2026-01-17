@@ -5,7 +5,7 @@ from experiments.dataset import positional_encoding
 from experiments.embedding import embed_data_into_ga
 from experiments.kinematics.cfm import AutoregressiveCFM, EventCFM, JetCFM
 from experiments.logger import LOGGER
-from experiments.misc import xformers_mask
+from experiments.misc import get_attention_mask
 
 
 class ConditionalTransformerCFM(EventCFM):
@@ -32,21 +32,21 @@ class ConditionalTransformerCFM(EventCFM):
         self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
-        attention_mask = xformers_mask(batch.x_gen_batch, materialize=not self.use_xformers)
-        condition_attention_mask = xformers_mask(
-            batch.x_det_batch, materialize=not self.use_xformers
+        attention_mask = get_attention_mask(batch.x_gen_batch, attention_backend="xformers", dtype=batch.x_gen.dtype)
+        condition_attention_mask = get_attention_mask(
+            batch.x_det_batch, attention_backend="xformers", dtype=batch.x_det.dtype
         )
-        cross_attention_mask = xformers_mask(
+        cross_attention_mask = get_attention_mask(
             batch.x_gen_batch,
-            batch.x_det_batch,
-            materialize=not self.use_xformers,
+            condition_batch=batch.x_det_batch,
+            attention_backend="xformers",
+            dtype=batch.x_gen.dtype,
         )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
     def get_condition(self, batch, attention_mask):
         input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": attention_mask}
-        return self.net_condition(input.unsqueeze(0), **attn_kwargs)
+        return self.net_condition(input.unsqueeze(0), **attention_mask)
 
     def get_velocity(
         self,
@@ -65,10 +65,8 @@ class ConditionalTransformerCFM(EventCFM):
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
-            attn_kwargs={"attn_bias" if self.use_xformers else "attn_mask": attention_mask},
-            crossattn_kwargs={
-                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
-            },
+            attn_kwargs=attention_mask,
+            crossattn_kwargs=crossattention_mask,
         ).squeeze(0)
         return vp
 
@@ -145,12 +143,13 @@ class ConditionalLGATrCFM(EventCFM):
                 batch.x_det_ptr,
                 None,
             )
-        attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
-        condition_attention_mask = xformers_mask(det_batch_idx, materialize=not self.use_xformers)
-        cross_attention_mask = xformers_mask(
+        attention_mask = get_attention_mask(gen_batch_idx, attention_backend="xformers", dtype=batch.x_gen.dtype)
+        condition_attention_mask = get_attention_mask(det_batch_idx, attention_backend="xformers", dtype=batch.x_det.dtype)
+        cross_attention_mask = get_attention_mask(
             gen_batch_idx,
-            det_batch_idx,
-            materialize=not self.use_xformers,
+            condition_batch=det_batch_idx,
+            attention_backend="xformers",
+            dtype=batch.x_det.dtype,
         )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
@@ -195,8 +194,7 @@ class ConditionalLGATrCFM(EventCFM):
             )
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": attention_mask}
-        condition_mv, condition_s = self.net_condition(mv, s, **attn_kwargs)
+        condition_mv, condition_s = self.net_condition(mv, s, **attention_mask)
         return condition_mv, condition_s
 
     def get_velocity(
@@ -268,10 +266,8 @@ class ConditionalLGATrCFM(EventCFM):
             multivectors_condition=condition_mv,
             scalars=s.unsqueeze(0),
             scalars_condition=condition_s,
-            attn_kwargs={"attn_bias" if self.use_xformers else "attn_mask": attention_mask},
-            crossattn_kwargs={
-                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
-            },
+            attn_kwargs=attention_mask,
+            crossattn_kwargs=crossattention_mask,
         )
         mv_outputs = mv_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)

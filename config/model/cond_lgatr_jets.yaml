@@ -64,10 +64,3 @@ net_condition:
 
  mlp:
   increase_hidden_channels: 2
-
-defaults:
- - /base_attention@net.attention
- - /base_attention_condition@net_condition.attention
- - /base_cross_attention@net.crossattention
- - /base_mlp@net.mlp
- - /base_mlp@net_condition.mlp

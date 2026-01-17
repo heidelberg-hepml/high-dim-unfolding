@@ -767,19 +767,17 @@ class KinematicsExperiment(BaseExperiment):
     def _batch_loss(self, batch):
         batch = batch.to(self.device, non_blocking=True)
         loss, component_loss = self.model.batch_loss(batch)
-        mse = loss.cpu().item()
-        assert torch.isfinite(loss).all()
-        metrics = {"mse": mse}
+        metrics = {"mse": loss}
 
         if "Autoregressive" in self.cfg.modelname:
             for k in range(4):
-                metrics[f"jet_mse_{k}"] = component_loss[k].cpu().item()
-                metrics[f"const_mse_{k}"] = component_loss[k + 4].cpu().item()
+                metrics[f"jet_mse_{k}"] = component_loss[k]
+                metrics[f"const_mse_{k}"] = component_loss[k + 4]
             if not getattr(self.cfg.cfm, "stop_token", False):
-                metrics["BCE_stop_loss"] = component_loss[4].cpu().item()
+                metrics["BCE_stop_loss"] = component_loss[4]
         else:
             for k in range(4):
-                metrics[f"mse_{k}"] = component_loss[k].cpu().item()
+                metrics[f"mse_{k}"] = component_loss[k]
         return loss, metrics
 
     def _init_metrics(self):
