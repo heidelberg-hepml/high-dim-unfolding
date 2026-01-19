@@ -3,7 +3,7 @@ from lgatr.interface import extract_vector
 
 from experiments.dataset import positional_encoding
 from experiments.embedding import embed_data_into_ga
-from experiments.kinematics.cfm import AutoregressiveCFM, EventCFM, JetCFM
+from experiments.kinematics.cfm import EventCFM, JetCFM
 from experiments.logger import LOGGER
 from experiments.misc import get_attention_mask
 
@@ -32,7 +32,9 @@ class ConditionalTransformerCFM(EventCFM):
         self.use_xformers = torch.cuda.is_available()
 
     def get_masks(self, batch):
-        attention_mask = get_attention_mask(batch.x_gen_batch, attention_backend="xformers", dtype=batch.x_gen.dtype)
+        attention_mask = get_attention_mask(
+            batch.x_gen_batch, attention_backend="xformers", dtype=batch.x_gen.dtype
+        )
         condition_attention_mask = get_attention_mask(
             batch.x_det_batch, attention_backend="xformers", dtype=batch.x_det.dtype
         )
@@ -143,8 +145,12 @@ class ConditionalLGATrCFM(EventCFM):
                 batch.x_det_ptr,
                 None,
             )
-        attention_mask = get_attention_mask(gen_batch_idx, attention_backend="xformers", dtype=batch.x_gen.dtype)
-        condition_attention_mask = get_attention_mask(det_batch_idx, attention_backend="xformers", dtype=batch.x_det.dtype)
+        attention_mask = get_attention_mask(
+            gen_batch_idx, attention_backend="xformers", dtype=batch.x_gen.dtype
+        )
+        condition_attention_mask = get_attention_mask(
+            det_batch_idx, attention_backend="xformers", dtype=batch.x_det.dtype
+        )
         cross_attention_mask = get_attention_mask(
             gen_batch_idx,
             condition_batch=det_batch_idx,
@@ -356,12 +362,17 @@ class JetConditionalTransformerCFM(JetCFM):
             else:
                 det_batch_idx = torch.arange(batch.num_graphs, device=batch.x_det.device)
 
-        attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
-        condition_attention_mask = xformers_mask(det_batch_idx, materialize=not self.use_xformers)
-        cross_attention_mask = xformers_mask(
+        attention_mask = get_attention_mask(
+            gen_batch_idx, attention_backend="xformers", dtype=batch.jet_gen.dtype
+        )
+        condition_attention_mask = get_attention_mask(
+            det_batch_idx, attention_backend="xformers", dtype=batch.jet_det.dtype
+        )
+        cross_attention_mask = get_attention_mask(
             gen_batch_idx,
-            det_batch_idx,
-            materialize=not self.use_xformers,
+            condition_batch=det_batch_idx,
+            attention_backend="xformers",
+            dtype=batch.jet_gen.dtype,
         )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
@@ -379,8 +390,7 @@ class JetConditionalTransformerCFM(JetCFM):
             input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
         else:
             input = torch.cat([batch.jet_det, batch.jet_scalars_det], dim=-1)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": attention_mask}
-        return self.net_condition(input.unsqueeze(0), **attn_kwargs)
+        return self.net_condition(input.unsqueeze(0), **attention_mask)
 
     def get_velocity(
         self,
@@ -414,10 +424,8 @@ class JetConditionalTransformerCFM(JetCFM):
         vp = self.net(
             x=input.unsqueeze(0),
             processed_condition=condition,
-            attn_kwargs={"attn_bias" if self.use_xformers else "attn_mask": attention_mask},
-            crossattn_kwargs={
-                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
-            },
+            attn_kwargs=attention_mask,
+            crossattn_kwargs=crossattention_mask,
         ).squeeze(0)
         if self.cfm.transpose:
             vp = vp.reshape(xt.shape[0], 4)
@@ -513,12 +521,17 @@ class JetConditionalLGATrCFM(JetCFM):
                     None,
                 )
 
-        attention_mask = xformers_mask(gen_batch_idx, materialize=not self.use_xformers)
-        condition_attention_mask = xformers_mask(det_batch_idx, materialize=not self.use_xformers)
-        cross_attention_mask = xformers_mask(
+        attention_mask = get_attention_mask(
+            gen_batch_idx, attention_backend="xformers", dtype=batch.jet_gen.dtype
+        )
+        condition_attention_mask = get_attention_mask(
+            det_batch_idx, attention_backend="xformers", dtype=batch.jet_det.dtype
+        )
+        cross_attention_mask = get_attention_mask(
             gen_batch_idx,
-            det_batch_idx,
-            materialize=not self.use_xformers,
+            condition_batch=det_batch_idx,
+            attention_backend="xformers",
+            dtype=batch.jet_gen.dtype,
         )
         return attention_mask, condition_attention_mask, cross_attention_mask
 
@@ -568,9 +581,8 @@ class JetConditionalLGATrCFM(JetCFM):
 
         mv = mv.unsqueeze(0)
         s = s.unsqueeze(0)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": attention_mask}
 
-        condition_mv, condition_s = self.net_condition(mv, s, **attn_kwargs)
+        condition_mv, condition_s = self.net_condition(mv, s, **attention_mask)
 
         return condition_mv, condition_s
 
@@ -629,10 +641,8 @@ class JetConditionalLGATrCFM(JetCFM):
             multivectors_condition=condition_mv,
             scalars=s.unsqueeze(0),
             scalars_condition=condition_s,
-            attn_kwargs={"attn_bias" if self.use_xformers else "attn_mask": attention_mask},
-            crossattn_kwargs={
-                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
-            },
+            attn_kwargs=attention_mask,
+            crossattn_kwargs=crossattention_mask,
         )
 
         mv_outputs = mv_outputs.squeeze(0)
@@ -648,80 +658,3 @@ class JetConditionalLGATrCFM(JetCFM):
         v_straight[..., self.scalar_outputs] = v_s[..., self.scalar_outputs]
 
         return v_straight
-
-
-class AutoregressiveTransformerCFM(AutoregressiveCFM):
-    """
-    Base class for all CFM models
-    - event-generation-specific features are implemented in EventCFM
-    - get_velocity is implemented by architecture-specific subclasses
-    """
-
-    def __init__(
-        self,
-        net,
-        net_condition,
-        mlp,
-        cfm,
-        odeint,
-    ):
-        super().__init__(
-            cfm,
-            odeint,
-        )
-        self.net = net
-        self.net_condition = net_condition
-        self.mlp = mlp
-        self.use_xformers = torch.cuda.is_available()
-
-    def get_masks(self, batch):
-        attention_mask = xformers_mask(batch.x_gen_batch, materialize=not self.use_xformers)
-        condition_attention_mask = xformers_mask(
-            batch.x_det_batch, materialize=not self.use_xformers
-        )
-        cross_attention_mask = xformers_mask(
-            batch.x_gen_batch,
-            batch.x_det_batch,
-            materialize=not self.use_xformers,
-        )
-        return attention_mask, condition_attention_mask, cross_attention_mask
-
-    def get_condition(self, batch, attention_mask, condition_attention_mask, crossattention_mask):
-        condition_input = torch.cat([batch.x_det, batch.scalars_det], dim=-1)
-        attn_kwargs = {"attn_bias" if self.use_xformers else "attn_mask": condition_attention_mask}
-        condition = self.net_condition(condition_input.unsqueeze(0), **attn_kwargs)
-        input = torch.cat([batch.x_gen, batch.scalars_gen], dim=-1)
-        output = self.net(
-            x=input.unsqueeze(0),
-            processed_condition=condition,
-            attn_kwargs={"attn_bias" if self.use_xformers else "attn_mask": attention_mask},
-            crossattn_kwargs={
-                "attn_bias" if self.use_xformers else "attn_mask": crossattention_mask
-            },
-        ).squeeze(0)
-
-        return output
-
-    def get_velocity(
-        self,
-        xt,
-        t,
-        batch,
-        condition,
-        self_condition=None,
-    ):
-        # if generating only last token, add only corresponding scalars
-        if xt.shape[0] <= batch.num_graphs:
-            scalars = batch.scalars_gen[batch.x_gen_ptr[1:] - 1]
-        else:
-            scalars = batch.scalars_gen
-
-        if self_condition is not None:
-            input = torch.cat(
-                [xt, scalars, self.t_embedding(t), condition, self_condition],
-                dim=-1,
-            )
-        else:
-            input = torch.cat([xt, scalars, self.t_embedding(t), condition], dim=-1)
-        vp = self.mlp(input)
-        return vp

@@ -672,7 +672,7 @@ class BaseExperiment:
             loss /= self.world_size
         self.train_loss.append(loss.detach().item())
         self.train_lr.append(self.optimizer.param_groups[0]["lr"])
-        self.train_grad_norm.append(grad_norm)
+        self.train_grad_norm.append(grad_norm.detach().item())
         for key, value in metrics.items():
             metrics[key] = value.cpu().item()
         for key, value in metrics.items():

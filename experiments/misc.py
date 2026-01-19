@@ -1,9 +1,9 @@
 import math
 from collections.abc import Mapping
-from torch import nn
 
 import numpy as np
 import torch
+from torch import nn
 
 try:
     from torch.nn.attention.flex_attention import create_block_mask
@@ -186,7 +186,10 @@ def flatten_dict(d, parent_key="", sep="."):
             items.append((new_key, v))
     return dict(items)
 
-def get_xformers_attention_mask(batch, batch_condition=None, materialize=False, dtype=torch.float32):
+
+def get_xformers_attention_mask(
+    batch, batch_condition=None, materialize=False, dtype=torch.float32
+):
     """
     Construct attention mask that makes sure that objects only attend to each other
     within the same batch element, and not across batch elements
@@ -216,7 +219,9 @@ def get_xformers_attention_mask(batch, batch_condition=None, materialize=False, 
     mask = BlockDiagonalMask.from_seqlens(bincounts, bincounts_condition)
     if materialize:
         # materialize mask to torch.tensor (only for testing purposes)
-        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(batch.device, dtype=dtype)
+        mask = mask.materialize(shape=(len(batch), len(batch_condition))).to(
+            batch.device, dtype=dtype
+        )
 
     return mask
 
@@ -250,6 +255,7 @@ def xformers_causal_mask(batch, materialize=False):
 
     return mask
 
+
 def get_flex_attention_mask(batch: torch.Tensor):
     """Returns a mask for the attention mechanism.
 
@@ -270,6 +276,7 @@ def get_flex_attention_mask(batch: torch.Tensor):
 
     mask = create_block_mask(jagged_masking, None, None, N, N, device=batch.device, _compile=True)
     return mask
+
 
 def get_attention_mask(
     batch: torch.Tensor,
@@ -295,7 +302,9 @@ def get_attention_mask(
     """
     on_cpu = batch.device == torch.device("cpu")
     if attention_backend == "xformers":
-        mask = get_xformers_attention_mask(batch=batch, batch_condition=condition_batch, dtype=dtype, materialize=on_cpu)
+        mask = get_xformers_attention_mask(
+            batch=batch, batch_condition=condition_batch, dtype=dtype, materialize=on_cpu
+        )
         if not on_cpu:
             return {"attn_bias": mask}
         else:
@@ -329,7 +338,7 @@ def get_attention_mask(
             f"Unsupported attention backend: {attention_backend}. "
             'Supported backends are "xformers", "flex", and "flash".'
         )
-    
+
 
 def get_device() -> torch.device:
     """Gets CUDA if available, CPU else."""

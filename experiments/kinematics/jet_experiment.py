@@ -717,11 +717,10 @@ class JetKinematicsExperiment(BaseExperiment):
     def _batch_loss(self, batch):
         batch = batch.to(self.device)
         loss, component_loss = self.model.batch_loss(batch)
-        mse = loss.cpu().item()
         assert torch.isfinite(loss).all()
-        metrics = {"mse": mse}
+        metrics = {"mse": loss}
         for k in range(4):
-            metrics[f"mse_{k}"] = component_loss[k].cpu().item()
+            metrics[f"mse_{k}"] = component_loss[k]
         return loss, metrics
 
     def _init_metrics(self):

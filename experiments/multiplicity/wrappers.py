@@ -58,7 +58,9 @@ class MultiplicityTransformerWrapper(nn.Module):
             new_batch = batch
         input = torch.cat([new_batch.x_det, new_batch.scalars_det], dim=-1)
 
-        mask = get_attention_mask(new_batch.x_det_batch, attention_backend='xformers', dtype=input.dtype)
+        mask = get_attention_mask(
+            new_batch.x_det_batch, attention_backend="xformers", dtype=input.dtype
+        )
 
         outputs = self.net(input.unsqueeze(0), **mask)
         outputs = self.aggregation(outputs, new_batch.x_det_batch).squeeze(0)
@@ -156,7 +158,7 @@ class MultiplicityLGATrWrapper(MultiplicityTransformerWrapper):
         multivector = mv.unsqueeze(0)
         scalars = s.unsqueeze(0)
 
-        mask = get_attention_mask(batch_idx, attention_backend='xformers', dtype=multivector.dtype)
+        mask = get_attention_mask(batch_idx, attention_backend="xformers", dtype=multivector.dtype)
         multivector_outputs, _ = self.net(multivector, scalars=scalars, **mask)
         outputs = extract_scalar(multivector_outputs)[0, :, :, 0]
         params = self.aggregation(outputs, index=batch_idx)

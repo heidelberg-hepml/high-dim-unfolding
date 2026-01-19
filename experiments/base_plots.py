@@ -337,6 +337,9 @@ def plot_ratio_histogram(
         else:
             bins = np.linspace(bins_range[0], bins_range[1], n_bins)
 
+    if isinstance(bins, torch.Tensor):
+        bins = bins.numpy()
+
     # construct histograms
     hists = {}
     for key in labels:

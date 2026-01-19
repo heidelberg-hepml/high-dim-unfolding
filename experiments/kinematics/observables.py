@@ -179,7 +179,7 @@ def tau(constituents, batch_idx, other_batch_idx=None, N=1, beta=1.0, R0=R0, axi
     for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         tau = compute_nsubjettiness(
-            jet=event[..., [1, 2, 3, 0]],
+            input_particles=event[..., [1, 2, 3, 0]],
             N=N,
             beta=beta,
             R0=R0,
@@ -195,7 +195,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **kwar
     log_rhos = []
     for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-        sd_fourm = np.array(apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1))
+        sd_fourm = np.array(apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)[0])
         mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
         pt2 = np.sum(np.sum(event[..., 1:3], axis=0) ** 2)
         log_rho = np.log(np.clip(mass2 / pt2, a_min=1e-10, a_max=None))
