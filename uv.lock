@@ -1091,6 +1091,7 @@ dependencies = [
     { name = "hdf5plugin" },
     { name = "hydra-core" },
     { name = "lgatr" },
+    { name = "lloca" },
     { name = "matplotlib" },
     { name = "mlflow-skinny" },
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1127,6 +1128,7 @@ requires-dist = [
     { name = "hdf5plugin" },
     { name = "hydra-core" },
     { name = "lgatr" },
+    { name = "lloca" },
     { name = "matplotlib" },
     { name = "mlflow-skinny" },
     { name = "numpy" },
@@ -1369,6 +1371,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ec/04/c8cb07d1fe07f7ebb239ff3dd42d6ee9114a0b35fa2de4866d434d3aead4/lgatr-1.4.2.tar.gz", hash = "sha256:518e82c477ab3f03be2549281b9922c25e21dedc553a063edd3acf70a0c438c2", size = 1147716, upload-time = "2026-01-08T08:03:37.937Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/08/92/8ee8b41de055edbbce91bd6d5db25c2f31f504545b76d0bc055a0961e32c/lgatr-1.4.2-py3-none-any.whl", hash = "sha256:c858dc086621c5f0d32d9fbf28e9d78b376155f1a07fb20da57abcc05fe18d9b", size = 59268, upload-time = "2026-01-08T08:03:36.447Z" },
+]
+
+[[package]]
+name = "lloca"
+version = "1.3.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "lgatr" },
+    { name = "pelican-lite" },
+    { name = "torch" },
+    { name = "torch-geometric" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/db/9c/fb30d01b908e81c8e98415bc9889e05516a2f0572f41c3df000dfd61cc81/lloca-1.3.4.tar.gz", hash = "sha256:daaa8506ec7dc7f35d3a78c8339c601ba00b5e7922c1cf669ffa5473e41dfe35", size = 249245, upload-time = "2026-01-08T07:39:31.713Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/0a/70/9a8558509b69b4bd02abab30b020d79674f4bfaf130a7ea46e1e9806d0cc/lloca-1.3.4-py3-none-any.whl", hash = "sha256:f174e6a2e4e31732b11e2af79b6b76de33db884aa236f246a5397bb68b91d6f5", size = 61685, upload-time = "2026-01-08T07:39:30.162Z" },
 ]
 
 [[package]]
@@ -2422,6 +2439,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d4/de/53e0bcf53d13e005bd8c92e7855142494f41171b34c2536b86187474184d/parso-0.8.5.tar.gz", hash = "sha256:034d7354a9a018bdce352f48b2a8a450f05e9d6ee85db84764e9b6bd96dafe5a", size = 401205, upload-time = "2025-08-23T15:15:28.028Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/32/f8e3c85d1d5250232a5d3477a2a28cc291968ff175caeadaf3cc19ce0e4a/parso-0.8.5-py2.py3-none-any.whl", hash = "sha256:646204b5ee239c396d040b90f9e272e9a8017c630092bf59980beb62fd033887", size = 106668, upload-time = "2025-08-23T15:15:25.663Z" },
+]
+
+[[package]]
+name = "pelican-lite"
+version = "1.1.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "torch" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e1/16/1c2e99864ed7175ab446789eb7fc76cceef1a54e6600388fb8c3ad0b5b6e/pelican_lite-1.1.4.tar.gz", hash = "sha256:5edf4d94481489a59f5885bbffdf14b2d92fce38cad88891a10aa4c1bc777595", size = 22810, upload-time = "2026-01-11T14:22:14.035Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/7c/ed/2c9f23150ffd14b2983656783fc378580c5d025b9c9dc8e25ca4ded5c1a7/pelican_lite-1.1.4-py3-none-any.whl", hash = "sha256:fef95ed567ec3588da9eb0e9ce804d558ed8ba314303e0297a23316f25303704", size = 11612, upload-time = "2026-01-11T14:22:12.633Z" },
 ]
 
 [[package]]

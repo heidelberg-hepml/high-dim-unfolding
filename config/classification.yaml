@@ -1,0 +1,30 @@
+exp_type: classification
+
+data:
+ tagging_features: all
+ boost_jet: false
+ beam_reference: lightlike
+ two_beams: true
+ add_time_reference: true
+ mass_reg: 5e-3
+ spurion_scale: 1
+ max_particles: null
+ momentum_float64: true
+ true_file: /remote/gpu04/petitjean/high-dim-unfolding/notebooks/plot_scripts/truth.pt
+ generated_file: /remote/gpu04/petitjean/high-dim-unfolding/notebooks/plot_scripts/samples.pt
+
+evaluation:
+ batchsize: 512
+ save_roc: false
+ eval_set: [train, test, val]
+
+plotting:
+ roc: true
+ loss: true
+ score: true
+
+defaults:
+ - model: tag_transformer
+ - training: tag_transformer
+ - default
+ - _self_

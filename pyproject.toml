@@ -13,6 +13,7 @@ dependencies = [
     "hdf5plugin",
     "hydra-core",
     "lgatr",
+    "lloca",
     "matplotlib",
     "mlflow-skinny",
     "numpy",
