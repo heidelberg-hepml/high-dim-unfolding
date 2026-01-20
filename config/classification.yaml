@@ -10,8 +10,7 @@ data:
  spurion_scale: 1
  max_particles: null
  momentum_float64: false
- true_file: /remote/gpu04/petitjean/high-dim-unfolding/notebooks/plot_scripts/truth.pt
- generated_file: /remote/gpu04/petitjean/high-dim-unfolding/notebooks/plot_scripts/samples.pt
+ data_path: /remote/gpu04/petitjean/high-dim-unfolding/old_runs/FINAL/chain/z_tr_2320585/constituents/samples_0/
 
 evaluation:
  batchsize: 512

@@ -15,7 +15,8 @@ from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
 from torch_geometric.utils import scatter, to_dense_batch
 
-from experiments.misc import get_attention_mask
+from experiments.logger import LOGGER
+from experiments.tagging.misc import get_attention_mask
 from experiments.tagging.embedding import get_tagging_features
 
 
@@ -307,9 +308,13 @@ class TransformerWrapper(AggregatedTaggerWrapper):
         features_local = features_local.unsqueeze(0)
         frames = frames.reshape(1, *frames.shape)
 
+        # LOGGER.info(f"Transformer input: {features_local}, shape {features_local.shape}")
+
         # network
         with torch.autocast("cuda", enabled=self.use_amp):
             outputs = self.net(inputs=features_local, frames=frames, **mask_kwarg)
+
+        # LOGGER.info(f"Transformer output: {outputs}")
 
         # aggregation
         outputs = outputs[0, ...]
@@ -317,6 +322,9 @@ class TransformerWrapper(AggregatedTaggerWrapper):
             score = self.extract_score(outputs, ptr)
         else:
             score = outputs[is_global]
+
+        # LOGGER.info(f"Transformer score: {score}")
+        
         return score, tracker, frames
 
 

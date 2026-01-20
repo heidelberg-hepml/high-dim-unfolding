@@ -1,5 +1,3 @@
-import os
-
 import numpy as np
 import torch
 from torch_geometric.data import Data
@@ -38,6 +36,51 @@ class TaggingDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         return self.data_list[idx]
+
+
+class TopTaggingDataset(TaggingDataset):
+    def load_data(
+        self,
+        filename,
+        mode,
+        network_float64=False,
+        momentum_float64=True,
+    ):
+        """
+        Parameters
+        ----------
+        filename : str
+            Path to file in npz format where the dataset in stored
+        mode : {"train", "test", "val"}
+            Purpose of the dataset
+            Train, test and validation datasets are already seperated in the specified file
+        network_float64 : bool
+        momentum_float64 : bool
+        """
+        network_dtype = torch.float64 if network_float64 else torch.float32
+        momentum_dtype = torch.float64 if momentum_float64 else torch.float32
+
+        data = np.load(filename)
+        kinematics = data[f"kinematics_{mode}"]
+        labels = data[f"labels_{mode}"]
+
+        kinematics = torch.tensor(kinematics, dtype=momentum_dtype)
+        labels = torch.tensor(labels, dtype=torch.bool)
+
+        # create list of torch_geometric.data.Data objects
+        self.data_list = []
+        for i in range(kinematics.shape[0]):
+            # drop zero-padded components
+            mask = (kinematics[i, ...].abs() > EPS).all(dim=-1)
+            fourmomenta = kinematics[i, ...][mask]
+            label = labels[i, ...]
+            scalars = torch.zeros(
+                fourmomenta.shape[0],
+                0,
+                dtype=network_dtype,
+            )  # no scalar information
+            data = Data(x=fourmomenta, scalars=scalars, label=label)
+            self.data_list.append(data)
 
 
 class ClassificationDataset(TaggingDataset):
@@ -141,7 +184,8 @@ class ClassificationDataset(TaggingDataset):
         for label, path in label_paths:
             batch = torch.load(path, map_location="cpu", weights_only=False)
             data_list = batch.to_data_list()
-            label_tensor = torch.tensor([label], dtype=torch.bool)
+            # label_tensor = torch.tensor([label], dtype=torch.bool)
+            label_tensor = torch.randint(0, 2, (1,), dtype=torch.bool)
             for old_graph in data_list:
                 x = old_graph.x_gen.to(dtype)
                 scalars = torch.zeros(x.shape[0], 0, dtype=dtype)

@@ -4,7 +4,7 @@ from lloca.utils.polar_decomposition import restframe_boost
 from lloca.utils.utils import get_batch_from_ptr
 from torch_geometric.utils import scatter
 
-from experiments.misc import get_eta, get_phi, get_pt
+from experiments.tagging.hep import get_eta, get_phi, get_pt
 from experiments.tagging.dataset import EPS
 
 # weaver defaults for tagging features standardization (mean, std)

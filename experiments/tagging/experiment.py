@@ -6,7 +6,7 @@ import torch
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch_geometric.loader import DataLoader
 
-from experiments.base_experiment import BaseExperiment
+from experiments.tagging.base_experiment import BaseExperiment
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 from experiments.tagging.dataset import ClassificationDataset
@@ -369,7 +369,6 @@ class TaggingExperiment(BaseExperiment):
         if isinstance(self.loss, torch.nn.BCEWithLogitsLoss):
             y_pred = y_pred[:, 0]
         LOGGER.info(f"nb y_pred 1: {(y_pred > 0).sum()}, nb true 1: {(label > 0.5).sum()}")
-        LOGGER.info(f"y_pred shape: {y_pred.shape}, label shape: {label.shape}")
         return y_pred, label, tracker, frames
 
     def _init_metrics(self):
@@ -390,6 +389,6 @@ class ClassificationExperiment(TaggingExperiment):
         self.extra_scalars = 0
 
     def init_data(self):
-        true_file = self.cfg.data.true_file
-        generated_file = self.cfg.data.generated_file
+        true_file = os.path.join(self.cfg.data.data_path, "truth.pt")
+        generated_file = os.path.join(self.cfg.data.data_path, "samples.pt")
         self._init_data(ClassificationDataset, (true_file, generated_file))
