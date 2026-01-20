@@ -21,6 +21,7 @@ class TaggingExperiment(BaseExperiment):
 
     def init_physics(self):
         modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+        self.momentum_dtype = torch.float64 if self.cfg.data.momentum_float64 else torch.float32
 
         self.cfg.model.out_channels = self.num_outputs
         if modelname in [
@@ -59,7 +60,7 @@ class TaggingExperiment(BaseExperiment):
             "MIParticleTransformer",
         ]:
             # Non-equivariant or canonicalization
-            self.cfg.model.in_channels = 7 + self.extra_scalars
+            self.cfg.model.in_channels = 4 + self.extra_scalars
             if self.cfg.model.add_fourmomenta_backbone:
                 self.cfg.model.in_channels += 4
 
@@ -93,7 +94,8 @@ class TaggingExperiment(BaseExperiment):
         self.data_test = Dataset()
         self.data_val = Dataset()
         kwargs = dict(
-            dtype=torch.float64 if self.cfg.use_float64 else torch.float32,
+            network_float64=self.cfg.use_float64,
+            momentum_float64=self.cfg.data.momentum_float64,
         )
         if hasattr(self.cfg.data, "train_val_test"):
             kwargs["train_val_test"] = tuple(self.cfg.data.train_val_test)
@@ -323,7 +325,9 @@ class TaggingExperiment(BaseExperiment):
             plot_dict["train_loss"] = self.train_loss
             plot_dict["val_loss"] = self.val_loss
             plot_dict["train_lr"] = self.train_lr
-            plot_dict["grad_norm"] = torch.tensor(self.train_grad_norm)
+            plot_dict["grad_norm"] = torch.stack(self.grad_norm_train).cpu()
+            plot_dict["grad_norm_frames"] = torch.stack(self.grad_norm_frames).cpu()
+            plot_dict["grad_norm_net"] = torch.stack(self.grad_norm_net).cpu()
             for key, value in self.train_metrics.items():
                 plot_dict[key] = value
         plot_mixer(self.cfg, plot_path, title, plot_dict)
@@ -350,7 +354,7 @@ class TaggingExperiment(BaseExperiment):
 
     def _extract_batch(self, batch):
         batch = batch.to(self.device)
-        fourmomenta = batch.x.to(self.dtype)
+        fourmomenta = batch.x.to(self.momentum_dtype)
         scalars = batch.scalars.to(self.dtype)
         ptr = batch.ptr
         label = batch.label.to(self.dtype)
@@ -368,7 +372,7 @@ class TaggingExperiment(BaseExperiment):
         y_pred, tracker, frames = self.model(embedding)
         if isinstance(self.loss, torch.nn.BCEWithLogitsLoss):
             y_pred = y_pred[:, 0]
-        LOGGER.info(f"nb y_pred 1: {(y_pred > 0).sum()}, nb true 1: {(label > 0.5).sum()}")
+
         return y_pred, label, tracker, frames
 
     def _init_metrics(self):
@@ -380,6 +384,17 @@ class TaggingExperiment(BaseExperiment):
             "gamma_mean": [],
             "gamma_max": [],
         }
+
+
+class TopTaggingExperiment(TaggingExperiment):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.num_outputs = 1
+        self.extra_scalars = 0
+
+    def init_data(self):
+        data_path = os.path.join(self.cfg.data.data_dir, f"toptagging_{self.cfg.data.dataset}.npz")
+        self._init_data(TopTaggingDataset, data_path)
 
 
 class ClassificationExperiment(TaggingExperiment):

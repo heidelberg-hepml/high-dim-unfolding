@@ -10,7 +10,7 @@ data:
  spurion_scale: 1
  max_particles: null
  momentum_float64: false
- data_path: /remote/gpu04/petitjean/high-dim-unfolding/old_runs/FINAL/chain/z_tr_2320585/constituents/samples_0/
+ data_path: ???
 
 evaluation:
  batchsize: 512

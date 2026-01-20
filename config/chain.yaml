@@ -6,9 +6,9 @@ use_mlflow: false
 # Paths to the three previous experiment directories
 # Each should contain config.yaml and models/model_run*.pt
 experiment_paths:
-  multiplicity: /path/to/multiplicity  # Path to multiplicity experiment directory
-  jets: /path/to/jets  # Path to jets experiment directory
-  constituents: /path/to/constituents  # Path to constituents experiment directory
+  multiplicity: ???  # Path to multiplicity experiment directory
+  jets: ???  # Path to jets experiment directory
+  constituents: ???  # Path to constituents experiment directory
 
 # Which run index to use for model loading from each experiment
 model_run_indices:

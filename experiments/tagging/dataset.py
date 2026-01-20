@@ -1,6 +1,9 @@
 import numpy as np
+import os
 import torch
 from torch_geometric.data import Data
+
+from experiments.logger import LOGGER
 
 EPS = 1e-5
 
@@ -91,7 +94,8 @@ class ClassificationDataset(TaggingDataset):
         self,
         filename,
         mode,
-        dtype = torch.float32,
+        network_float64=False,
+        momentum_float64=True,
         train_val_test=(0.8, 0.1, 0.1),
         split_seed=0,
     ):
@@ -110,7 +114,6 @@ class ClassificationDataset(TaggingDataset):
         """
 
         label_paths = self._parse_filenames(filename)
-        split = self._sanitize_split(train_val_test)
 
         # cache splits so train/val/test get consistent subsets
         if (
@@ -119,9 +122,10 @@ class ClassificationDataset(TaggingDataset):
         ):
             ClassificationDataset._cached_splits = self._build_splits(
                 label_paths=label_paths,
-                split=split,
+                split=train_val_test,
                 split_seed=split_seed,
-                dtype=dtype,
+                network_float64=network_float64,
+                momentum_float64=momentum_float64,
             )
             ClassificationDataset._cache_key = label_paths
 
@@ -159,36 +163,18 @@ class ClassificationDataset(TaggingDataset):
                 raise FileNotFoundError(f"ClassificationDataset could not find file {path}")
         return paths
 
-    @staticmethod
-    def _sanitize_split(split):
-        if len(split) != 3:
-            raise ValueError(f"train_val_test must have three entries, got {split}")
-        if any(s < 0 for s in split):
-            raise ValueError(f"train_val_test entries must be non-negative, got {split}")
-        if sum(split) > 1.0 + 1e-6:
-            raise ValueError(f"train_val_test must sum to <= 1.0, got {split} (sum={sum(split):.3f})")
-        return tuple(float(s) for s in split)
-
-    @staticmethod
-    def _ensure_scalars(data, network_dtype):
-        scalars = getattr(data, "scalars", None)
-        if scalars is None:
-            scalars = torch.zeros(data.x.shape[0], 0, dtype=network_dtype)
-        else:
-            scalars = scalars.to(network_dtype)
-        return scalars
-
     @classmethod
-    def _build_splits(cls, label_paths, split, split_seed, dtype):
+    def _build_splits(cls, label_paths, split, split_seed, network_float64, momentum_float64):
         graphs = []
         for label, path in label_paths:
             batch = torch.load(path, map_location="cpu", weights_only=False)
             data_list = batch.to_data_list()
-            # label_tensor = torch.tensor([label], dtype=torch.bool)
-            label_tensor = torch.randint(0, 2, (1,), dtype=torch.bool)
+            label_tensor = torch.tensor([label], dtype=torch.bool)
             for old_graph in data_list:
-                x = old_graph.x_gen.to(dtype)
-                scalars = torch.zeros(x.shape[0], 0, dtype=dtype)
+                x = old_graph.x_gen.to(dtype=
+                    torch.float64 if momentum_float64 else torch.float32
+                )
+                scalars = torch.zeros(x.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32)
                 new_graph = Data(
                     x=x,
                     scalars=scalars,

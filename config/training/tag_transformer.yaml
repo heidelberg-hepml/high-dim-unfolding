@@ -8,5 +8,8 @@ weight_decay: 2
 lr: 3e-5
 scheduler: CosineAnnealingWarmRestarts
 
+lr_factor_framesnet: 1.0
+weight_decay_framesnet: 0.0
+
 defaults:
  - default

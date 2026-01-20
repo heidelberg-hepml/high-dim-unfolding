@@ -7,16 +7,15 @@ mean_aggregation: true
 attention_backend: xformers
 
 net:
- _target_: lloca.backbone.transformer.Transformer
+ _target_: experiments.baselines.transformer.Transformer
  _partial_: true
 
  in_channels: null
- attn_reps: "8x0n+2x1n" # reps can be varied, but number of channels should stay fixed
  out_channels: null
+ hidden_channels: 64
 
  num_blocks: 10
  num_heads: 8
- mlp_factor: 4
  dropout_prob: null
  checkpoint_blocks: false
 
