@@ -1,15 +1,15 @@
 exp_type: classification
 
 data:
- tagging_features: all
+ tagging_features: null
  boost_jet: false
- beam_reference: lightlike
- two_beams: true
- add_time_reference: true
+ beam_reference: null
+ two_beams: false
+ add_time_reference: false
  mass_reg: 5e-3
  spurion_scale: 1
  max_particles: null
- momentum_float64: true
+ momentum_float64: false
  true_file: /remote/gpu04/petitjean/high-dim-unfolding/notebooks/plot_scripts/truth.pt
  generated_file: /remote/gpu04/petitjean/high-dim-unfolding/notebooks/plot_scripts/samples.pt
 

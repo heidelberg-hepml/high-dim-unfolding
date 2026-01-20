@@ -60,8 +60,6 @@ class ClassificationDataset(TaggingDataset):
             Dict keys are interpreted as labels (0/1), otherwise order is [label 0, label 1].
         mode : {"train", "test", "val"}
             Purpose of the dataset. Splits are created once and cached.
-        network_float64 : bool
-        momentum_float64 : bool
         train_val_test : tuple[float, float, float]
             Fractions for train/val/test split (must sum to <= 1).
         split_seed : int

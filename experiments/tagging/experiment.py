@@ -21,7 +21,6 @@ class TaggingExperiment(BaseExperiment):
 
     def init_physics(self):
         modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
-        self.momentum_dtype = torch.float64 if self.cfg.data.momentum_float64 else torch.float32
 
         self.cfg.model.out_channels = self.num_outputs
         if modelname in [
@@ -344,8 +343,6 @@ class TaggingExperiment(BaseExperiment):
 
     def _batch_loss(self, batch):
         y_pred, label, tracker, _ = self._get_ypred_and_label(batch)
-        LOGGER.info(f"nb of 1 in label: {label.sum().item()} / {label.shape[0]}")
-        LOGGER.info(f"nb of predicted 1: {(y_pred > 0).sum().item()} / {y_pred.shape[0]}")
         loss = self.loss(y_pred, label)
 
         metrics = tracker
@@ -353,7 +350,7 @@ class TaggingExperiment(BaseExperiment):
 
     def _extract_batch(self, batch):
         batch = batch.to(self.device)
-        fourmomenta = batch.x.to(self.momentum_dtype)
+        fourmomenta = batch.x.to(self.dtype)
         scalars = batch.scalars.to(self.dtype)
         ptr = batch.ptr
         label = batch.label.to(self.dtype)
@@ -371,6 +368,8 @@ class TaggingExperiment(BaseExperiment):
         y_pred, tracker, frames = self.model(embedding)
         if isinstance(self.loss, torch.nn.BCEWithLogitsLoss):
             y_pred = y_pred[:, 0]
+        LOGGER.info(f"nb y_pred 1: {(y_pred > 0).sum()}, nb true 1: {(label > 0.5).sum()}")
+        LOGGER.info(f"y_pred shape: {y_pred.shape}, label shape: {label.shape}")
         return y_pred, label, tracker, frames
 
     def _init_metrics(self):
