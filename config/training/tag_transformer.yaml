@@ -1,5 +1,5 @@
 # transformer settings optimized by us
-iterations: 300000
+iterations: 100000
 batchsize: 128
 
 optimizer: Lion
