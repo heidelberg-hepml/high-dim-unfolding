@@ -171,13 +171,19 @@ class ClassificationDataset(TaggingDataset):
             data_list = batch.to_data_list()
             label_tensor = torch.tensor([label], dtype=torch.bool)
             for old_graph in data_list:
-                x = old_graph.x_gen.to(dtype=
+                x_gen = old_graph.x_gen.to(dtype=
                     torch.float64 if momentum_float64 else torch.float32
                 )
-                scalars = torch.zeros(x.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32)
+                scalars_gen = torch.zeros(x_gen.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32)
+                x_det = old_graph.x_det.to(dtype=
+                    torch.float64 if momentum_float64 else torch.float32
+                )
+                scalars_det = torch.zeros(x_det.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32)
                 new_graph = Data(
-                    x=x,
-                    scalars=scalars,
+                    x_gen=x_gen,
+                    scalars_gen=scalars_gen,
+                    x_det=x_det,
+                    scalars_det=scalars_det,
                     label=label_tensor,
                 )
                 graphs.append(new_graph)

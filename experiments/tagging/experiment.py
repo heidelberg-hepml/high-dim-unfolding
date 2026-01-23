@@ -9,7 +9,7 @@ from torch_geometric.loader import DataLoader
 from experiments.tagging.base_experiment import BaseExperiment
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
-from experiments.tagging.dataset import ClassificationDataset
+from experiments.tagging.dataset import ClassificationDataset, TopTaggingDataset
 from experiments.tagging.embedding import embed_tagging_data, get_num_tagging_features
 from experiments.tagging.plots import plot_mixer
 
@@ -21,6 +21,8 @@ class TaggingExperiment(BaseExperiment):
 
     def init_physics(self):
         modelname = self.cfg.model.net._target_.rsplit(".", 1)[-1]
+        if modelname == "ConditionalTransformer":
+            modelname = "Transformer"
         self.momentum_dtype = torch.float64 if self.cfg.data.momentum_float64 else torch.float32
 
         self.cfg.model.out_channels = self.num_outputs
@@ -407,3 +409,83 @@ class ClassificationExperiment(TaggingExperiment):
         true_file = os.path.join(self.cfg.data.data_path, "truth.pt")
         generated_file = os.path.join(self.cfg.data.data_path, "samples.pt")
         self._init_data(ClassificationDataset, (true_file, generated_file))
+
+    def _init_dataloader(self):
+        trn_sampler = torch.utils.data.DistributedSampler(
+            self.data_train,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=True,
+        )
+        tst_sampler = torch.utils.data.DistributedSampler(
+            self.data_test,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+        val_sampler = torch.utils.data.DistributedSampler(
+            self.data_val,
+            num_replicas=self.world_size,
+            rank=self.rank,
+            shuffle=False,
+        )
+
+        self.train_loader = DataLoader(
+            dataset=self.data_train,
+            batch_size=self.cfg.training.batchsize // self.world_size,
+            sampler=trn_sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+        self.test_loader = DataLoader(
+            dataset=self.data_test,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=tst_sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+        self.val_loader = DataLoader(
+            dataset=self.data_val,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=val_sampler,
+            follow_batch=["x_gen", "x_det"],
+        )
+
+        LOGGER.info(
+            f"Constructed dataloaders with "
+            f"train_batches={len(self.train_loader)}, test_batches={len(self.test_loader)}, val_batches={len(self.val_loader)}, "
+            f"batch_size={self.cfg.training.batchsize} (training), {self.cfg.evaluation.batchsize} (evaluation)"
+        )
+
+        self.init_standardization()
+
+    def _extract_batch(self, batch):
+        batch = batch.to(self.device)
+        fourmomenta = batch.x_gen.to(self.momentum_dtype)
+        scalars = batch.scalars_gen.to(self.dtype)
+        ptr = batch.x_gen_ptr
+        label = batch.label.to(self.dtype)
+        det_fourmomenta = batch.x_det.to(self.momentum_dtype)
+        det_scalars = batch.scalars_det.to(self.dtype)
+        det_ptr = batch.x_det_ptr
+        return (fourmomenta, scalars, ptr), (det_fourmomenta, det_scalars, det_ptr), label
+
+    def _get_ypred_and_label(self, batch):
+        gen_args, det_args, label = self._extract_batch(batch)
+        gen_embedding = embed_tagging_data(
+            *gen_args,
+            self.cfg.data,
+        )
+        gen_embedding["num_graphs"] = label.shape[0]
+        det_embedding = embed_tagging_data(
+            *det_args,
+            self.cfg.data,
+        )
+        det_embedding["num_graphs"] = label.shape[0]
+        embedding = {
+            "gen": gen_embedding,
+            "det": det_embedding,
+        }
+        y_pred, tracker, frames = self.model(embedding)
+        if isinstance(self.loss, torch.nn.BCEWithLogitsLoss):
+            y_pred = y_pred[:, 0]
+
+        return y_pred, label, tracker, frames

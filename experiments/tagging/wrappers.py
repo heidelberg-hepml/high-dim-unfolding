@@ -141,7 +141,7 @@ class AggregatedTaggerWrapper(TaggerWrapper):
         return score
 
 
-class PreviousTransformerWrapper(AggregatedTaggerWrapper):
+class TransformerWrapper(AggregatedTaggerWrapper):
     def __init__(
         self,
         net,
@@ -274,10 +274,11 @@ class PreviousTransformerWrapper(AggregatedTaggerWrapper):
         
         return score, tracker, frames
     
-class TransformerWrapper(nn.Module):
+class ConditionalTransformerWrapper(nn.Module):
     def __init__(
         self,
         net,
+        net_condition,
         in_channels,
         out_channels,
         *args,
@@ -292,23 +293,48 @@ class TransformerWrapper(nn.Module):
         self.attention_backend = attention_backend
         self.mean_aggregation = mean_aggregation
         self.net = net(in_channels=in_channels, out_channels=out_channels)
+        self.net_condition = net_condition(in_channels=in_channels)
         self.framesnet = framesnet
 
         if attention_backend == "flex":
             compile_flex_attention(package_name="lloca")
 
-    def forward(self, embedding):
-        input = torch.cat([embedding["fourmomenta"], embedding["scalars"], embedding["tagging_features"]], dim=-1)
-        batch = embedding["batch"]
+    def get_masks(self, batch, condition_batch, dtype):
         mask_kwarg = get_attention_mask(
             batch,
-            dtype=input.dtype,
+            dtype=dtype,
             attention_backend=self.attention_backend,
         )
-        with torch.autocast("cuda", enabled=self.use_amp):
-            outputs = self.net(inputs=input, **mask_kwarg)
+        condition_mask_kwarg = get_attention_mask(
+            condition_batch,
+            dtype=dtype,
+            attention_backend=self.attention_backend,
+        )
+        cross_mask_kwarg = get_attention_mask(
+            batch,
+            condition_batch=condition_batch,
+            dtype=dtype,
+            attention_backend=self.attention_backend,
+        )
+        return mask_kwarg, condition_mask_kwarg, cross_mask_kwarg
 
-        score = scatter(outputs, batch, dim=0, reduce='mean')
+    def forward(self, embedding):
+        input = torch.cat([embedding["gen"]["fourmomenta"], embedding["gen"]["scalars"], embedding["gen"]["tagging_features"]], dim=-1)
+        condition_input = torch.cat([embedding["det"]["fourmomenta"], embedding["det"]["scalars"], embedding["det"]["tagging_features"]], dim=-1)
+        gen_batch = embedding["gen"]["batch"]
+        det_batch = embedding["det"]["batch"]
+        mask_kwarg, condition_mask_kwarg, cross_mask_kwarg = self.get_masks(
+            gen_batch,
+            det_batch,
+            dtype=input.dtype,
+        )
+        with torch.autocast("cuda", enabled=self.use_amp):
+            condition = self.net_condition(inputs=condition_input.unsqueeze(0), **condition_mask_kwarg)
+            LOGGER.info(f"Condition shape: {condition.shape}")
+            LOGGER.info(f"Input shape: {input.shape}")
+            outputs = self.net(x=input.unsqueeze(0), processed_condition=condition, attn_kwargs=mask_kwarg, crossattn_kwargs=cross_mask_kwarg)
+
+        score = scatter(outputs, gen_batch, dim=0, reduce='mean')
         
         return score, {}, None
 

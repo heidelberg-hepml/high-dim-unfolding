@@ -24,7 +24,7 @@ def flatten_dict(d, parent_key="", sep="."):
     return dict(items)
 
 
-def get_xformers_attention_mask(batch, materialize=False, dtype=torch.float32):
+def get_xformers_attention_mask(batch, condition_batch=None, materialize=False, dtype=torch.float32):
     """
     Construct attention mask that makes sure that objects only attend to each other
     within the same batch element, and not across batch elements
@@ -44,11 +44,17 @@ def get_xformers_attention_mask(batch, materialize=False, dtype=torch.float32):
         attention mask, to be used in xformers.ops.memory_efficient_attention
         or torch.nn.functional.scaled_dot_product_attention
     """
+
+    if condition_batch is None:
+        condition_batch = batch
+
     bincounts = torch.bincount(batch).tolist()
-    mask = BlockDiagonalMask.from_seqlens(bincounts)
+    condition_bincounts = torch.bincount(condition_batch).tolist()
+
+    mask = BlockDiagonalMask.from_seqlens(bincounts, condition_bincounts)
     if materialize:
         # materialize mask to torch.tensor (only for testing purposes)
-        mask = mask.materialize(shape=(len(batch), len(batch))).to(batch.device, dtype=dtype)
+        mask = mask.materialize(shape=(len(batch), len(condition_batch))).to(batch.device, dtype=dtype)
     return mask
 
 
@@ -78,6 +84,7 @@ def get_attention_mask(
     batch: torch.Tensor,
     attention_backend: str,
     dtype: torch.dtype,
+    condition_batch: torch.Tensor | None = None,
 ):
     """Returns the attention mask according to the backend.
 
@@ -103,27 +110,6 @@ def get_attention_mask(
         else:
             # fallback to default attention
             return {"attn_mask": mask}
-    elif attention_backend == "flash":
-        seqlens = torch.bincount(batch).to(torch.int32)
-        maxlen = int(seqlens.max().item())
-        cu_seqlens = torch.cumsum(seqlens, dim=0, dtype=torch.int32)
-        cu_seqlens = torch.cat(
-            [torch.tensor([0], dtype=torch.int32, device=seqlens.device), cu_seqlens], dim=0
-        )
-        if not on_cpu:
-            return {
-                "cu_seqlens_q": cu_seqlens,
-                "cu_seqlens_k": cu_seqlens,
-                "max_seqlen_q": maxlen,
-                "max_seqlen_k": maxlen,
-            }
-        else:
-            # fallback to default attention
-            mask = get_xformers_attention_mask(batch=batch, dtype=dtype, materialize=on_cpu)
-            return {"attn_mask": mask}
-    elif attention_backend == "flex":
-        mask = get_flex_attention_mask(batch=batch)
-        return {"block_mask": mask}
     else:
         raise ValueError(
             f"Unsupported attention backend: {attention_backend}. "

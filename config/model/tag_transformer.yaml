@@ -1,4 +1,4 @@
-_target_: experiments.tagging.wrappers.TransformerWrapper
+_target_: experiments.tagging.wrappers.ConditionalTransformerWrapper
 in_channels: null
 out_channels: null
 use_amp: false
@@ -7,7 +7,7 @@ mean_aggregation: true
 attention_backend: xformers
 
 net:
- _target_: experiments.baselines.transformer.Transformer
+ _target_: experiments.baselines.ConditionalTransformer
  _partial_: true
 
  in_channels: null
@@ -18,6 +18,19 @@ net:
  num_heads: 8
  dropout_prob: null
  checkpoint_blocks: false
+
+net_condition:
+  _target_: experiments.baselines.Transformer
+  _partial_: true
+
+  in_channels: null
+  out_channels: 64
+  hidden_channels: 64
+
+  num_blocks: 4
+  num_heads: 8
+  dropout_prob: null
+  checkpoint_blocks: false
 
 defaults:
  - framesnet: identity
