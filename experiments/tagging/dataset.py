@@ -96,19 +96,19 @@ class ClassificationDataset(TaggingDataset):
         mode,
         network_float64=False,
         momentum_float64=True,
-        train_val_test=(0.8, 0.1, 0.1),
+        train_test=(0.8, 0.2),
         split_seed=0,
     ):
         """
         Parameters
         ----------
-        filename : tuple[str, str] | list[str] | dict
-            Two torch .pt files containing batches of graphs, one per class.
-            Dict keys are interpreted as labels (0/1), otherwise order is [label 0, label 1].
-        mode : {"train", "test", "val"}
+        filename : str
+            Base path where torch .pt files live. Files are expected at
+            <filename>/truth.pt and <filename>/samples.pt.
+        mode : {"train", "test"}
             Purpose of the dataset. Splits are created once and cached.
-        train_val_test : tuple[float, float, float]
-            Fractions for train/val/test split (must sum to <= 1).
+        train_test : tuple[float, float]
+            Fractions for train/test split (must sum to <= 1).
         split_seed : int
             RNG seed for deterministic shuffling before splitting.
         """
@@ -122,7 +122,7 @@ class ClassificationDataset(TaggingDataset):
         ):
             ClassificationDataset._cached_splits = self._build_splits(
                 label_paths=label_paths,
-                split=train_val_test,
+                split=train_test,
                 split_seed=split_seed,
                 network_float64=network_float64,
                 momentum_float64=momentum_float64,
@@ -137,25 +137,10 @@ class ClassificationDataset(TaggingDataset):
 
     @staticmethod
     def _parse_filenames(filename):
-        if isinstance(filename, (list, tuple)):
-            if len(filename) != 2:
-                raise ValueError("ClassificationDataset expects exactly two .pt files when filename is a list/tuple")
-            labelled = {0: filename[0], 1: filename[1]}
-        elif isinstance(filename, dict):
-            labelled = {}
-            for key, path in filename.items():
-                try:
-                    label = int(key)
-                except (TypeError, ValueError) as exc:
-                    raise ValueError(f"Dictionary keys for filename must be 0 or 1, got {key}") from exc
-                labelled[label] = path
-        else:
-            raise TypeError(
-                "filename must be a tuple/list of two .pt files or a dict mapping labels {0,1} to paths"
-            )
-
-        if set(labelled.keys()) != {0, 1}:
-            raise ValueError(f"Expected labels {{0,1}}, got {sorted(labelled.keys())}")
+        labelled = {
+            0: os.path.join(filename, "truth.pt"),
+            1: os.path.join(filename, "samples.pt"),
+        }
 
         paths = tuple((label, os.fspath(path)) for label, path in sorted(labelled.items()))
         for _, path in paths:
@@ -195,10 +180,8 @@ class ClassificationDataset(TaggingDataset):
         rng.shuffle(graphs)
 
         train_end = int(split[0] * len(graphs))
-        val_end = train_end + int(split[1] * len(graphs))
         splits = {
             "train": graphs[:train_end],
-            "val": graphs[train_end:val_end],
-            "test": graphs[val_end:],
+            "test": graphs[train_end:],
         }
         return splits

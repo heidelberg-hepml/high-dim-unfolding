@@ -330,11 +330,9 @@ class ConditionalTransformerWrapper(nn.Module):
         )
         with torch.autocast("cuda", enabled=self.use_amp):
             condition = self.net_condition(inputs=condition_input.unsqueeze(0), **condition_mask_kwarg)
-            LOGGER.info(f"Condition shape: {condition.shape}")
-            LOGGER.info(f"Input shape: {input.shape}")
             outputs = self.net(x=input.unsqueeze(0), processed_condition=condition, attn_kwargs=mask_kwarg, crossattn_kwargs=cross_mask_kwarg)
 
-        score = scatter(outputs, gen_batch, dim=0, reduce='mean')
+        score = scatter(outputs.squeeze(0), gen_batch, dim=0, reduce='mean')
         
         return score, {}, None
 

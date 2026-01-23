@@ -104,7 +104,7 @@ def get_attention_mask(
     """
     on_cpu = batch.device == torch.device("cpu")
     if attention_backend == "xformers":
-        mask = get_xformers_attention_mask(batch=batch, dtype=dtype, materialize=on_cpu)
+        mask = get_xformers_attention_mask(batch=batch, condition_batch=condition_batch, dtype=dtype, materialize=on_cpu)
         if not on_cpu:
             return {"attn_bias": mask}
         else:

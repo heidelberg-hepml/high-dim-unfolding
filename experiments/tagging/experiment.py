@@ -321,8 +321,11 @@ class TaggingExperiment(BaseExperiment):
             np.savetxt(file, roc)
 
         plot_dict = {}
-        if self.cfg.evaluate and ("test" in self.cfg.evaluation.eval_set):
-            plot_dict = {"results_test": self.results["test"]}
+        if self.cfg.evaluate:
+            if "test" in self.cfg.evaluation.eval_set:
+                plot_dict = {"results_test": self.results["test"]}
+            elif "val" in self.cfg.evaluation.eval_set:
+                plot_dict = {"results_test": self.results["val"]}
         if self.cfg.train:
             plot_dict["train_loss"] = self.train_loss
             plot_dict["val_loss"] = self.val_loss
@@ -403,12 +406,29 @@ class ClassificationExperiment(TaggingExperiment):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.num_outputs = 1
-        self.extra_scalars = 0
+        self.extra_scalars = get_num_tagging_features(
+            tagging_features=self.cfg.data.tagging_features
+        )
 
     def init_data(self):
-        true_file = os.path.join(self.cfg.data.data_path, "truth.pt")
-        generated_file = os.path.join(self.cfg.data.data_path, "samples.pt")
-        self._init_data(ClassificationDataset, (true_file, generated_file))
+        data_path = self.cfg.data.data_path
+        LOGGER.info(f"Creating {ClassificationDataset.__name__} from base path {data_path}")
+        t0 = time.time()
+        self.data_train = ClassificationDataset()
+        self.data_val = ClassificationDataset()
+        self.data_test = None
+        kwargs = dict(
+            network_float64=self.cfg.use_float64,
+            momentum_float64=self.cfg.data.momentum_float64,
+            train_test=self.cfg.data.train_test,
+
+        )
+        if hasattr(self.cfg.data, "split_seed"):
+            kwargs["split_seed"] = self.cfg.data.split_seed
+        self.data_train.load_data(data_path, "train", **kwargs)
+        self.data_val.load_data(data_path, "test", **kwargs)
+        dt = time.time() - t0
+        LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt / 60:.2f} min")
 
     def _init_dataloader(self):
         trn_sampler = torch.utils.data.DistributedSampler(
@@ -416,12 +436,6 @@ class ClassificationExperiment(TaggingExperiment):
             num_replicas=self.world_size,
             rank=self.rank,
             shuffle=True,
-        )
-        tst_sampler = torch.utils.data.DistributedSampler(
-            self.data_test,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=False,
         )
         val_sampler = torch.utils.data.DistributedSampler(
             self.data_val,
@@ -436,22 +450,17 @@ class ClassificationExperiment(TaggingExperiment):
             sampler=trn_sampler,
             follow_batch=["x_gen", "x_det"],
         )
-        self.test_loader = DataLoader(
-            dataset=self.data_test,
-            batch_size=self.cfg.evaluation.batchsize // self.world_size,
-            sampler=tst_sampler,
-            follow_batch=["x_gen", "x_det"],
-        )
         self.val_loader = DataLoader(
             dataset=self.data_val,
             batch_size=self.cfg.evaluation.batchsize // self.world_size,
             sampler=val_sampler,
             follow_batch=["x_gen", "x_det"],
         )
+        self.test_loader = None
 
         LOGGER.info(
             f"Constructed dataloaders with "
-            f"train_batches={len(self.train_loader)}, test_batches={len(self.test_loader)}, val_batches={len(self.val_loader)}, "
+            f"train_batches={len(self.train_loader)}, val_batches={len(self.val_loader)}, "
             f"batch_size={self.cfg.training.batchsize} (training), {self.cfg.evaluation.batchsize} (evaluation)"
         )
 

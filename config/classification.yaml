@@ -10,12 +10,13 @@ data:
  spurion_scale: 1
  max_particles: null
  momentum_float64: false
+ train_test: [0.8,0.2]
  data_path: ???
 
 evaluation:
  batchsize: 512
  save_roc: false
- eval_set: [train, test, val]
+ eval_set: [val]
 
 plotting:
  roc: true
