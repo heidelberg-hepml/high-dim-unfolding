@@ -658,7 +658,7 @@ class KinematicsExperiment(BaseExperiment):
 
         if self.cfg.evaluation.save_samples:
             path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
-            os.makedirs(os.path.join(path), exist_ok=True)
+            os.makedirs(path, exist_ok=True)
             LOGGER.info(f"Saving samples in {path}")
             torch.save(self.data_raw["samples"], os.path.join(path, "samples.pt"))
             torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))

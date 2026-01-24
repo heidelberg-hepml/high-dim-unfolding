@@ -5,6 +5,7 @@ import numpy as np
 import torch
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Batch
 
 from experiments.tagging.base_experiment import BaseExperiment
 from experiments.logger import LOGGER
@@ -498,3 +499,95 @@ class ClassificationExperiment(TaggingExperiment):
             y_pred = y_pred[:, 0]
 
         return y_pred, label, tracker, frames
+
+    @torch.no_grad()
+    def _evaluate_single(self, loader, title, mode, step=None):
+        assert mode in ["val", "eval"]
+
+        if mode == "eval":
+            LOGGER.info(
+                f"### Starting to evaluate model on {title} dataset with "
+                f"{len(loader.dataset)} elements, batchsize {loader.batch_size} ###"
+            )
+            if self.cfg.evaluation.save_predictions:
+                data_list = []
+        metrics = {}
+
+        # predictions
+        labels_true, labels_predict = [], []
+        self.model.eval()
+        for batch in loader:
+            y_pred, label, _, _ = self._get_ypred_and_label(batch)
+            labels_true.append(label.cpu().float())
+            labels_predict.append(y_pred.cpu().float())
+            if mode == "eval" and self.cfg.evaluation.save_predictions:
+                batch.weight_gen = torch.nn.functional.sigmoid(y_pred).cpu().float()
+                data_list.extend(batch.to_data_list())
+
+        if mode == "eval" and self.cfg.evaluation.save_predictions:
+            full_batch = Batch.from_data_list(data_list, follow_batch=["x_gen", "x_det"])
+            path = os.path.join(self.cfg.run_dir, f"predictions_{self.cfg.run_idx}")
+            os.makedirs(path, exist_ok=True)
+            LOGGER.info(f"Saving samples in {path}")
+            torch.save(full_batch, os.path.join(path, "weighted_events.pt"))
+
+        labels_true, labels_predict = torch.cat(labels_true), torch.cat(labels_predict)
+
+        # bce loss
+        metrics["loss"] = torch.nn.functional.binary_cross_entropy_with_logits(
+            labels_predict, labels_true
+        ).item()
+        labels_predict = torch.nn.functional.sigmoid(labels_predict)
+        labels_true, labels_predict = labels_true.numpy(), labels_predict.numpy()
+
+        if mode == "eval":
+            metrics["labels_true"], metrics["labels_predict"] = (
+                labels_true,
+                labels_predict,
+            )
+
+        # accuracy
+        metrics["accuracy"] = accuracy_score(labels_true, np.round(labels_predict))
+        if mode == "eval":
+            LOGGER.info(f"Accuracy on {title} dataset: {metrics['accuracy']:.4f}")
+
+        # roc (fpr = epsB, tpr = epsS)
+        fpr, tpr, th = roc_curve(labels_true, labels_predict)
+        if mode == "eval":
+            metrics["fpr"], metrics["tpr"] = fpr, tpr
+        metrics["auc"] = roc_auc_score(labels_true, labels_predict)
+        if mode == "eval":
+            LOGGER.info(f"AUC score on {title} dataset: {metrics['auc']:.4f}")
+
+        # 1/epsB at fixed epsS
+        def get_rej(epsS):
+            idx = np.argmin(np.abs(tpr - epsS))
+            return 1 / fpr[idx]
+
+        metrics["rej03"] = get_rej(0.3)
+        metrics["rej05"] = get_rej(0.5)
+        metrics["rej08"] = get_rej(0.8)
+        if mode == "eval":
+            LOGGER.info(
+                f"Rejection rate {title} dataset: {metrics['rej03']:.0f} (epsS=0.3), "
+                f"{metrics['rej05']:.0f} (epsS=0.5), {metrics['rej08']:.0f} (epsS=0.8)"
+            )
+
+        if self.cfg.use_mlflow:
+            for key, value in metrics.items():
+                if key in ["labels_true", "labels_predict", "fpr", "tpr"]:
+                    # do not log matrices
+                    continue
+                name = f"{mode}.{title}" if mode == "eval" else "val"
+                log_mlflow(f"{name}.{key}", value, step=step)
+
+        if mode == "eval":
+            framesString = type(self.model.framesnet).__name__
+            num_parameters = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
+
+            LOGGER.info(
+                f"table {title}: {framesString} ({self.cfg.training.iterations} iterations)"
+                f" & {num_parameters} & {metrics['accuracy']:.4f} & {metrics['auc']:.4f}"
+                f" & {metrics['rej03']:.0f} & {metrics['rej05']:.0f} & {metrics['rej08']:.0f} \\\\"
+            )
+        return metrics

@@ -17,6 +17,7 @@ evaluation:
  batchsize: 512
  save_roc: false
  eval_set: [val]
+ save_predictions: true
 
 plotting:
  roc: true

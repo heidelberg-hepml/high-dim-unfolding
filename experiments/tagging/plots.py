@@ -86,6 +86,12 @@ def plot_mixer(cfg, plot_path, title, plot_dict):
                 title=title,
                 logy=True,
             )
+            plot_likelihood(
+                out,
+                plot_dict["results_test"]["labels_true"],
+                plot_dict["results_test"]["labels_predict"],
+                title=title,
+            )
 
     if cfg.plotting.roc and cfg.evaluate:
         file = f"{plot_path}/roc.pdf"
@@ -222,6 +228,52 @@ def plot_score(out, labels_true, labels_predicted, title=None, xrange=[0, 1], bi
         transform=ax.transAxes,
         fontsize=FONTSIZE,
     )
+
+    fig.savefig(out, bbox_inches="tight", format="pdf")
+    plt.close()
+
+def plot_likelihood(out, labels_true, labels_predicted, title=None, bins=100, logx=True, logy=True):
+
+    ratio = (1 - labels_predicted) / labels_predicted
+
+    gen_idx = labels_true == 1
+
+    fig, ax = plt.subplots(figsize=(5, 4))
+    if logx:
+        ax.set_xscale("log")
+    if logy:
+        ax.set_yscale("log")
+
+    logbins=np.logspace(start=-1.5, stop=1.5, num=bins)
+    ax.set_ylabel("Normalized", fontsize=FONTSIZE)
+    ax.set_xlabel("Weights", fontsize=FONTSIZE)
+    ax.hist(
+        ratio[gen_idx],
+        bins=logbins,
+        density=True,
+        color=colors[0],
+        histtype="step",
+        label="Gen events",
+    )
+
+    ax.hist(
+        ratio[~gen_idx],
+        bins=logbins,
+        density=True,
+        color=colors[1],
+        histtype="step",
+        label="True events",
+    )
+    
+    # ax.text(
+    #     0.95,
+    #     0.95,
+    #     s=title,
+    #     horizontalalignment="right",
+    #     verticalalignment="top",
+    #     transform=ax.transAxes,
+    #     fontsize=FONTSIZE,
+    # )
 
     fig.savefig(out, bbox_inches="tight", format="pdf")
     plt.close()
