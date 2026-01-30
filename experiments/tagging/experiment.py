@@ -521,7 +521,7 @@ class ClassificationExperiment(TaggingExperiment):
             labels_true.append(label.cpu().float())
             labels_predict.append(y_pred.cpu().float())
             if mode == "eval" and self.cfg.evaluation.save_predictions:
-                batch.weight_gen = torch.nn.functional.sigmoid(y_pred).cpu().float()
+                batch.weight = torch.nn.functional.sigmoid(y_pred).cpu().float()
                 data_list.extend(batch.to_data_list())
 
         if mode == "eval" and self.cfg.evaluation.save_predictions:

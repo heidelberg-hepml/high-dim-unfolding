@@ -170,6 +170,7 @@ class ClassificationDataset(TaggingDataset):
                     x_det=x_det,
                     scalars_det=scalars_det,
                     label=label_tensor,
+                    weight=torch.tensor([1.0], dtype=torch.float32),
                 )
                 graphs.append(new_graph)
 
