@@ -80,12 +80,16 @@ class KinematicsExperiment(BaseExperiment):
                     self.cfg.model.scalar_inputs
                 )
                 if self.cfg.modelname == "ConditionalLGATr":
-                    self.cfg.model.net_condition.out_mv_channels = self.cfg.model.net.hidden_mv_channels
+                    self.cfg.model.net_condition.out_mv_channels = (
+                        self.cfg.model.net.hidden_mv_channels
+                    )
                     self.cfg.model.net.condition_mv_channels = (
                         self.cfg.model.net_condition.out_mv_channels
                     )
                 else:
-                    self.cfg.model.net_condition.out_v_channels = self.cfg.model.net.hidden_v_channels
+                    self.cfg.model.net_condition.out_v_channels = (
+                        self.cfg.model.net.hidden_v_channels
+                    )
                     self.cfg.model.net.condition_v_channels = (
                         self.cfg.model.net_condition.out_v_channels
                     )
@@ -687,8 +691,8 @@ class KinematicsExperiment(BaseExperiment):
             model_label = "Transf."
         elif self.cfg.modelname == "ConditionalLGATr":
             model_label = "L-GATr"
-        elif self.cfg.modelname == "AutoregressiveTransformer":
-            model_label = "AR-Transf."
+        elif self.cfg.modelname == "ConditionalLGATrSlim":
+            model_label = "L-GATr-S"
         kwargs = {
             "exp": self,
             "model_label": model_label,

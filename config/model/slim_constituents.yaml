@@ -12,7 +12,7 @@ GA_config:
  spurion_channels: false
 
 net:
- _target_: lgatr.nets.conditional_lgatr_slim.ConditionalLGATrSlim
+ _target_: lgatr.nets.ConditionalLGATrSlim
 
  in_v_channels: 1
  condition_v_channels: null

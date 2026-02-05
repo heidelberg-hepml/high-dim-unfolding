@@ -314,6 +314,7 @@ class ConditionalLGATrCFM(EventCFM):
 
         return v_straight
 
+
 class ConditionalLGATrSlimCFM(EventCFM):
     """
     L-GATrSlim velocity network
@@ -519,9 +520,10 @@ class ConditionalLGATrSlimCFM(EventCFM):
             attn_kwargs=attention_mask,
             crossattn_kwargs=crossattention_mask,
         )
-        v_fourmomenta = v_outputs.squeeze(0)
+        v_outputs = v_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
+        v_fourmomenta = v_outputs[~spurions_mask].squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
 
         if not (torch.isfinite(v_fourmomenta).all() and torch.isfinite(v_s).all()):
@@ -1119,9 +1121,10 @@ class JetConditionalLGATrSlimCFM(JetCFM):
             crossattn_kwargs=crossattention_mask,
         )
 
-        v_fourmomenta = v_outputs.squeeze(0)
+        v_outputs = v_outputs.squeeze(0)
         s_outputs = s_outputs.squeeze(0)
 
+        v_fourmomenta = v_outputs[~spurions_mask].squeeze(dim=-2)
         v_s = s_outputs[~spurions_mask]
 
         v_straight = self.jet_coordinates.velocity_fourmomenta_to_x(v_fourmomenta, fourmomenta)[0]
