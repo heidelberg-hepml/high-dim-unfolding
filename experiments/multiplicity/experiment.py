@@ -24,7 +24,7 @@ from experiments.multiplicity.distributions import (
 )
 from experiments.multiplicity.plots import plot_mixer
 
-MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr"}
+MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr", "LGATrSlim": "L-GATr-S"}
 
 
 class MultiplicityExperiment(BaseExperiment):
@@ -122,6 +122,40 @@ class MultiplicityExperiment(BaseExperiment):
 
                 # mv channels for beam_reference and time_reference
                 self.cfg.model.net.in_mv_channels = 1
+
+            elif self.cfg.modelname == "LGATrSlim":
+                if self.cfg.dist.type == "GammaMixture":
+                    self.distribution = GammaMixture
+                    assert not self.cfg.dist.diff, "GammaMixture requires non-negative integers"
+                    self.cfg.model.net.out_s_channels = 3 * self.cfg.dist.n_components
+                elif self.cfg.dist.type == "GaussianMixture":
+                    self.distribution = GaussianMixture
+                    self.cfg.model.net.out_s_channels = 3 * self.cfg.dist.n_components
+                elif self.cfg.dist.type == "Categorical":
+                    self.distribution = Categorical
+                    if self.cfg.dist.diff:
+                        self.cfg.model.net.out_s_channels = (
+                            self.cfg.data.diff[1] - self.cfg.data.diff[0] + 1
+                        )
+                        self.cfg.model.range = self.cfg.data.diff
+                    else:
+                        self.cfg.model.net.out_s_channels = self.cfg.data.max_num_particles + 1
+                        self.cfg.model.range = (
+                            self.cfg.data.min_mult,
+                            self.cfg.data.max_num_particles,
+                        )
+
+                # scalar channels
+                self.cfg.model.net.in_s_channels = len(self.cfg.model.scalar_inputs)
+                if self.cfg.wrapper_cfg.add_jet:
+                    self.cfg.model.net.in_s_channels += 1
+                if self.cfg.data.add_pid:
+                    self.cfg.model.net.in_s_channels += 6
+                if self.cfg.data.pos_encoding_dim > 0:
+                    self.cfg.model.net.in_s_channels += self.cfg.data.pos_encoding_dim
+
+                # mv channels for beam_reference and time_reference
+                self.cfg.model.net.in_v_channels = 1
 
             else:
                 raise ValueError(f"Model not implemented: {self.cfg.modelname}")

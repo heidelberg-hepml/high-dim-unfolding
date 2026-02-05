@@ -1,5 +1,5 @@
 import torch
-from lgatr.interface import extract_scalar
+from lgatr.interface import extract_scalar, extract_vector
 from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
 
@@ -161,6 +161,66 @@ class MultiplicityLGATrWrapper(MultiplicityTransformerWrapper):
         mask = get_attention_mask(batch_idx, attention_backend="xformers", dtype=multivector.dtype)
         multivector_outputs, _ = self.net(multivector, scalars=scalars, **mask)
         outputs = extract_scalar(multivector_outputs)[0, :, :, 0]
+        params = self.aggregation(outputs, index=batch_idx)
+
+        return params
+
+
+class MultiplicityLGATrSlimWrapper(MultiplicityTransformerWrapper):
+    """
+    L-GATrSlim for multiplicity
+    """
+
+    def __init__(self, GA_config, scalar_inputs, **kwargs):
+        super().__init__(**kwargs)
+        self.ga_cfg = GA_config
+        self.scalar_inputs = scalar_inputs
+
+    def forward(self, batch):
+        if self.wrapper_cfg.add_jet:
+            new_batch, _, det_const_mask = add_jet_to_sequence(batch)
+        else:
+            new_batch = batch.clone()
+            det_const_mask = torch.ones(
+                new_batch.x_det.shape[0],
+                dtype=torch.bool,
+                device=new_batch.x_det.device,
+            )
+
+        det_jets = self.jet_coordinates.x_to_fourmomenta(batch.jet_det)
+        ext_det_jets = torch.repeat_interleave(det_jets, batch.x_det_ptr.diff(), dim=0)
+
+        fourmomenta = torch.zeros_like(new_batch.x_det)
+        fourmomenta[det_const_mask] = self.const_coordinates.x_to_fourmomenta(
+            new_batch.x_det[det_const_mask],
+            jet=ext_det_jets,
+            ptr=new_batch.x_det_ptr,
+        )
+
+        if self.wrapper_cfg.add_jet:
+            fourmomenta[~det_const_mask] = det_jets
+
+        if len(self.scalar_inputs) > 0:
+            scalars = torch.cat(
+                [new_batch.scalars_det, new_batch.x_det[:, self.scalar_inputs]], dim=-1
+            )
+        else:
+            scalars = new_batch.scalars_det
+
+        mv, s, batch_idx, _ = embed_data_into_ga(
+            new_batch.x_det,
+            scalars,
+            new_batch.x_det_ptr,
+            self.ga_cfg,
+        )
+        multivector = mv.unsqueeze(0)
+        scalars = s.unsqueeze(0)
+
+        fourvector = extract_vector(multivector)
+
+        mask = get_attention_mask(batch_idx, attention_backend="xformers", dtype=multivector.dtype)
+        _, out_s = self.net(fourvector, scalars=scalars, **mask)
+        outputs = out_s.squeeze(0)
         params = self.aggregation(outputs, index=batch_idx)
 
         return params

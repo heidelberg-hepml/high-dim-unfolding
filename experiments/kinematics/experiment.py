@@ -70,7 +70,7 @@ class KinematicsExperiment(BaseExperiment):
                 if self.cfg.cfm.self_condition_prob > 0.0:
                     self.cfg.model.net.in_channels += 4
 
-            elif self.cfg.modelname == "ConditionalLGATr":
+            elif self.cfg.modelname in ["ConditionalLGATr", "ConditionalLGATrSlim"]:
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim
                     + self.cfg.data.pos_encoding_dim
@@ -79,10 +79,16 @@ class KinematicsExperiment(BaseExperiment):
                 self.cfg.model.net_condition.in_s_channels = self.cfg.data.pos_encoding_dim + len(
                     self.cfg.model.scalar_inputs
                 )
-                self.cfg.model.net_condition.out_mv_channels = self.cfg.model.net.hidden_mv_channels
-                self.cfg.model.net.condition_mv_channels = (
-                    self.cfg.model.net_condition.out_mv_channels
-                )
+                if self.cfg.modelname == "ConditionalLGATr":
+                    self.cfg.model.net_condition.out_mv_channels = self.cfg.model.net.hidden_mv_channels
+                    self.cfg.model.net.condition_mv_channels = (
+                        self.cfg.model.net_condition.out_mv_channels
+                    )
+                else:
+                    self.cfg.model.net_condition.out_v_channels = self.cfg.model.net.hidden_v_channels
+                    self.cfg.model.net.condition_v_channels = (
+                        self.cfg.model.net_condition.out_v_channels
+                    )
                 self.cfg.model.net_condition.out_s_channels = self.cfg.model.net.hidden_s_channels
                 self.cfg.model.net.condition_s_channels = (
                     self.cfg.model.net_condition.out_s_channels
@@ -105,40 +111,15 @@ class KinematicsExperiment(BaseExperiment):
                     if self.cfg.model.GA_config.condition_spurions:
                         self.cfg.model.net_condition.in_mv_channels += n_spurions
                     if self.cfg.model.GA_config.input_spurions:
-                        self.cfg.model.net.in_mv_channels += n_spurions
+                        if self.cfg.modelname == "ConditionalLGATr":
+                            self.cfg.model.net.in_mv_channels += n_spurions
+                        else:
+                            self.cfg.model.net.in_v_channels += n_spurions
                 else:
                     if getattr(self.cfg.model.GA_config, "input_spurions", True):
                         self.cfg.model.net.in_s_channels += 1
                     if getattr(self.cfg.model.GA_config, "condition_spurions", True):
                         self.cfg.model.net_condition.in_s_channels += 1
-
-            elif self.cfg.modelname == "AutoregressiveTransformer":
-                self.cfg.model.net.in_channels = 4 + self.cfg.data.pos_encoding_dim
-                self.cfg.model.net_condition.in_channels = 4 + self.cfg.data.pos_encoding_dim
-                self.cfg.model.net_condition.out_channels = self.cfg.model.net.hidden_channels
-                if self.cfg.data.add_pid:
-                    self.cfg.model.net.in_channels += 6
-                    self.cfg.model.net_condition.in_channels += 6
-                # one hot jet_det jet_gen
-                self.cfg.model.net.in_channels += 2
-                # one hot jet_det
-                self.cfg.model.net_condition.in_channels += 1
-                # mlp
-                self.cfg.model.mlp.in_shape = (
-                    4  # fourmomenta
-                    + self.cfg.cfm.embed_t_dim
-                    + self.cfg.data.pos_encoding_dim
-                    + self.cfg.model.net.out_channels
-                    + 2  # one hot jet_det jet_gen
-                )
-                if self.cfg.cfm.self_condition_prob > 0.0:
-                    self.cfg.model.mlp.in_shape += 4
-                if self.cfg.cfm.stop_token:
-                    self.cfg.model.mlp.in_shape += 1
-                    self.cfg.net.in_channels += 1
-                else:
-                    self.cfg.model.net.out_channels += 1
-                self.cfg.cfm.max_seq_len = self.cfg.data.max_constituents
 
             # copy model-specific parameters
             self.cfg.model.odeint = self.cfg.odeint

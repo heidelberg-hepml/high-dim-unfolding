@@ -1,0 +1,29 @@
+_target_: experiments.multiplicity.wrappers.MultiplicityLGATrSlimWrapper
+
+scalar_inputs: [0,2,3]
+
+GA_config:
+ beam_spurion: xyplane
+ beam_mirror: true
+ add_time_spurion: true
+
+net:
+ _target_: lgatr.nets.LGATrSlim
+
+ in_v_channels: null
+ out_v_channels: null
+ hidden_v_channels: 8
+
+ in_s_channels: null
+ out_s_channels: null
+ hidden_s_channels: 8
+
+ num_blocks: 2
+ dropout_prob: 0.1
+
+ attention:
+  num_heads: 4
+  multi_query: false
+  head_scale: false
+ mlp:
+  activation: gelu

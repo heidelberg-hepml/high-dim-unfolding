@@ -314,6 +314,249 @@ class ConditionalLGATrCFM(EventCFM):
 
         return v_straight
 
+class ConditionalLGATrSlimCFM(EventCFM):
+    """
+    L-GATrSlim velocity network
+    """
+
+    def __init__(
+        self,
+        net,
+        net_condition,
+        cfm,
+        scalar_inputs,
+        scalar_outputs,
+        odeint,
+        GA_config,
+    ):
+        """
+        Parameters
+        ----------
+        net : torch.nn.Module
+        net_condition : torch.nn.Module
+        cfm : Dict
+            Information about how to set up CFM (used in parent classes)
+        scalar_outputs : List[int]
+            Components within the used parametrization
+            for which the equivariantly predicted velocity (using multivector channels)
+            is overwritten by a scalar network output (using scalar channels)
+            This is required when cfm.coordinates contains log-transforms
+        odeint : Dict
+            ODE solver settings to be passed to torchdiffeq.odeint
+        cfg_data : Dict
+            Data settings to be passed to the CFM
+        """
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.scalar_inputs = scalar_inputs
+        self.scalar_outputs = scalar_outputs
+        self.ga_cfg = GA_config
+        self.net = net
+        self.net_condition = net_condition
+        self.use_xformers = torch.cuda.is_available()
+
+    def get_masks(self, batch):
+        if getattr(self.ga_cfg, "input_spurions", True):
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.x_gen,
+                batch.scalars_gen,
+                batch.x_gen_ptr,
+                self.ga_cfg,
+            )
+        else:
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.x_gen,
+                batch.scalars_gen,
+                batch.x_gen_ptr,
+                None,
+            )
+        if getattr(self.ga_cfg, "condition_spurions", True):
+            _, _, det_batch_idx, _ = embed_data_into_ga(
+                batch.x_det,
+                batch.scalars_det,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            _, _, det_batch_idx, _ = embed_data_into_ga(
+                batch.x_det,
+                batch.scalars_det,
+                batch.x_det_ptr,
+                None,
+            )
+        attention_mask = get_attention_mask(
+            gen_batch_idx, attention_backend="xformers", dtype=batch.x_gen.dtype
+        )
+        condition_attention_mask = get_attention_mask(
+            det_batch_idx, attention_backend="xformers", dtype=batch.x_det.dtype
+        )
+        cross_attention_mask = get_attention_mask(
+            gen_batch_idx,
+            condition_batch=det_batch_idx,
+            attention_backend="xformers",
+            dtype=batch.x_det.dtype,
+        )
+        return attention_mask, condition_attention_mask, cross_attention_mask
+
+    def get_condition(self, batch, attention_mask):
+        x = batch.x_det
+        constituents_mask = torch.ones(x.shape[0], dtype=torch.bool, device=x.device)
+        if self.cfm.add_jet:
+            constituents_mask[batch.x_det_ptr[:-1]] = False
+            ptr = batch.x_det_ptr - torch.arange(
+                batch.x_det_ptr.shape[0], device=batch.x_det_ptr.device
+            )
+        else:
+            ptr = batch.x_det_ptr
+
+        det_jets = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
+        ext_det_jets = torch.repeat_interleave(det_jets, ptr.diff(), dim=0)
+
+        fourmomenta = torch.zeros_like(x)
+        fourmomenta[constituents_mask] = self.condition_const_coordinates.x_to_fourmomenta(
+            x[constituents_mask],
+            jet=ext_det_jets,
+            ptr=ptr,
+        )
+        if self.cfm.add_jet:
+            fourmomenta[~constituents_mask] = det_jets
+
+        scalars = torch.cat([batch.scalars_det, x[..., self.scalar_inputs]], dim=-1)
+
+        if getattr(self.ga_cfg, "condition_spurions", True):
+            mv, s, _, _ = embed_data_into_ga(
+                batch.x_det,
+                scalars,
+                batch.x_det_ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, _ = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_det_ptr,
+                None,
+            )
+        mv = mv.unsqueeze(0)
+        s = s.unsqueeze(0)
+        v = extract_vector(mv)
+        condition_v, condition_s = self.net_condition(v, s, **attention_mask)
+        return condition_v, condition_s
+
+    def get_velocity(
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
+    ):
+        constituents_mask = torch.ones(xt.shape[0], dtype=torch.bool, device=xt.device)
+        if self.cfm.add_jet:
+            constituents_mask[batch.x_gen_ptr[:-1]] = False
+            ptr = batch.x_gen_ptr - torch.arange(
+                batch.x_gen_ptr.shape[0], device=batch.x_gen_ptr.device
+            )
+        else:
+            ptr = batch.x_gen_ptr
+
+        gen_jets = self.jet_coordinates.x_to_fourmomenta(batch.jet_gen)
+        ext_gen_jets = torch.repeat_interleave(gen_jets, ptr.diff(), dim=0)
+
+        fourmomenta = torch.zeros_like(xt)
+        fourmomenta[constituents_mask] = self.const_coordinates.x_to_fourmomenta(
+            xt[constituents_mask],
+            jet=ext_gen_jets,
+            ptr=ptr,
+        )
+
+        if self.cfm.add_jet:
+            fourmomenta[~constituents_mask] = gen_jets
+
+        condition_v, condition_s = condition
+        if self_condition is not None:
+            scalars = torch.cat(
+                [
+                    batch.scalars_gen,
+                    self.t_embedding(t),
+                    xt[..., self.scalar_inputs],
+                    self_condition,
+                ],
+                dim=-1,
+            )
+        else:
+            scalars = torch.cat(
+                [batch.scalars_gen, self.t_embedding(t), xt[..., self.scalar_inputs]],
+                dim=-1,
+            )
+
+        if getattr(self.ga_cfg, "input_spurions", True):
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_gen_ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                batch.x_gen_ptr,
+                None,
+            )
+
+        v = extract_vector(mv)
+
+        v_outputs, s_outputs = self.net(
+            vectors=v.unsqueeze(0),
+            vectors_condition=condition_v,
+            scalars=s.unsqueeze(0),
+            scalars_condition=condition_s,
+            attn_kwargs=attention_mask,
+            crossattn_kwargs=crossattention_mask,
+        )
+        v_fourmomenta = v_outputs.squeeze(0)
+        s_outputs = s_outputs.squeeze(0)
+
+        v_s = s_outputs[~spurions_mask]
+
+        if not (torch.isfinite(v_fourmomenta).all() and torch.isfinite(v_s).all()):
+            event_idx = batch.x_gen_batch[torch.nonzero(torch.isnan(v_fourmomenta).any(dim=-1))]
+
+            assert event_idx[0] == event_idx[-1]
+
+            event_idx = event_idx[0].item()
+
+            LOGGER.info(f"Event index: {event_idx}")
+            LOGGER.info(
+                f"time: {t[batch.x_gen_ptr[event_idx]]}, time embedding: {self.t_embedding(t[batch.x_gen_ptr[event_idx]]).squeeze()}"
+            )
+            LOGGER.info(
+                f"x0: {batch.x_gen[batch.x_gen_ptr[event_idx] : batch.x_gen_ptr[event_idx + 1]]}"
+            )
+
+            LOGGER.info(f"xt: {xt[batch.x_gen_ptr[event_idx] : batch.x_gen_ptr[event_idx + 1]]}")
+            raise ValueError("Non-finite values found in velocity outputs")
+
+        v_straight = torch.zeros_like(v_fourmomenta)
+        v_straight[constituents_mask] = self.const_coordinates.velocity_fourmomenta_to_x(
+            v_fourmomenta[constituents_mask],
+            fourmomenta[constituents_mask],
+            jet=ext_gen_jets,
+            ptr=ptr,
+        )[0]
+
+        # Overwrite transformed velocities with scalar outputs
+        # (this is specific to GATr to avoid large jacobians from from log-transforms)
+        row_indices = torch.where(constituents_mask)[0].unsqueeze(-1)
+        v_straight[row_indices, self.scalar_outputs] = v_s[row_indices, self.scalar_outputs]
+
+        return v_straight
+
 
 class JetConditionalTransformerCFM(JetCFM):
     """
@@ -649,6 +892,236 @@ class JetConditionalLGATrCFM(JetCFM):
         s_outputs = s_outputs.squeeze(0)
 
         v_fourmomenta = extract_vector(mv_outputs[~spurions_mask]).squeeze(dim=-2)
+        v_s = s_outputs[~spurions_mask]
+
+        v_straight = self.jet_coordinates.velocity_fourmomenta_to_x(v_fourmomenta, fourmomenta)[0]
+
+        # Overwrite transformed velocities with scalar outputs
+        # (this is specific to GATr to avoid large jacobians from from log-transforms)
+        v_straight[..., self.scalar_outputs] = v_s[..., self.scalar_outputs]
+
+        return v_straight
+
+
+class JetConditionalLGATrSlimCFM(JetCFM):
+    """
+    GATr velocity network
+    """
+
+    def __init__(
+        self,
+        net,
+        net_condition,
+        cfm,
+        scalar_inputs,
+        scalar_outputs,
+        odeint,
+        GA_config,
+    ):
+        """
+        Parameters
+        ----------
+        net : torch.nn.Module
+        net_condition : torch.nn.Module
+        cfm : Dict
+            Information about how to set up CFM (used in parent classes)
+        scalar_outputs : List[int]
+            Components within the used parametrization
+            for which the equivariantly predicted velocity (using multivector channels)
+            is overwritten by a scalar network output (using scalar channels)
+            This is required when cfm.coordinates contains log-transforms
+        odeint : Dict
+            ODE solver settings to be passed to torchdiffeq.odeint
+        cfg_data : Dict
+            Data settings to be passed to the CFM
+        """
+        super().__init__(
+            cfm,
+            odeint,
+        )
+        self.scalar_inputs = scalar_inputs
+        self.scalar_outputs = scalar_outputs
+        self.ga_cfg = GA_config
+        self.net = net
+        self.net_condition = net_condition
+        self.use_xformers = torch.cuda.is_available()
+
+    def get_masks(self, batch):
+        if getattr(self.ga_cfg, "input_spurions", True):
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.jet_gen,
+                batch.jet_scalars_gen,
+                torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                self.ga_cfg,
+            )
+        else:
+            _, _, gen_batch_idx, _ = embed_data_into_ga(
+                batch.jet_gen,
+                batch.jet_scalars_gen,
+                torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                None,
+            )
+        if self.cfm.add_constituents:
+            if getattr(self.ga_cfg, "condition_spurions", True):
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.x_det,
+                    batch.scalars_det,
+                    batch.x_det_ptr,
+                    self.ga_cfg,
+                )
+            else:
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.x_det,
+                    batch.scalars_det,
+                    batch.x_det_ptr,
+                    None,
+                )
+        else:
+            if getattr(self.ga_cfg, "condition_spurions", True):
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.jet_det,
+                    batch.jet_scalars_det,
+                    torch.arange(batch.num_graphs + 1, device=batch.jet_det.device),
+                    self.ga_cfg,
+                )
+            else:
+                _, _, det_batch_idx, _ = embed_data_into_ga(
+                    batch.jet_det,
+                    batch.jet_scalars_det,
+                    torch.arange(batch.num_graphs + 1, device=batch.jet_gen.device),
+                    None,
+                )
+
+        attention_mask = get_attention_mask(
+            gen_batch_idx, attention_backend="xformers", dtype=batch.jet_gen.dtype
+        )
+        condition_attention_mask = get_attention_mask(
+            det_batch_idx, attention_backend="xformers", dtype=batch.jet_det.dtype
+        )
+        cross_attention_mask = get_attention_mask(
+            gen_batch_idx,
+            condition_batch=det_batch_idx,
+            attention_backend="xformers",
+            dtype=batch.jet_gen.dtype,
+        )
+        return attention_mask, condition_attention_mask, cross_attention_mask
+
+    def get_condition(self, batch, attention_mask):
+        if self.cfm.add_constituents:
+            x = batch.x_det
+            constituents_mask = torch.ones(x.shape[0], dtype=torch.bool, device=x.device)
+            ptr = batch.x_det_ptr - torch.arange(
+                batch.x_det_ptr.shape[0], device=batch.x_det_ptr.device
+            )
+            constituents_mask[ptr[:-1]] = False
+            det_jets = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
+            ext_det_jets = torch.repeat_interleave(det_jets, ptr.diff(), dim=0)
+
+            fourmomenta = torch.zeros_like(x)
+            fourmomenta[constituents_mask] = self.condition_const_coordinates.x_to_fourmomenta(
+                x[constituents_mask],
+                jet=ext_det_jets,
+                ptr=ptr,
+            )
+            fourmomenta[~constituents_mask] = det_jets
+
+            scalars = torch.cat([batch.scalars_det, x[..., self.scalar_inputs]], dim=1)
+
+        else:
+            fourmomenta = self.condition_jet_coordinates.x_to_fourmomenta(batch.jet_det)
+            ptr = torch.arange(batch.num_graphs + 1, device=batch.jet_det.device)
+            scalars = torch.cat(
+                [batch.jet_scalars_det, batch.jet_det[..., self.scalar_inputs]],
+                dim=1,
+            )
+
+        if getattr(self.ga_cfg, "condition_spurions", True):
+            mv, s, _, _ = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                ptr,
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, _ = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                ptr,
+                None,
+            )
+
+        mv = mv.unsqueeze(0)
+        s = s.unsqueeze(0)
+        v = extract_vector(mv)
+
+        condition_v, condition_s = self.net_condition(v, s, **attention_mask)
+
+        return condition_v, condition_s
+
+    def get_velocity(
+        self,
+        xt,
+        t,
+        batch,
+        condition,
+        attention_mask,
+        crossattention_mask,
+        self_condition=None,
+    ):
+        fourmomenta = self.jet_coordinates.x_to_fourmomenta(
+            xt,
+        )
+
+        condition_v, condition_s = condition
+        if self_condition is not None:
+            scalars = torch.cat(
+                [
+                    batch.jet_scalars_gen,
+                    self.t_embedding(t),
+                    xt[..., self.scalar_inputs],
+                    self_condition,
+                ],
+                dim=-1,
+            )
+        else:
+            scalars = torch.cat(
+                [
+                    batch.jet_scalars_gen,
+                    self.t_embedding(t),
+                    xt[..., self.scalar_inputs],
+                ],
+                dim=-1,
+            )
+
+        if getattr(self.ga_cfg, "input_spurions", True):
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                torch.arange(batch.num_graphs + 1, device=xt.device),
+                self.ga_cfg,
+            )
+        else:
+            mv, s, _, spurions_mask = embed_data_into_ga(
+                fourmomenta,
+                scalars,
+                torch.arange(batch.num_graphs + 1, device=xt.device),
+                None,
+            )
+
+        v = extract_vector(mv)
+
+        v_outputs, s_outputs = self.net(
+            vectors=v.unsqueeze(0),
+            vectors_condition=condition_v,
+            scalars=s.unsqueeze(0),
+            scalars_condition=condition_s,
+            attn_kwargs=attention_mask,
+            crossattn_kwargs=crossattention_mask,
+        )
+
+        v_fourmomenta = v_outputs.squeeze(0)
+        s_outputs = s_outputs.squeeze(0)
+
         v_s = s_outputs[~spurions_mask]
 
         v_straight = self.jet_coordinates.velocity_fourmomenta_to_x(v_fourmomenta, fourmomenta)[0]

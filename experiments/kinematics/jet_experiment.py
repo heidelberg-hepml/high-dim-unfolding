@@ -76,7 +76,7 @@ class JetKinematicsExperiment(BaseExperiment):
                         self.cfg.model.net_condition.in_channels += self.cfg.data.pos_encoding_dim
                 self.cfg.model.net_condition.out_channels = self.cfg.model.net.hidden_channels
 
-            elif self.cfg.modelname == "JetConditionalLGATr":
+            elif self.cfg.modelname in ["JetConditionalLGATr", "JetConditionalLGATrSlim"]:
                 self.cfg.cfm.transpose = False
                 self.cfg.model.net.in_s_channels = (
                     self.cfg.cfm.embed_t_dim
@@ -91,10 +91,16 @@ class JetKinematicsExperiment(BaseExperiment):
                     self.cfg.model.net_condition.in_s_channels = (
                         self.cfg.data.mult_encoding_dim + len(self.cfg.model.scalar_inputs)
                     )
-                self.cfg.model.net_condition.out_mv_channels = self.cfg.model.net.hidden_mv_channels
-                self.cfg.model.net.condition_mv_channels = (
-                    self.cfg.model.net_condition.out_mv_channels
-                )
+                if self.cfg.modelname == "JetConditionalLGATr":
+                    self.cfg.model.net_condition.out_mv_channels = self.cfg.model.net.hidden_mv_channels
+                    self.cfg.model.net.condition_mv_channels = (
+                        self.cfg.model.net_condition.out_mv_channels
+                    )
+                else:
+                    self.cfg.model.net_condition.out_v_channels = self.cfg.model.net.hidden_v_channels
+                    self.cfg.model.net.condition_v_channels = (
+                        self.cfg.model.net_condition.out_v_channels
+                    )
                 self.cfg.model.net_condition.out_s_channels = self.cfg.model.net.hidden_s_channels
                 self.cfg.model.net.condition_s_channels = (
                     self.cfg.model.net_condition.out_s_channels
@@ -109,9 +115,15 @@ class JetKinematicsExperiment(BaseExperiment):
                     )
                     n_spurions = spurions.shape[0]
                     if self.cfg.model.GA_config.condition_spurions:
-                        self.cfg.model.net_condition.in_mv_channels += n_spurions
+                        if self.cfg.modelname == "JetConditionalLGATr":
+                            self.cfg.model.net_condition.in_mv_channels += n_spurions
+                        else:
+                            self.cfg.model.net_condition.in_v_channels += n_spurions
                     if self.cfg.model.GA_config.input_spurions:
-                        self.cfg.model.net.in_mv_channels += n_spurions
+                        if self.cfg.modelname == "JetConditionalLGATr":
+                            self.cfg.model.net.in_mv_channels += n_spurions
+                        else:
+                            self.cfg.model.net.in_v_channels += n_spurions
                 else:
                     if getattr(self.cfg.model.GA_config, "input_spurions", True):
                         self.cfg.model.net.in_s_channels += 1
