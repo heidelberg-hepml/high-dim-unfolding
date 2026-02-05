@@ -154,9 +154,6 @@ class MultiplicityExperiment(BaseExperiment):
                 if self.cfg.data.pos_encoding_dim > 0:
                     self.cfg.model.net.in_s_channels += self.cfg.data.pos_encoding_dim
 
-                # mv channels for beam_reference and time_reference
-                self.cfg.model.net.in_v_channels = 1
-
             else:
                 raise ValueError(f"Model not implemented: {self.cfg.modelname}")
 
