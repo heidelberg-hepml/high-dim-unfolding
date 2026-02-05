@@ -1,5 +1,3 @@
-import tqdm
-
 from experiments.logger import LOGGER
 
 try:
@@ -176,7 +174,7 @@ def tau(constituents, batch_idx, other_batch_idx=None, N=1, beta=1.0, R0=R0, axi
     constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
     batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     taus = []
-    for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
+    for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         tau = compute_nsubjettiness(
             input_particles=event[..., [1, 2, 3, 0]],
@@ -193,7 +191,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **kwar
     constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
     batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     log_rhos = []
-    for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
+    for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         sd_fourm = np.array(apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)[0])
         mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
@@ -207,7 +205,7 @@ def compute_zg(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **k
     constituents = fix_mass(constituents, MASS).detach().cpu().numpy()
     batch_ptr = get_ptr_from_batch(batch_idx).detach().cpu().numpy()
     zgs = []
-    for i in tqdm.tqdm(range(len(batch_ptr) - 1)):
+    for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
         zg = apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)[-1]
         zgs.append(zg)
@@ -295,7 +293,7 @@ def calculate_eec(batch, ptr):
     zs_all = []
     ws_all = []
 
-    for i in tqdm.tqdm(range(ptr.shape[0] - 1)):
+    for i in range(ptr.shape[0] - 1):
         particles = batch[ptr[i] : ptr[i + 1]]
         p = particles[:, 1:]
         E = (p**2).sum(dim=1).sqrt()
