@@ -16,7 +16,7 @@ from torch_geometric.nn.aggr import MeanAggregation
 from torch_geometric.utils import scatter, to_dense_batch
 
 from experiments.logger import LOGGER
-from experiments.tagging.misc import get_attention_mask
+from experiments.misc import get_attention_mask
 from experiments.tagging.embedding import get_tagging_features
 
 

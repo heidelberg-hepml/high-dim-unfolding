@@ -3,11 +3,13 @@ import time
 
 import numpy as np
 import torch
+import torch.distributed as dist
+from omegaconf import OmegaConf
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 
-from experiments.tagging.base_experiment import BaseExperiment
+from experiments.base_experiment import BaseExperiment, MIN_STEP_SKIP
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 from experiments.tagging.dataset import ClassificationDataset, TopTaggingDataset
@@ -166,46 +168,6 @@ class TaggingExperiment(BaseExperiment):
             )
             self.model.init_standardization(embedding["fourmomenta"], embedding["ptr"])
 
-    def _init_optimizer(self, param_groups=None):
-        if self.cfg.model.net._target_.rsplit(".", 1)[-1] in [
-            "ParticleTransformer",
-            "MIParticleTransformer",
-        ]:
-            # special treatment for ParT, see
-            # https://github.com/hqucms/weaver-core/blob/dev/custom_train_eval/weaver/train.py#L464
-            decay, no_decay = {}, {}
-            for name, param in self.model.net.named_parameters():
-                if not param.requires_grad:
-                    continue
-                if (
-                    len(param.shape) == 1
-                    or name.endswith(".bias")
-                    or (hasattr(self.model.net, "no_weight_decay") and name in {"cls_token"})
-                ):
-                    no_decay[name] = param
-                else:
-                    decay[name] = param
-            decay_1x, no_decay_1x = list(decay.values()), list(no_decay.values())
-            param_groups = [
-                {
-                    "params": no_decay_1x,
-                    "weight_decay": 0.0,
-                    "lr": self.cfg.training.lr,
-                },
-                {
-                    "params": decay_1x,
-                    "weight_decay": self.cfg.training.weight_decay,
-                    "lr": self.cfg.training.lr,
-                },
-                {
-                    "params": self.model.framesnet.parameters(),
-                    "weight_decay": self.cfg.training.weight_decay_framesnet,
-                    "lr": self.cfg.training.lr * self.cfg.training.lr_factor_framesnet,
-                },
-            ]
-
-        super()._init_optimizer(param_groups=param_groups)
-
     def evaluate(self):
         self.results = {}
         loader_dict = {
@@ -331,9 +293,7 @@ class TaggingExperiment(BaseExperiment):
             plot_dict["train_loss"] = self.train_loss
             plot_dict["val_loss"] = self.val_loss
             plot_dict["train_lr"] = self.train_lr
-            plot_dict["grad_norm"] = torch.stack(self.grad_norm_train).cpu()
-            plot_dict["grad_norm_frames"] = torch.stack(self.grad_norm_frames).cpu()
-            plot_dict["grad_norm_net"] = torch.stack(self.grad_norm_net).cpu()
+            plot_dict["grad_norm"] = torch.tensor(self.train_grad_norm).cpu()
             for key, value in self.train_metrics.items():
                 plot_dict[key] = value
         plot_mixer(self.cfg, plot_path, title, plot_dict)
