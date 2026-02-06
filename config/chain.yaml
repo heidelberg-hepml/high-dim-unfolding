@@ -17,19 +17,19 @@ model_run_indices:
   constituents: 0
 
 data:
- pt_cut: 0.0
- length: -1
- dataset_generator: pythia
+  pt_cut: 0.0
+  length: -1
+  dataset_generator: pythia
 
 use_true_mult: false
 use_true_jet: false
 jet_smearing: [0,0,0,0]
 
 constituents_cfg:
- evaluation:
-  n_batches: -1
- cfm:
-  sort: true
+  evaluation:
+    n_batches: -1
+  cfm:
+    sort: true
 
 defaults:
   - default

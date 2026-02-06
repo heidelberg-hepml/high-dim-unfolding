@@ -45,10 +45,10 @@ class Dataset(torch.utils.data.Dataset):
         gen_jets,
     ):
         for i in range(det_particles.shape[0]):
-            det_event = det_particles[i, : det_mults[i]]
-            det_event_scalars = det_pids[i, : det_mults[i]]
-            gen_event = gen_particles[i, : gen_mults[i]]
-            gen_event_scalars = gen_pids[i, : gen_mults[i]]
+            det_event = det_particles[i, : det_mults[i]].clone()
+            det_event_scalars = det_pids[i, : det_mults[i]].clone()
+            gen_event = gen_particles[i, : gen_mults[i]].clone()
+            gen_event_scalars = gen_pids[i, : gen_mults[i]].clone()
 
             if self.pos_encoding is not None:
                 det_event_scalars = torch.cat(
@@ -71,11 +71,11 @@ class Dataset(torch.utils.data.Dataset):
             graph = Data(
                 x_det=det_event,
                 scalars_det=det_event_scalars,
-                jet_det=det_jets[i : i + 1],
+                jet_det=det_jets[i : i + 1].clone(),
                 jet_scalars_det=jet_scalars_det,
                 x_gen=gen_event,
                 scalars_gen=gen_event_scalars,
-                jet_gen=gen_jets[i : i + 1],
+                jet_gen=gen_jets[i : i + 1].clone(),
                 jet_scalars_gen=jet_scalars_gen,
             )
 

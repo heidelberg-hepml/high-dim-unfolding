@@ -6,4 +6,4 @@ optimizer: Lion
 lr: 2e-4
 
 defaults:
- - default
+  - default

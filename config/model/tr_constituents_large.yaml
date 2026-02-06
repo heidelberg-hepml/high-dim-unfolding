@@ -11,6 +11,8 @@ net:
   num_heads: 8
   dropout_prob: null
 
+  checkpoint_blocks: false
+
 net_condition:
   _target_: experiments.baselines.Transformer
 
@@ -21,3 +23,5 @@ net_condition:
   num_blocks: 6
   num_heads: 8
   dropout_prob: null
+
+  checkpoint_blocks: false

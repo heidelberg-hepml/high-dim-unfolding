@@ -7,17 +7,17 @@ mean_aggregation: true
 attention_backend: xformers
 
 net:
- _target_: experiments.baselines.ConditionalTransformer
- _partial_: true
+  _target_: experiments.baselines.ConditionalTransformer
+  _partial_: true
 
- in_channels: null
- out_channels: null
- hidden_channels: 64
+  in_channels: null
+  out_channels: null
+  hidden_channels: 64
 
- num_blocks: 10
- num_heads: 8
- dropout_prob: null
- checkpoint_blocks: false
+  num_blocks: 10
+  num_heads: 8
+  dropout_prob: null
+  checkpoint_blocks: false
 
 net_condition:
   _target_: experiments.baselines.Transformer
@@ -33,4 +33,4 @@ net_condition:
   checkpoint_blocks: false
 
 defaults:
- - framesnet: identity
+  - framesnet: identity

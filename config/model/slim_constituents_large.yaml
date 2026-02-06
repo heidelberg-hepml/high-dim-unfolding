@@ -4,46 +4,48 @@ scalar_inputs: [0,2,3]
 scalar_outputs: [0]
 
 GA_config:
- beam_spurion: xyplane
- beam_mirror: true
- add_time_spurion: true
- input_spurions: true
- condition_spurions: true
- spurion_channels: false
+  beam_spurion: xyplane
+  beam_mirror: true
+  add_time_spurion: true
+  input_spurions: true
+  condition_spurions: true
+  spurion_channels: false
 
 net:
- _target_: lgatr.nets.ConditionalLGATrSlim
+  _target_: lgatr.nets.ConditionalLGATrSlim
 
- in_v_channels: 1
- condition_v_channels: null
- out_v_channels: 1
- hidden_v_channels: 16
+  in_v_channels: 1
+  condition_v_channels: null
+  out_v_channels: 1
+  hidden_v_channels: 16
 
- in_s_channels: null
- condition_s_channels: null
- out_s_channels: 4
- hidden_s_channels: 64
+  in_s_channels: null
+  condition_s_channels: null
+  out_s_channels: 4
+  hidden_s_channels: 64
 
- num_blocks: 8
- dropout_prob: null
+  num_blocks: 8
+  dropout_prob: null
 
- num_heads: 8
+  num_heads: 8
 
- compile: true
+  compile: true
+  checkpoint_blocks: false
 
 net_condition:
- _target_: lgatr.nets.lgatr_slim.LGATrSlim
+  _target_: lgatr.nets.lgatr_slim.LGATrSlim
 
- in_v_channels: 1
- out_v_channels: null
- hidden_v_channels: 16
+  in_v_channels: 1
+  out_v_channels: null
+  hidden_v_channels: 16
 
- in_s_channels: 1
- out_s_channels: null
- hidden_s_channels: 64
+  in_s_channels: 1
+  out_s_channels: null
+  hidden_s_channels: 64
 
- num_blocks: 6
- dropout_prob: null
- num_heads: 8
+  num_blocks: 6
+  dropout_prob: null
+  num_heads: 8
 
- compile: true
+  compile: true
+  checkpoint_blocks: false

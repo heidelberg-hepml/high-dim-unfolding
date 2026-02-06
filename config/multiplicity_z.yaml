@@ -4,58 +4,58 @@ exp_name: mult_z
 use_mlflow: false
 
 data:
- data_dir: data/
- dataset: zplusjet
- dataset_generator: pythia
- length: -1
- train_val_test: [0.8, 0.05, 0.15]
- max_num_particles: null
- diff: null
- max_constituents: -1
- min_mult: 2
- add_pid: false
- pt_min: null
- pt_cut: 0.0
- mass: 0.1
- pos_encoding_dim: 0
- mult_encoding_dim: 0
- part_to_jet: false
+  data_dir: data/
+  dataset: zplusjet
+  dataset_generator: pythia
+  length: -1
+  train_val_test: [0.8, 0.05, 0.15]
+  max_num_particles: null
+  diff: null
+  max_constituents: -1
+  min_mult: 2
+  add_pid: false
+  pt_min: null
+  pt_cut: 0.0
+  mass: 0.1
+  pos_encoding_dim: 0
+  mult_encoding_dim: 0
+  part_to_jet: false
 
 dist: 
- type: GaussianMixture
- n_components: 5
- diff: true
+  type: GaussianMixture
+  n_components: 5
+  diff: true
 
 wrapper_cfg:
- const_coordinates: StandardJetScaledLogPtPhiEtaM2
- const_coordinates_options:
-  pt_min: 0.0
-  masked_dims: [3]
-  scaling: [1,1,1,1]
- jet_coordinates: StandardLogPtPhiEtaLogM2
- jet_coordinates_options:
-  pt_min: null
-  masked_dims: []
-  scaling: [1,1,1,1]
- transforms_float64: true
- add_jet: true
+  const_coordinates: StandardJetScaledLogPtPhiEtaM2
+  const_coordinates_options:
+    pt_min: 0.0
+    masked_dims: [3]
+    scaling: [1,1,1,1]
+  jet_coordinates: StandardLogPtPhiEtaLogM2
+  jet_coordinates_options:
+    pt_min: null
+    masked_dims: []
+    scaling: [1,1,1,1]
+  transforms_float64: true
+  add_jet: true
 
 evaluation:
- batchsize: 4096
- save_samples: false
- load_samples: false
- save_params: 0
+  batchsize: 4096
+  save_samples: false
+  load_samples: false
+  save_params: 0
 
 plotting:
- loss: true
- histogram: true
- n_distributions: 0
- diff: true
- corr: false
- components: false
+  loss: true
+  histogram: true
+  n_distributions: 0
+  diff: true
+  corr: false
+  components: false
 
 defaults:
- - model: tr_multiplicity
- - training: multiplicity_z
- - default
- - _self_
+  - model: tr_multiplicity
+  - training: multiplicity_z
+  - default
+  - _self_

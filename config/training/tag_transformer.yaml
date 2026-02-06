@@ -12,4 +12,4 @@ lr_factor_framesnet: 1.0
 weight_decay_framesnet: 0.0
 
 defaults:
- - default
+  - default

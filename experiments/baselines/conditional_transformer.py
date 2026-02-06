@@ -211,6 +211,7 @@ class ConditionalTransformer(nn.Module):
                     condition=processed_condition,
                     attn_kwargs=attn_kwargs,
                     crossattn_kwargs=crossattn_kwargs,
+                    use_reentrant=False,
                 )
             else:
                 x = block(

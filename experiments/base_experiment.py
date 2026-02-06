@@ -491,6 +491,8 @@ class BaseExperiment:
         self.training_start_time = time.time()
         self.training_start_time_corrected = time.time()  # reset at first iteration
         train_time, val_time = 0.0, 0.0
+        if self.device == torch.device("cuda"):
+            torch.cuda.reset_peak_memory_stats(self.device)
 
         # recycle trainloader
         sampler = getattr(self.train_loader, "sampler", None)
@@ -539,7 +541,10 @@ class BaseExperiment:
                 if self.cfg.training.scheduler in ["ReduceLROnPlateau"]:
                     self.scheduler.step(val_loss)
 
-            if (step + 1) % self.cfg.training.clear_every_n_steps == 0:
+            if (
+                (step + 1) % self.cfg.training.clear_every_n_steps == 0
+                and self.cfg.training.clear_every_n_steps > 0
+            ):
                 gc.collect()
                 if self.device == torch.device("cuda"):
                     torch.cuda.empty_cache()
@@ -559,19 +564,6 @@ class BaseExperiment:
                     f"training time estimate: {dt_estimate / 60:.2f}min "
                     f"= {dt_estimate / 60**2:.2f}h"
                 )
-
-            if self.cfg.training.scheduler in [
-                "flat+decay",
-            ]:
-                # schedulers that step after each epoch
-                if self.cfg.exp_type == "toptagging" and step % len(self.train_loader) == 0:
-                    self.scheduler.step()
-
-                if (
-                    self.cfg.exp_type == "jctagging"
-                    and step % int(len(self.train_loader) / 10) == 0
-                ):
-                    self.scheduler.step()
 
         dt = time.time() - self.training_start_time
         LOGGER.info(
@@ -663,6 +655,13 @@ class BaseExperiment:
         ]:
             self.scheduler.step()
 
+        if (
+            self.device == torch.device("cuda")
+            and self.cfg.training.log_mem_every_n_steps > 0
+            and (step + 1) % self.cfg.training.log_mem_every_n_steps == 0
+        ):
+            self._log_cuda_memory(step)
+
         if not torch.isfinite(loss):
             LOGGER.warning(f"Loss is nonfinite (loss={loss}) at iteration {step}")
 
@@ -725,6 +724,20 @@ class BaseExperiment:
             for key, values in self.val_metrics.items():
                 log_mlflow(f"val.{key}", values[-1], step=step)
         return val_loss
+
+    def _log_cuda_memory(self, step):
+        """Log CUDA memory footprint for debugging."""
+        allocated = torch.cuda.memory_allocated(self.device) / 1024**3
+        reserved = torch.cuda.memory_reserved(self.device) / 1024**3
+        max_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
+        max_reserved = torch.cuda.max_memory_reserved(self.device) / 1024**3
+        LOGGER.info(
+            f"[cuda mem] step {step + 1}: "
+            f"allocated={allocated:.2f} GB, reserved={reserved:.2f} GB, "
+            f"max_alloc={max_alloc:.2f} GB, max_reserved={max_reserved:.2f} GB"
+        )
+        # Report peaks over each logging interval instead of lifetime peaks.
+        torch.cuda.reset_peak_memory_stats(self.device)
 
     def _save_config(self, filename, to_mlflow=False):
         # Save config

@@ -4,76 +4,76 @@ exp_name: jets
 use_mlflow: false
 
 data:
- data_dir: data/
- dataset: zplusjet
- dataset_generator: pythia
- length: -1
- train_val_test: [0.8, 0.05, 0.15]
- max_num_particles: null
- max_constituents: -1
- min_mult: 2
- pt_cut: 0.0
- add_pid: false
- pt_min: null
- mass: 0.1
- pos_encoding_dim: 8
- mult_encoding_dim: 8
- part_to_jet: false
+  data_dir: data/
+  dataset: zplusjet
+  dataset_generator: pythia
+  length: -1
+  train_val_test: [0.8, 0.05, 0.15]
+  max_num_particles: null
+  max_constituents: -1
+  min_mult: 2
+  pt_cut: 0.0
+  add_pid: false
+  pt_min: null
+  mass: 0.1
+  pos_encoding_dim: 8
+  mult_encoding_dim: 8
+  part_to_jet: false
 
 cfm:
- embed_t_dim: 8
- embed_t_scale: 30.0
- const_coordinates: StandardJetScaledLogPtPhiEtaM2
- const_coordinates_options:
-  pt_min: 0.0
-  masked_dims: [3]
-  scaling: [1,1,1,1]
-  vonmises: false
- jet_coordinates: StandardAsinhPtPhiEtaLogM2
- jet_coordinates_options:
-  pt_min: null
-  masked_dims: []
-  scaling: [1,1,1,1]
-  vonmises: false
- geometry:
-  type: simple
-  periodic: true
- transforms_float64: true
- cosine_similarity_factor: 0.0
- self_condition_prob: 0.0
- add_constituents: false
- add_mass: false
- weight: 0.0
- transpose: false
- unconditional: false
+  embed_t_dim: 8
+  embed_t_scale: 30.0
+  const_coordinates: StandardJetScaledLogPtPhiEtaM2
+  const_coordinates_options:
+    pt_min: 0.0
+    masked_dims: [3]
+    scaling: [1,1,1,1]
+    vonmises: false
+  jet_coordinates: StandardAsinhPtPhiEtaLogM2
+  jet_coordinates_options:
+    pt_min: null
+    masked_dims: []
+    scaling: [1,1,1,1]
+    vonmises: false
+  geometry:
+    type: simple
+    periodic: true
+  transforms_float64: true
+  cosine_similarity_factor: 0.0
+  self_condition_prob: 0.0
+  add_constituents: false
+  add_mass: false
+  weight: 0.0
+  transpose: false
+  unconditional: false
 
 odeint:
- method: rk4
- rtol: 1e-5
- atol: 1e-5
- options:
-  step_size: 0.01
+  method: rk4
+  rtol: 1e-5
+  atol: 1e-5
+  options:
+    step_size: 0.01
 
 evaluation:
- batchsize: 8192
- classifier: false
- sample: true
- n_batches: -1
- eval_loss: []
- save_samples: false
- load_samples: false
- overfit: false
+  batchsize: 8192
+  classifier: false
+  sample: true
+  n_batches: -1
+  eval_loss: []
+  save_samples: false
+  load_samples: false
+  overfit: false
 
 plotting:
- fourmomenta: false
- jetmomenta: true
- jetscaled: false
- preprocessed: false
- observables: ["jet"]
- correlations: false
+  fourmomenta: false
+  jetmomenta: true
+  jetscaled: false
+  preprocessed: false
+  observables: ["jet"]
+  correlations: false
 
 defaults:
- - model: cond_tr_jets
- - training: jets_z
- - default
- - _self_
+  - model: cond_tr_jets
+  - training: jets_z
+  - default
+  - _self_

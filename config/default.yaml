@@ -18,25 +18,25 @@ ema: false
 ema_decay: 0.999
 
 ga_settings:
- use_fully_connected_subgroup: true
- use_geometric_product: true
- mix_mvpseudoscalar_into_scalar: true
- zero_bivector: false
+  use_fully_connected_subgroup: true
+  use_geometric_product: true
+  mix_mvpseudoscalar_into_scalar: true
+  zero_bivector: false
 
 train: true
 
 evaluate: true
 evaluation:
- batchsize: 1024
+  batchsize: 1024
 
 plot: true
 plotting:
- loss: true
+  loss: true
 
 mlflow:
- db: '${base_dir}/runs/${exp_name}/mlflow/mlflow.db'
- artifacts: '${base_dir}/runs/${exp_name}/mlflow/artifacts'
+  db: '${base_dir}/runs/${exp_name}/mlflow/mlflow.db'
+  artifacts: '${base_dir}/runs/${exp_name}/mlflow/artifacts'
 
 defaults:
- - hydra
- - _self_
+  - hydra
+  - _self_
