@@ -384,6 +384,7 @@ class Transformer(nn.Module):
                     block,
                     inputs=h,
                     **kwargs,
+                    use_reentrant=False,
                 )
             else:
                 h = block(h, **kwargs)

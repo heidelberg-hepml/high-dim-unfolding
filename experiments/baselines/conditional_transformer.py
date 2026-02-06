@@ -202,23 +202,23 @@ class ConditionalTransformer(nn.Module):
         attn_kwargs: dict | None = None,
         crossattn_kwargs: dict | None = None,
     ) -> torch.Tensor:
-        x = self.linear_in(x)
+        h = self.linear_in(x)
         for block in self.blocks:
             if self.checkpoint_blocks:
-                x = checkpoint(
+                h = checkpoint(
                     block,
-                    inputs=x,
+                    inputs=h,
                     condition=processed_condition,
                     attn_kwargs=attn_kwargs,
                     crossattn_kwargs=crossattn_kwargs,
                     use_reentrant=False,
                 )
             else:
-                x = block(
-                    x,
+                h = block(
+                    h,
                     processed_condition,
                     attn_kwargs=attn_kwargs,
                     crossattn_kwargs=crossattn_kwargs,
                 )
 
-        return self.linear_out(x)
+        return self.linear_out(h)

@@ -542,8 +542,8 @@ class BaseExperiment:
                     self.scheduler.step(val_loss)
 
             if (
-                (step + 1) % self.cfg.training.clear_every_n_steps == 0
-                and self.cfg.training.clear_every_n_steps > 0
+                self.cfg.training.clear_every_n_steps > 0
+                and (step + 1) % self.cfg.training.clear_every_n_steps == 0
             ):
                 gc.collect()
                 if self.device == torch.device("cuda"):
