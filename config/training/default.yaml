@@ -22,10 +22,10 @@ log_every_n_steps: 200
 validate_every_n_steps: 5000
 validate_every_n_epochs_min: null
 clear_every_n_steps: 1000
-log_mem_every_n_steps: 1000
 
 log_grad_norm: true
 clip_grad_norm_framesnet: null
 clip_grad_norm: 5
 clip_grad_value: null
 max_grad_norm: null
+log_grad_norm_std_factor: 5.0

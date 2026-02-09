@@ -692,7 +692,7 @@ class KinematicsExperiment(BaseExperiment):
         elif self.cfg.modelname == "ConditionalLGATr":
             model_label = "L-GATr"
         elif self.cfg.modelname == "ConditionalLGATrSlim":
-            model_label = "L-GATr-S"
+            model_label = "L-GATr"
         kwargs = {
             "exp": self,
             "model_label": model_label,

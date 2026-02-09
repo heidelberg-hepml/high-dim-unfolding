@@ -24,8 +24,6 @@ from experiments.multiplicity.distributions import (
 )
 from experiments.multiplicity.plots import plot_mixer
 
-MODEL_TITLE_DICT = {"LGATr": "L-GATr", "Transformer": "Tr", "LGATrSlim": "L-GATr-S"}
-
 
 class MultiplicityExperiment(BaseExperiment):
     def _init_loss(self):

@@ -92,12 +92,16 @@ class JetKinematicsExperiment(BaseExperiment):
                         self.cfg.data.mult_encoding_dim + len(self.cfg.model.scalar_inputs)
                     )
                 if self.cfg.modelname == "JetConditionalLGATr":
-                    self.cfg.model.net_condition.out_mv_channels = self.cfg.model.net.hidden_mv_channels
+                    self.cfg.model.net_condition.out_mv_channels = (
+                        self.cfg.model.net.hidden_mv_channels
+                    )
                     self.cfg.model.net.condition_mv_channels = (
                         self.cfg.model.net_condition.out_mv_channels
                     )
                 else:
-                    self.cfg.model.net_condition.out_v_channels = self.cfg.model.net.hidden_v_channels
+                    self.cfg.model.net_condition.out_v_channels = (
+                        self.cfg.model.net.hidden_v_channels
+                    )
                     self.cfg.model.net.condition_v_channels = (
                         self.cfg.model.net_condition.out_v_channels
                     )
@@ -676,6 +680,8 @@ class JetKinematicsExperiment(BaseExperiment):
         if self.cfg.modelname == "JetConditionalTransformer":
             model_label = "Transf."
         elif self.cfg.modelname == "JetConditionalLGATr":
+            model_label = "L-GATr"
+        elif self.cfg.modelname == "JetConditionalLGATrSlim":
             model_label = "L-GATr"
         elif self.cfg.modelname == "JetMLP":
             model_label = "MLP"

@@ -480,6 +480,10 @@ class BaseExperiment:
         smallest_val_loss, smallest_val_loss_step = 1e10, 0
         patience = 0
 
+        self.skip_count = 0
+        self.log_grad_norm_mean = 0.0
+        self.log_grad_norm_std = 0.0
+
         # main train loop
         LOGGER.info(
             f"Starting to train for {self.cfg.training.iterations} iterations "
@@ -643,6 +647,26 @@ class BaseExperiment:
                     f"Skipping iteration {step}, gradient norm {grad_norm} exceeds maximum {self.cfg.training.max_grad_norm}"
                 )
                 return
+        if step > MIN_STEP_SKIP and self.cfg.training.log_grad_norm_std_factor is not None:
+            if self.skip_count > 10:
+                self.skip_count = 0
+            elif (
+                torch.log(grad_norm).item()
+                > self.log_grad_norm_mean / (step - MIN_STEP_SKIP)
+                + self.cfg.training.log_grad_norm_std_factor
+                * (self.log_grad_norm_std / (step - MIN_STEP_SKIP)) ** 0.5
+            ):
+                LOGGER.warning(
+                    f"Skipping iteration {step}, gradient norm {grad_norm} exceeds maximum {self.log_grad_norm_mean / (step - MIN_STEP_SKIP) + self.cfg.training.log_grad_norm_std_factor * (self.log_grad_norm_std / (step - MIN_STEP_SKIP)) ** 0.5:.2f} (mean {self.log_grad_norm_mean / (step - MIN_STEP_SKIP):.2f} + {self.cfg.training.log_grad_norm_std_factor} * std {(self.log_grad_norm_std / (step - MIN_STEP_SKIP)) ** 0.5:.2f})"
+                )
+                self.skip_count += 1
+                return
+            else:
+                self.skip_count = 0
+
+        self.log_grad_norm_mean += torch.log(grad_norm).item()
+        self.log_grad_norm_std += torch.log(grad_norm).item() ** 2
+
         self.scaler.step(self.optimizer)
         self.scaler.update()
         if self.ema is not None:
@@ -654,13 +678,6 @@ class BaseExperiment:
             "CosineAnnealingWarmRestarts",
         ]:
             self.scheduler.step()
-
-        if (
-            self.device == torch.device("cuda")
-            and self.cfg.training.log_mem_every_n_steps > 0
-            and (step + 1) % self.cfg.training.log_mem_every_n_steps == 0
-        ):
-            self._log_cuda_memory(step)
 
         if not torch.isfinite(loss):
             LOGGER.warning(f"Loss is nonfinite (loss={loss}) at iteration {step}")
@@ -724,20 +741,6 @@ class BaseExperiment:
             for key, values in self.val_metrics.items():
                 log_mlflow(f"val.{key}", values[-1], step=step)
         return val_loss
-
-    def _log_cuda_memory(self, step):
-        """Log CUDA memory footprint for debugging."""
-        allocated = torch.cuda.memory_allocated(self.device) / 1024**3
-        reserved = torch.cuda.memory_reserved(self.device) / 1024**3
-        max_alloc = torch.cuda.max_memory_allocated(self.device) / 1024**3
-        max_reserved = torch.cuda.max_memory_reserved(self.device) / 1024**3
-        LOGGER.info(
-            f"[cuda mem] step {step + 1}: "
-            f"allocated={allocated:.2f} GB, reserved={reserved:.2f} GB, "
-            f"max_alloc={max_alloc:.2f} GB, max_reserved={max_reserved:.2f} GB"
-        )
-        # Report peaks over each logging interval instead of lifetime peaks.
-        torch.cuda.reset_peak_memory_stats(self.device)
 
     def _save_config(self, filename, to_mlflow=False):
         # Save config
