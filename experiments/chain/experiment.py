@@ -47,7 +47,7 @@ class ChainExperiment(BaseExperiment):
             mult_cfg.run_idx = self.cfg.run_idx
             mult_cfg.train = False
             mult_cfg.evaluate = True
-            mult_cfg.evaluation.sample = True
+            mult_cfg.evaluation.sample = self.cfg.evaluation.sample
             mult_cfg.evaluation.save_samples = False
             mult_cfg.evaluation.load_samples = False
             mult_cfg.plot = False
@@ -71,7 +71,7 @@ class ChainExperiment(BaseExperiment):
 
             jet_cfg.train = False
             jet_cfg.evaluate = True
-            jet_cfg.evaluation.sample = True
+            jet_cfg.evaluation.sample = self.cfg.evaluation.sample
             jet_cfg.evaluation.save_samples = False
             jet_cfg.evaluation.load_samples = False
             jet_cfg.plot = False
@@ -98,7 +98,7 @@ class ChainExperiment(BaseExperiment):
 
             const_cfg.train = False
             const_cfg.evaluate = True
-            const_cfg.evaluation.sample = True
+            const_cfg.evaluation.sample = self.cfg.evaluation.sample
             const_cfg.evaluation.save_samples = True
             const_cfg.evaluation.load_samples = False
             const_cfg.plot = True

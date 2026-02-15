@@ -31,6 +31,12 @@ constituents_cfg:
   cfm:
     sort: true
 
+evaluation:
+  sample: test
+
+model:
+  use_amp: false
+
 defaults:
   - default
   - _self_

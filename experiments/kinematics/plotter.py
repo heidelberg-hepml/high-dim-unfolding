@@ -1134,7 +1134,6 @@ def plot_z(exp, filename, model_label):
             )
 
         if "eec" in exp.cfg.plotting.observables:
-            LOGGER.info("Calculating EEC")
             gen_eecs = calculate_eec(truth.x_gen, truth.x_gen_ptr)
             det_eecs = calculate_eec(truth.x_det, truth.x_det_ptr)
             sample_eecs = calculate_eec(samples.x_gen, samples.x_gen_ptr)
@@ -1641,7 +1640,6 @@ def plot_t(exp, filename, model_label):
             )
 
         if "eec" in exp.cfg.plotting.observables:
-            LOGGER.info("Calculating EEC")
             gen_eecs = calculate_eec(truth.x_gen, truth.x_gen_ptr)
             det_eecs = calculate_eec(truth.x_det, truth.x_det_ptr)
             sample_eecs = calculate_eec(samples.x_gen, samples.x_gen_ptr)

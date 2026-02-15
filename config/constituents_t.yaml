@@ -58,7 +58,7 @@ evaluation:
   batchsize: 2048
   classifier: false
   sample: true
-  n_batches: 70
+  n_batches: -1
   eval_loss: []
   save_samples: false
   load_samples: false

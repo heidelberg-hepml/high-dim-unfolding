@@ -516,18 +516,9 @@ class JetKinematicsExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         self.model.eval()
-        if getattr(self.cfg.evaluation, "sample_all", False):
-            LOGGER.info("Sampling all datasets for evaluation")
+        if self.cfg.evaluation.sample is not None:
             t0 = time.time()
-            self._sample_events(loaders["train"], sampled_mults, filename="samples_train")
-            self._sample_events(loaders["val"], sampled_mults, filename="samples_val")
-            self._sample_events(loaders["test"], sampled_mults, filename="samples_test")
-            loaders["gen"] = self.sample_loader
-            dt = time.time() - t0
-            LOGGER.info(f"Finished sampling after {dt / 60:.2f}min")
-        elif self.cfg.evaluation.sample:
-            t0 = time.time()
-            self._sample_events(loaders["test"], sampled_mults)
+            self._sample_events(loaders[self.cfg.evaluation.sample], sampled_mults)
             loaders["gen"] = self.sample_loader
             dt = time.time() - t0
             LOGGER.info(f"Finished sampling after {dt / 60:.2f}min")
@@ -537,7 +528,7 @@ class JetKinematicsExperiment(BaseExperiment):
         else:
             LOGGER.info("Skip sampling")
 
-    def _sample_events(self, loader, sampled_mults=None, filename=None):
+    def _sample_events(self, loader, sampled_mults=None):
         samples = []
         targets = []
         self.data_raw = {}
@@ -632,12 +623,6 @@ class JetKinematicsExperiment(BaseExperiment):
             LOGGER.info(f"Saving samples in {path}")
             torch.save(self.data_raw["samples"], os.path.join(path, "samples.pt"))
             torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
-        if getattr(self.cfg.evaluation, "sample_all", False):
-            path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.run_idx}")
-            os.makedirs(os.path.join(path), exist_ok=True)
-            LOGGER.info(f"Saving samples in {path}")
-            torch.save(self.data_raw["samples"], os.path.join(path, f"{filename}.pt"))
-            # torch.save(self.data_raw["truth"], os.path.join(path, "truth.pt"))
 
     def _load_samples(self):
         path = os.path.join(self.cfg.run_dir, f"samples_{self.cfg.warm_start_idx}")

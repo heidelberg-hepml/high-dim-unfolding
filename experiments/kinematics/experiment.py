@@ -501,12 +501,12 @@ class KinematicsExperiment(BaseExperiment):
             "val": self.val_loader,
         }
         self.model.eval()
-        if self.cfg.evaluation.sample:
+        if self.cfg.evaluation.sample is not None:
             t0 = time.time()
-            self._sample_events(loaders["test"], sampled_mults, sampled_jets)
+            self._sample_events(loaders[self.cfg.evaluation.sample], sampled_mults, sampled_jets)
             loaders["gen"] = self.sample_loader
             dt = time.time() - t0
-            LOGGER.info(f"Finished sampling after {dt / 60:.2f}min")
+            LOGGER.info(f"Finished sampling {self.cfg.evaluation.sample} after {dt / 60:.2f}min")
         elif self.cfg.evaluation.load_samples:
             self._load_samples()
             loaders["gen"] = self.sample_loader
