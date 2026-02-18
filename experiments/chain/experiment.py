@@ -157,7 +157,7 @@ class ChainExperiment(BaseExperiment):
         LOGGER.info("Step 1: Sampling multiplicities...")
         self.multiplicity_exp.evaluate()
 
-        self.sampled_multiplicities = self.multiplicity_exp.results_test["samples"][:, :1].to(
+        self.sampled_multiplicities = self.multiplicity_exp.results["samples"][:, :1].to(
             dtype=torch.int64
         )
 
