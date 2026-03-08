@@ -560,11 +560,17 @@ class KinematicsExperiment(BaseExperiment):
                 )
                 new_batch.jet_gen = self.model.jet_coordinates.fourmomenta_to_x(new_gen_jets)
 
-            sample_batch = self.model.sample(
-                new_batch,
-                self.device,
-                self.dtype,
-            )
+            try:
+                sample_batch = self.model.sample(
+                    new_batch,
+                    self.device,
+                    self.dtype,
+                )
+            except Exception as e:
+                LOGGER.info(
+                    f"Skipping sample batch {i + 1}/{n_batches} because of the following error: {e}"
+                )
+                continue
 
             sample_batch.jet_gen = self.model.jet_coordinates.x_to_fourmomenta(sample_batch.jet_gen)
             sample_batch.jet_det = self.model.condition_jet_coordinates.x_to_fourmomenta(
