@@ -57,7 +57,7 @@ odeint:
 evaluation:
   batchsize: 8192
   classifier: false
-  sample: true
+  sample: test
   n_batches: -1
   eval_loss: []
   save_samples: false

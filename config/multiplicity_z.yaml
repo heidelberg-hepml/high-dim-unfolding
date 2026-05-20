@@ -45,6 +45,7 @@ evaluation:
   save_samples: false
   load_samples: false
   save_params: 0
+  sample: test
 
 plotting:
   loss: true

@@ -1,9 +1,8 @@
-import numpy as np
 import os
+
+import numpy as np
 import torch
 from torch_geometric.data import Data
-
-from experiments.logger import LOGGER
 
 EPS = 1e-5
 
@@ -130,7 +129,9 @@ class ClassificationDataset(TaggingDataset):
             ClassificationDataset._cache_key = label_paths
 
         if mode not in ClassificationDataset._cached_splits:
-            raise ValueError(f"Unknown mode {mode}, expected one of {list(ClassificationDataset._cached_splits)}")
+            raise ValueError(
+                f"Unknown mode {mode}, expected one of {list(ClassificationDataset._cached_splits)}"
+            )
 
         # copy list wrapper so consumers don't accidentally modify the cache
         self.data_list = list(ClassificationDataset._cached_splits[mode])
@@ -156,14 +157,18 @@ class ClassificationDataset(TaggingDataset):
             data_list = batch.to_data_list()
             label_tensor = torch.tensor([label], dtype=torch.bool)
             for old_graph in data_list:
-                x_gen = old_graph.x_gen.to(dtype=
-                    torch.float64 if momentum_float64 else torch.float32
+                x_gen = old_graph.x_gen.to(
+                    dtype=torch.float64 if momentum_float64 else torch.float32
                 )
-                scalars_gen = torch.zeros(x_gen.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32)
-                x_det = old_graph.x_det.to(dtype=
-                    torch.float64 if momentum_float64 else torch.float32
+                scalars_gen = torch.zeros(
+                    x_gen.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32
                 )
-                scalars_det = torch.zeros(x_det.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32)
+                x_det = old_graph.x_det.to(
+                    dtype=torch.float64 if momentum_float64 else torch.float32
+                )
+                scalars_det = torch.zeros(
+                    x_det.shape[0], 0, dtype=torch.float64 if network_float64 else torch.float32
+                )
                 new_graph = Data(
                     x_gen=x_gen,
                     scalars_gen=scalars_gen,

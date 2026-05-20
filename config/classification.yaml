@@ -12,6 +12,7 @@ data:
   momentum_float64: false
   train_test: [0.8,0.2]
   data_path: ???
+  test_data_path: null
 
 evaluation:
   batchsize: 512

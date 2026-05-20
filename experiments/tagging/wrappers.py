@@ -1,23 +1,19 @@
 import torch
-from lgatr import embed_vector, extract_scalar
 from lloca.framesnet.frames import Frames
 from lloca.framesnet.nonequi_frames import IdentityFrames
 from lloca.reps.tensorreps import TensorReps
 from lloca.reps.tensorreps_transform import TensorRepsTransform
-from lloca.utils.lorentz import lorentz_eye
 from lloca.utils.utils import (
     get_batch_from_ptr,
-    get_edge_attr,
-    get_edge_index_from_ptr,
     get_ptr_from_batch,
 )
 from torch import nn
 from torch_geometric.nn.aggr import MeanAggregation
-from torch_geometric.utils import scatter, to_dense_batch
+from torch_geometric.utils import scatter
 
-from experiments.logger import LOGGER
 from experiments.misc import get_attention_mask
 from experiments.tagging.embedding import get_tagging_features
+from lgatr import embed_vector, extract_scalar
 
 
 class TaggerWrapper(nn.Module):
@@ -271,9 +267,10 @@ class TransformerWrapper(AggregatedTaggerWrapper):
             score = outputs[is_global]
 
         # LOGGER.info(f"Transformer score: {score}")
-        
+
         return score, tracker, frames
-    
+
+
 class ConditionalTransformerWrapper(nn.Module):
     def __init__(
         self,
@@ -285,7 +282,7 @@ class ConditionalTransformerWrapper(nn.Module):
         use_amp=False,
         attention_backend="xformers",
         mean_aggregation=True,
-        framesnet=IdentityFrames(),
+        framesnet=None,
         **kwargs,
     ):
         super().__init__()
@@ -294,7 +291,7 @@ class ConditionalTransformerWrapper(nn.Module):
         self.mean_aggregation = mean_aggregation
         self.net = net(in_channels=in_channels, out_channels=out_channels)
         self.net_condition = net_condition(in_channels=in_channels)
-        self.framesnet = framesnet
+        self.framesnet = framesnet if framesnet is not None else IdentityFrames()
 
         if attention_backend == "flex":
             compile_flex_attention(package_name="lloca")
@@ -319,8 +316,22 @@ class ConditionalTransformerWrapper(nn.Module):
         return mask_kwarg, condition_mask_kwarg, cross_mask_kwarg
 
     def forward(self, embedding):
-        input = torch.cat([embedding["gen"]["fourmomenta"], embedding["gen"]["scalars"], embedding["gen"]["tagging_features"]], dim=-1)
-        condition_input = torch.cat([embedding["det"]["fourmomenta"], embedding["det"]["scalars"], embedding["det"]["tagging_features"]], dim=-1)
+        input = torch.cat(
+            [
+                embedding["gen"]["fourmomenta"],
+                embedding["gen"]["scalars"],
+                embedding["gen"]["tagging_features"],
+            ],
+            dim=-1,
+        )
+        condition_input = torch.cat(
+            [
+                embedding["det"]["fourmomenta"],
+                embedding["det"]["scalars"],
+                embedding["det"]["tagging_features"],
+            ],
+            dim=-1,
+        )
         gen_batch = embedding["gen"]["batch"]
         det_batch = embedding["det"]["batch"]
         mask_kwarg, condition_mask_kwarg, cross_mask_kwarg = self.get_masks(
@@ -329,13 +340,19 @@ class ConditionalTransformerWrapper(nn.Module):
             dtype=input.dtype,
         )
         with torch.autocast("cuda", enabled=self.use_amp):
-            condition = self.net_condition(inputs=condition_input.unsqueeze(0), **condition_mask_kwarg)
-            outputs = self.net(x=input.unsqueeze(0), processed_condition=condition, attn_kwargs=mask_kwarg, crossattn_kwargs=cross_mask_kwarg)
+            condition = self.net_condition(
+                inputs=condition_input.unsqueeze(0), **condition_mask_kwarg
+            )
+            outputs = self.net(
+                x=input.unsqueeze(0),
+                processed_condition=condition,
+                attn_kwargs=mask_kwarg,
+                crossattn_kwargs=cross_mask_kwarg,
+            )
 
-        score = scatter(outputs.squeeze(0), gen_batch, dim=0, reduce='mean')
-        
+        score = scatter(outputs.squeeze(0), gen_batch, dim=0, reduce="mean")
+
         return score, {}, None
-
 
 
 class LGATrWrapper(nn.Module):

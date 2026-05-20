@@ -3,13 +3,11 @@ import time
 
 import numpy as np
 import torch
-import torch.distributed as dist
-from omegaconf import OmegaConf
 from sklearn.metrics import accuracy_score, roc_auc_score, roc_curve
-from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
+from torch_geometric.loader import DataLoader
 
-from experiments.base_experiment import BaseExperiment, MIN_STEP_SKIP
+from experiments.base_experiment import BaseExperiment
 from experiments.logger import LOGGER
 from experiments.mlflow import log_mlflow
 from experiments.tagging.dataset import ClassificationDataset, TopTaggingDataset
@@ -373,21 +371,43 @@ class ClassificationExperiment(TaggingExperiment):
 
     def init_data(self):
         data_path = self.cfg.data.data_path
+        test_data_path = getattr(self.cfg.data, "test_data_path", None)
         LOGGER.info(f"Creating {ClassificationDataset.__name__} from base path {data_path}")
         t0 = time.time()
-        self.data_train = ClassificationDataset()
-        self.data_val = ClassificationDataset()
-        self.data_test = None
+        if self.cfg.data.test_data_path is not None:
+            self.data_test = ClassificationDataset()
+            self.data_train = None
+            self.data_val = None
+        else:
+            self.data_train = ClassificationDataset()
+            self.data_val = ClassificationDataset()
+            self.data_test = None
         kwargs = dict(
             network_float64=self.cfg.use_float64,
             momentum_float64=self.cfg.data.momentum_float64,
             train_test=self.cfg.data.train_test,
-
         )
         if hasattr(self.cfg.data, "split_seed"):
             kwargs["split_seed"] = self.cfg.data.split_seed
-        self.data_train.load_data(data_path, "train", **kwargs)
-        self.data_val.load_data(data_path, "test", **kwargs)
+
+        if self.cfg.data.test_data_path is not None:
+            self.data_test.load_data(test_data_path, "test", **kwargs)
+
+        else:
+            self.data_train.load_data(data_path, "train", **kwargs)
+            self.data_val.load_data(data_path, "test", **kwargs)
+
+        if test_data_path:
+            LOGGER.info(
+                f"Using separate classification test dataset from {test_data_path} "
+                f"(excluded from train/validation split)"
+            )
+            ClassificationDataset._cached_splits = None
+            ClassificationDataset._cache_key = None
+            self.data_test = ClassificationDataset()
+            test_kwargs = dict(kwargs)
+            test_kwargs["train_test"] = (0.0, 1.0)
+            self.data_test.load_data(test_data_path, "test", **test_kwargs)
         dt = time.time() - t0
         LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt / 60:.2f} min")
 
@@ -405,19 +425,30 @@ class ClassificationExperiment(TaggingExperiment):
             shuffle=False,
         )
 
-        self.train_loader = DataLoader(
-            dataset=self.data_train,
-            batch_size=self.cfg.training.batchsize // self.world_size,
-            sampler=trn_sampler,
-            follow_batch=["x_gen", "x_det"],
-        )
-        self.val_loader = DataLoader(
-            dataset=self.data_val,
-            batch_size=self.cfg.evaluation.batchsize // self.world_size,
-            sampler=val_sampler,
-            follow_batch=["x_gen", "x_det"],
-        )
-        self.test_loader = None
+        if self.cfg.data.test_data_path is not None:
+            self.test_loader = DataLoader(
+                dataset=self.data_test,
+                batch_size=self.cfg.evaluation.batchsize // self.world_size,
+                shuffle=False,
+                follow_batch=["x_gen", "x_det"],
+            )
+
+            self.train_loader = None
+            self.val_loader = None
+        else:
+            self.train_loader = DataLoader(
+                dataset=self.data_train,
+                batch_size=self.cfg.training.batchsize // self.world_size,
+                sampler=trn_sampler,
+                follow_batch=["x_gen", "x_det"],
+            )
+            self.val_loader = DataLoader(
+                dataset=self.data_val,
+                batch_size=self.cfg.evaluation.batchsize // self.world_size,
+                sampler=val_sampler,
+                follow_batch=["x_gen", "x_det"],
+            )
+            self.test_loader = None
 
         LOGGER.info(
             f"Constructed dataloaders with "
@@ -551,3 +582,35 @@ class ClassificationExperiment(TaggingExperiment):
                 f" & {metrics['rej03']:.0f} & {metrics['rej05']:.0f} & {metrics['rej08']:.0f} \\\\"
             )
         return metrics
+
+    def evaluate(self):
+        if not self.cfg.train and self.cfg.data.test_data_path is not None:
+            if self.ema is not None:
+                with self.ema.average_parameters():
+                    self.results["test"] = self._evaluate_single(
+                        self.test_loader, "test_ema", mode="eval"
+                    )
+
+                self._evaluate_single(self.test_loader, "test", mode="eval")
+
+            else:
+                self.results["test"] = self._evaluate_single(self.test_loader, "test", mode="eval")
+        else:
+            self.results = {}
+            loader_dict = {
+                "train": self.train_loader,
+                "val": self.val_loader,
+            }
+            for set_label in self.cfg.evaluation.eval_set:
+                if self.ema is not None:
+                    with self.ema.average_parameters():
+                        self.results[set_label] = self._evaluate_single(
+                            loader_dict[set_label], f"{set_label}_ema", mode="eval"
+                        )
+
+                    self._evaluate_single(loader_dict[set_label], set_label, mode="eval")
+
+                else:
+                    self.results[set_label] = self._evaluate_single(
+                        loader_dict[set_label], set_label, mode="eval"
+                    )

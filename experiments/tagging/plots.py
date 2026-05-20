@@ -191,8 +191,8 @@ def plot_score(out, labels_true, labels_predicted, title=None, xrange=[0, 1], bi
     fig.savefig(out, bbox_inches="tight", format="pdf")
     plt.close()
 
-def plot_likelihood(out, labels_true, labels_predicted, title=None, bins=100, logx=True, logy=True):
 
+def plot_likelihood(out, labels_true, labels_predicted, title=None, bins=100, logx=True, logy=True):
     ratio = (1 - labels_predicted) / labels_predicted
 
     gen_idx = labels_true == 1
@@ -203,7 +203,7 @@ def plot_likelihood(out, labels_true, labels_predicted, title=None, bins=100, lo
     if logy:
         ax.set_yscale("log")
 
-    logbins=np.logspace(start=-1.5, stop=1.5, num=bins)
+    logbins = np.logspace(start=-1.5, stop=1.5, num=bins)
     ax.set_ylabel("Normalized", fontsize=FONTSIZE)
     ax.set_xlabel("Weights", fontsize=FONTSIZE)
     ax.hist(
@@ -223,7 +223,7 @@ def plot_likelihood(out, labels_true, labels_predicted, title=None, bins=100, lo
         histtype="step",
         label="True events",
     )
-    
+
     # ax.text(
     #     0.95,
     #     0.95,
