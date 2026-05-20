@@ -29,3 +29,4 @@ clip_grad_norm: 5
 clip_grad_value: null
 max_grad_norm: null
 log_grad_norm_std_factor: 5.0
+min_step_skip: 1000

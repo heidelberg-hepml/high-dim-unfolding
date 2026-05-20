@@ -23,7 +23,6 @@ from experiments.mlflow import log_mlflow
 
 # set to 'True' to debug autograd issues (slows down code)
 torch.autograd.set_detect_anomaly(False)
-MIN_STEP_SKIP = 1000
 
 
 class BaseExperiment:
@@ -336,12 +335,12 @@ class BaseExperiment:
 
             param_groups = [
                 {
-                    "params": [p for p in self.model.net.parameters() if not is_bias(p)],
+                    "params": [p for p in self.model.parameters() if not is_bias(p)],
                     "lr": self.cfg.training.lr,
                     "weight_decay": self.cfg.training.weight_decay,
                 },
                 {
-                    "params": [p for p in self.model.net.parameters() if is_bias(p)],
+                    "params": [p for p in self.model.parameters() if is_bias(p)],
                     "lr": self.cfg.training.lr,
                     "weight_decay": 0,
                 },
@@ -610,11 +609,29 @@ class BaseExperiment:
         self.scaler.scale(loss).backward()
         self.scaler.unscale_(self.optimizer)  # unscale before clipping
 
-        if self.cfg.training.log_grad_norm:
+        if self.cfg.training.clip_grad_value is not None:
+            # clip gradients at a certain value (this is dangerous!)
+            torch.nn.utils.clip_grad_value_(
+                self.model.parameters(),
+                self.cfg.training.clip_grad_value,
+            )
+
+        # Compute grad norm once on all parameters: also clips if clip_grad_norm is set.
+        # Using inf when only logging keeps the value for skip checks without clipping.
+        track_grad_norm = (
+            self.cfg.training.log_grad_norm or self.cfg.training.clip_grad_norm is not None
+        )
+        if track_grad_norm:
+            clip_value = (
+                self.cfg.training.clip_grad_norm
+                if self.cfg.training.clip_grad_norm is not None
+                else float("inf")
+            )
             grad_norm = (
                 torch.nn.utils.clip_grad_norm_(
-                    self.model.net.parameters(),
-                    float("inf"),
+                    self.model.parameters(),
+                    clip_value,
+                    error_if_nonfinite=False,
                 )
                 .detach()
                 .to(self.device)
@@ -622,50 +639,40 @@ class BaseExperiment:
         else:
             grad_norm = torch.tensor(0.0, device=self.device)
 
-        if self.cfg.training.clip_grad_value is not None:
-            # clip gradients at a certain value (this is dangerous!)
-            torch.nn.utils.clip_grad_value_(
-                self.model.parameters(),
-                self.cfg.training.clip_grad_value,
-            )
-        # rescale gradients such that their norm matches a given number
+        min_step_skip = self.cfg.training.min_step_skip
 
-        if self.cfg.training.clip_grad_norm is not None:
-            grad_norm = (
-                torch.nn.utils.clip_grad_norm_(
-                    self.model.parameters(),
-                    self.cfg.training.clip_grad_norm,
-                    error_if_nonfinite=False,
-                )
-                .detach()
-                .to(self.device)
-            )
-
-        if step > MIN_STEP_SKIP and self.cfg.training.max_grad_norm is not None:
+        if step > min_step_skip and self.cfg.training.max_grad_norm is not None:
             if grad_norm > self.cfg.training.max_grad_norm:
                 LOGGER.warning(
                     f"Skipping iteration {step}, gradient norm {grad_norm} exceeds maximum {self.cfg.training.max_grad_norm}"
                 )
                 return
-        if step > MIN_STEP_SKIP and self.cfg.training.log_grad_norm_std_factor is not None:
+        if step > min_step_skip and self.cfg.training.log_grad_norm_std_factor is not None:
+            n = step - min_step_skip
             if self.skip_count > 10:
+                # prevent indefinite stalling: force a step after 10 consecutive skips
                 self.skip_count = 0
             elif (
                 torch.log(grad_norm).item()
-                > self.log_grad_norm_mean / (step - MIN_STEP_SKIP)
+                > self.log_grad_norm_mean / n
                 + self.cfg.training.log_grad_norm_std_factor
-                * (self.log_grad_norm_std / (step - MIN_STEP_SKIP)) ** 0.5
+                * (self.log_grad_norm_std / n) ** 0.5
             ):
+                mean_str = self.log_grad_norm_mean / n
+                std_str = (self.log_grad_norm_std / n) ** 0.5
                 LOGGER.warning(
-                    f"Skipping iteration {step}, gradient norm {grad_norm} exceeds maximum {self.log_grad_norm_mean / (step - MIN_STEP_SKIP) + self.cfg.training.log_grad_norm_std_factor * (self.log_grad_norm_std / (step - MIN_STEP_SKIP)) ** 0.5:.2f} (mean {self.log_grad_norm_mean / (step - MIN_STEP_SKIP):.2f} + {self.cfg.training.log_grad_norm_std_factor} * std {(self.log_grad_norm_std / (step - MIN_STEP_SKIP)) ** 0.5:.2f})"
+                    f"Skipping iteration {step}, gradient norm {grad_norm} exceeds maximum "
+                    f"{mean_str + self.cfg.training.log_grad_norm_std_factor * std_str:.2f} "
+                    f"(mean {mean_str:.2f} + {self.cfg.training.log_grad_norm_std_factor} * std {std_str:.2f})"
                 )
                 self.skip_count += 1
                 return
             else:
                 self.skip_count = 0
 
-        self.log_grad_norm_mean += torch.log(grad_norm).item()
-        self.log_grad_norm_std += torch.log(grad_norm).item() ** 2
+        if track_grad_norm:
+            self.log_grad_norm_mean += torch.log(grad_norm).item()
+            self.log_grad_norm_std += torch.log(grad_norm).item() ** 2
 
         self.scaler.step(self.optimizer)
         self.scaler.update()

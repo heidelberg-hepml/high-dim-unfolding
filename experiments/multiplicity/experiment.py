@@ -184,14 +184,13 @@ class MultiplicityExperiment(BaseExperiment):
         gen_mults = data["gen_mults"]
         gen_pids = data["gen_pids"]
         gen_jets = data["gen_jets"]
-        size = len(gen_particles)
+        size = len(det_particles)
 
         LOGGER.info(f"Loaded {size} events in {time.time() - t0:.2f} seconds")
 
         if self.cfg.data.max_constituents > 0:
             det_mults = torch.clamp(det_mults, max=self.cfg.data.max_constituents)
             gen_mults = torch.clamp(gen_mults, max=self.cfg.data.max_constituents)
-            size = len(gen_particles)
 
         split = self.cfg.data.train_val_test
         train_idx, val_idx, test_idx = np.cumsum([int(s * size) for s in split])

@@ -508,6 +508,26 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
         ]
 
 
+class StandardAngularJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
+    # (log(pt), phi-phi_jet, eta-eta_jet, log(m^2)) with mass fixed at dataset mean
+    def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
+        super().__init__()
+        scaling = torch.ones(1, 4) if scaling is None else torch.tensor(scaling)
+        self.contains_phi = True
+        self.contains_mass = True
+        all_fixed = sorted(set(list(fixed_dims) + [3]))
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM2(),
+            tr.M2_to_LogM2(),
+            tr.Pt_to_ClampedPt(pt_min),
+            tr.Pt_to_LogPt(),
+            tr.LogPtPhiEtaLogM2_to_PhiEtaJetScale(),
+            tr.StandardNormal(all_fixed, scaling, contains_phi=True),
+        ]
+
+
 ptphietam2 = PtPhiEtaM2(pt_min=0.0)
 
 
