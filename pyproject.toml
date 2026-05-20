@@ -23,7 +23,7 @@ dependencies = [
     "pyarrow",
     "pytorch_optimizer>=3.2.0",
     "scikit-learn",
-    "torch>=2.6.0",
+    "torch==2.10.0",
     "torch-ema",
     "torch_geometric>=2.4.0",
     "torchdiffeq",
