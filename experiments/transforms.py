@@ -675,22 +675,22 @@ class StandardNormal(BaseTransform):
         return v_x
 
 
-class PtPhiEtaM2_to_JetScale(BaseTransform):
-    def _forward(self, ptphietam2, jet, **kwargs):
-        pt, phi, eta, m2 = torch.unbind(ptphietam2, dim=-1)
-        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
-        jet_phi = get_phi(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
-        jet_eta = get_eta(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+class PtPhiEta_to_JetScale(BaseTransform):
+    def _forward(self, ptphietax, jet, **kwargs):
+        pt, phi, eta, x4 = torch.unbind(ptphietax, dim=-1)
+        jet_pt = get_pt(jet).to(dtype=ptphietax.dtype, device=ptphietax.device)
+        jet_phi = get_phi(jet).to(dtype=ptphietax.dtype, device=ptphietax.device)
+        jet_eta = get_eta(jet).to(dtype=ptphietax.dtype, device=ptphietax.device)
 
         pt = pt / jet_pt
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
 
-        return torch.stack((pt, phi, eta, m2), dim=-1)
+        return torch.stack((pt, phi, eta, x4), dim=-1)
 
     def _inverse(self, y, jet, **kwargs):
-        pt, phi, eta, m2 = torch.unbind(y, dim=-1)
+        pt, phi, eta, x4 = torch.unbind(y, dim=-1)
         jet_pt = get_pt(jet).to(dtype=y.dtype, device=y.device)
         jet_phi = get_phi(jet).to(dtype=y.dtype, device=y.device)
         jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
@@ -700,120 +700,112 @@ class PtPhiEtaM2_to_JetScale(BaseTransform):
         phi = ensure_angle(phi)
         eta = eta + jet_eta
 
-        return torch.stack((pt, phi, eta, m2), dim=-1)
+        return torch.stack((pt, phi, eta, x4), dim=-1)
 
-    def _jac_forward(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+    def _jac_forward(self, ptphietax, y, jet, **kwargs):
+        jet_pt = get_pt(jet).to(dtype=ptphietax.dtype, device=ptphietax.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
         jac_pt = torch.stack((one / jet_pt, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+        jac_x4 = torch.stack((zero, zero, zero, one), dim=-1)
 
-        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+        return torch.stack((jac_pt, jac_phi, jac_eta, jac_x4), dim=-1)
 
-    def _jac_inverse(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+    def _jac_inverse(self, ptphietax, y, jet, **kwargs):
+        jet_pt = get_pt(jet).to(dtype=ptphietax.dtype, device=ptphietax.device)
 
         zero, one = torch.zeros_like(jet_pt), torch.ones_like(jet_pt)
 
         jac_pt = torch.stack((jet_pt, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+        jac_x4 = torch.stack((zero, zero, zero, one), dim=-1)
 
-        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+        return torch.stack((jac_pt, jac_phi, jac_eta, jac_x4), dim=-1)
 
-    def _detjac_forward(self, ptphietam2, y, jet, **kwargs):
-        jet_pt = get_pt(jet).to(dtype=ptphietam2.dtype, device=ptphietam2.device)
+    def _detjac_forward(self, ptphietax, y, jet, **kwargs):
+        jet_pt = get_pt(jet).to(dtype=ptphietax.dtype, device=ptphietax.device)
         return 1 / jet_pt
 
 
-class LogPtPhiEtaLogM2_to_JetScale(BaseTransform):
-    """Centers logpt, phi, eta, logm2 relative to the jet."""
+class LogPtPhiEta_to_JetScale(BaseTransform):
+    """Centers logpt, phi, eta relative to the jet."""
 
-    def _forward(self, logptphietalogm2, jet, **kwargs):
-        logpt, phi, eta, logm2 = torch.unbind(logptphietalogm2, dim=-1)
-        jet_pt = get_pt(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
-        jet_phi = get_phi(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
-        jet_eta = get_eta(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
-        jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
+    def _forward(self, logptphietax, jet, **kwargs):
+        logpt, phi, eta, x4 = torch.unbind(logptphietax, dim=-1)
+        jet_pt = get_pt(jet).to(dtype=logptphietax.dtype, device=logptphietax.device)
+        jet_phi = get_phi(jet).to(dtype=logptphietax.dtype, device=logptphietax.device)
+        jet_eta = get_eta(jet).to(dtype=logptphietax.dtype, device=logptphietax.device)
 
         logpt = logpt - torch.log(jet_pt + EPS1)
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
-        logm2 = logm2 - torch.log(jet_m2 + EPS1)
 
-        return torch.stack((logpt, phi, eta, logm2), dim=-1)
+        return torch.stack((logpt, phi, eta, x4), dim=-1)
 
     def _inverse(self, y, jet, **kwargs):
-        logpt, phi, eta, logm2 = torch.unbind(y, dim=-1)
+        logpt, phi, eta, x4 = torch.unbind(y, dim=-1)
         jet_pt = get_pt(jet).to(dtype=y.dtype, device=y.device)
         jet_phi = get_phi(jet).to(dtype=y.dtype, device=y.device)
         jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
-        jet_m2 = jet[..., 0] ** 2 - (jet[..., 1:] ** 2).sum(dim=-1)
 
         logpt = logpt + torch.log(jet_pt + EPS1)
         phi = phi + jet_phi
         phi = ensure_angle(phi)
         eta = eta + jet_eta
-        logm2 = logm2 + torch.log(jet_m2 + EPS1)
 
-        return torch.stack((logpt, phi, eta, logm2), dim=-1)
+        return torch.stack((logpt, phi, eta, x4), dim=-1)
 
-    def _jac_forward(self, logptphietalogm2, y, jet, **kwargs):
+    def _jac_forward(self, logptphietax, y, jet, **kwargs):
         zero, one = (
-            torch.zeros_like(logptphietalogm2[..., 0]),
-            torch.ones_like(logptphietalogm2[..., 0]),
+            torch.zeros_like(logptphietax[..., 0]),
+            torch.ones_like(logptphietax[..., 0]),
         )
 
         jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+        jac_x4 = torch.stack((zero, zero, zero, one), dim=-1)
 
-        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+        return torch.stack((jac_pt, jac_phi, jac_eta, jac_x4), dim=-1)
 
-    def _jac_inverse(self, logptphietalogm2, y, jet, **kwargs):
+    def _jac_inverse(self, logptphietax, y, jet, **kwargs):
         zero, one = (
-            torch.zeros_like(logptphietalogm2[..., 0]),
-            torch.ones_like(logptphietalogm2[..., 0]),
+            torch.zeros_like(logptphietax[..., 0]),
+            torch.ones_like(logptphietax[..., 0]),
         )
 
         jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+        jac_x4 = torch.stack((zero, zero, zero, one), dim=-1)
 
-        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+        return torch.stack((jac_pt, jac_phi, jac_eta, jac_x4), dim=-1)
 
-    def _detjac_forward(self, logptphietalogm2, y, jet, **kwargs):
-        return torch.ones_like(logptphietalogm2[..., 0])
+    def _detjac_forward(self, logptphietax, y, jet, **kwargs):
+        return torch.ones_like(logptphietax[..., 0])
 
 
-class LogPtPhiEtaLogM2_to_PhiEtaJetScale(BaseTransform):
-    """Centers phi and eta relative to the jet axis. logpt and logm2 are left unchanged.
+class PhiEta_to_JetScale(BaseTransform):
+    """Centers phi and eta relative to the jet axis."""
 
-    Pair with fixed_dims=[3] in StandardNormal so that mass is zeroed in latent space
-    and always reconstructed as the dataset mean (i.e. the network does not model mass).
-    """
-
-    def _forward(self, logptphietalogm2, jet, **kwargs):
-        logpt, phi, eta, logm2 = torch.unbind(logptphietalogm2, dim=-1)
-        jet_phi = get_phi(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
-        jet_eta = get_eta(jet).to(dtype=logptphietalogm2.dtype, device=logptphietalogm2.device)
+    def _forward(self, xphietax, jet, **kwargs):
+        x1, phi, eta, x4 = torch.unbind(xphietax, dim=-1)
+        jet_phi = get_phi(jet).to(dtype=xphietax.dtype, device=xphietax.device)
+        jet_eta = get_eta(jet).to(dtype=xphietax.dtype, device=xphietax.device)
 
         phi = phi - jet_phi
         phi = ensure_angle(phi)
         eta = eta - jet_eta
 
-        return torch.stack((logpt, phi, eta, logm2), dim=-1)
+        return torch.stack((x1, phi, eta, x4), dim=-1)
 
     def _inverse(self, y, jet, **kwargs):
-        logpt, phi, eta, logm2 = torch.unbind(y, dim=-1)
+        x1, phi, eta, x4 = torch.unbind(y, dim=-1)
         jet_phi = get_phi(jet).to(dtype=y.dtype, device=y.device)
         jet_eta = get_eta(jet).to(dtype=y.dtype, device=y.device)
 
@@ -821,36 +813,36 @@ class LogPtPhiEtaLogM2_to_PhiEtaJetScale(BaseTransform):
         phi = ensure_angle(phi)
         eta = eta + jet_eta
 
-        return torch.stack((logpt, phi, eta, logm2), dim=-1)
+        return torch.stack((x1, phi, eta, x4), dim=-1)
 
-    def _jac_forward(self, logptphietalogm2, y, jet, **kwargs):
+    def _jac_forward(self, xphietax, y, jet, **kwargs):
         zero, one = (
-            torch.zeros_like(logptphietalogm2[..., 0]),
-            torch.ones_like(logptphietalogm2[..., 0]),
+            torch.zeros_like(xphietax[..., 0]),
+            torch.ones_like(xphietax[..., 0]),
         )
 
-        jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
+        jac_x1 = torch.stack((one, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+        jac_x4 = torch.stack((zero, zero, zero, one), dim=-1)
 
-        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+        return torch.stack((jac_x1, jac_phi, jac_eta, jac_x4), dim=-1)
 
-    def _jac_inverse(self, logptphietalogm2, y, jet, **kwargs):
+    def _jac_inverse(self, xphietax, y, jet, **kwargs):
         zero, one = (
-            torch.zeros_like(logptphietalogm2[..., 0]),
-            torch.ones_like(logptphietalogm2[..., 0]),
+            torch.zeros_like(xphietax[..., 0]),
+            torch.ones_like(xphietax[..., 0]),
         )
 
-        jac_pt = torch.stack((one, zero, zero, zero), dim=-1)
+        jac_x1 = torch.stack((one, zero, zero, zero), dim=-1)
         jac_phi = torch.stack((zero, one, zero, zero), dim=-1)
         jac_eta = torch.stack((zero, zero, one, zero), dim=-1)
-        jac_m2 = torch.stack((zero, zero, zero, one), dim=-1)
+        jac_x4 = torch.stack((zero, zero, zero, one), dim=-1)
 
-        return torch.stack((jac_pt, jac_phi, jac_eta, jac_m2), dim=-1)
+        return torch.stack((jac_x1, jac_phi, jac_eta, jac_x4), dim=-1)
 
-    def _detjac_forward(self, logptphietalogm2, y, jet, **kwargs):
-        return torch.ones_like(logptphietalogm2[..., 0])
+    def _detjac_forward(self, xphietax, y, jet, **kwargs):
+        return torch.ones_like(xphietax[..., 0])
 
 
 class IndividualNormal(BaseTransform):

@@ -220,7 +220,7 @@ class StandardJetScaledPtPhiEtaM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
-            tr.PtPhiEtaM2_to_JetScale(),
+            tr.PtPhiEta_to_JetScale(),
             tr.StandardNormal(fixed_dims=fixed_dims, scaling=scaling, contains_phi=True),
         ]
 
@@ -431,7 +431,7 @@ class JetScaledPtPhiEtaM2(BaseCoordinates):
             tr.PtPhiEtaE_to_PtPhiEtaM2(),
             tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
-            tr.PtPhiEtaM2_to_JetScale(),
+            tr.PtPhiEta_to_JetScale(),
         ]
 
 
@@ -448,7 +448,7 @@ class JetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
-            tr.LogPtPhiEtaLogM2_to_JetScale(),
+            tr.LogPtPhiEta_to_JetScale(),
         ]
 
 
@@ -466,7 +466,7 @@ class StandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
-            tr.LogPtPhiEtaLogM2_to_JetScale(),
+            tr.LogPtPhiEta_to_JetScale(),
             tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
@@ -484,7 +484,7 @@ class StandardJetScaledLogPtPhiEtaM2(BaseCoordinates):
             tr.M2_to_ClampedM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
-            tr.LogPtPhiEtaLogM2_to_JetScale(),
+            tr.LogPtPhiEta_to_JetScale(),
             tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
@@ -503,7 +503,7 @@ class IndividualStandardJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
-            tr.LogPtPhiEtaLogM2_to_JetScale(),
+            tr.LogPtPhiEta_to_JetScale(),
             tr.IndividualNormal(fixed_dims, scaling, contains_phi=True),
         ]
 
@@ -523,7 +523,7 @@ class StandardAngularJetScaledLogPtPhiEtaLogM2(BaseCoordinates):
             tr.M2_to_LogM2(),
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
-            tr.LogPtPhiEtaLogM2_to_PhiEtaJetScale(),
+            tr.PhiEta_to_JetScale(),
             tr.StandardNormal(all_fixed, scaling, contains_phi=True),
         ]
 
