@@ -139,7 +139,7 @@ class CFM(nn.Module):
             1,
             dtype=x0.dtype,
             device=x0.device,
-        )
+        )  # .clamp(1e-5, 1 - 1e-5)
         t = torch.repeat_interleave(t, new_batch.x_gen_ptr.diff(), dim=0)
 
         x1 = self.sample_base(x0, constituents_mask)

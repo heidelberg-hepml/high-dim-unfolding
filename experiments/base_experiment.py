@@ -639,6 +639,30 @@ class BaseExperiment:
         else:
             grad_norm = torch.tensor(0.0, device=self.device)
 
+        # Log per-parameter gradient norms to diagnose gradient explosions.
+        # Always triggered when the gradient is nonfinite or exceeds max_grad_norm.
+        # Also triggered periodically when debug=True.
+        # if track_grad_norm:
+        #     grad_is_problematic = not torch.isfinite(grad_norm) or (
+        #         self.cfg.training.max_grad_norm is not None
+        #         and grad_norm > self.cfg.training.max_grad_norm
+        #     )
+        #     log_period = 1000
+        #     log_periodically = self.cfg.debug and step % max(1, log_period) == 0
+        #     if grad_is_problematic or log_periodically:
+        #         log_level = logging.WARNING if grad_is_problematic else logging.DEBUG
+        #         LOGGER.log(log_level, f"Step {step}: per-param grad norms (total={grad_norm:.3e}):")
+        #         param_norms = sorted(
+        #             (
+        #                 (name, param.grad.detach().norm().item())
+        #                 for name, param in self.model.named_parameters()
+        #                 if param.grad is not None
+        #             ),
+        #             key=lambda x: -x[1],
+        #         )
+        #         for name, norm in param_norms[:25]:
+        #             LOGGER.log(log_level, f"  {norm:.3e}  {name}")
+
         min_step_skip = self.cfg.training.min_step_skip
 
         if step > min_step_skip and self.cfg.training.max_grad_norm is not None:
@@ -655,8 +679,7 @@ class BaseExperiment:
             elif (
                 torch.log(grad_norm).item()
                 > self.log_grad_norm_mean / n
-                + self.cfg.training.log_grad_norm_std_factor
-                * (self.log_grad_norm_std / n) ** 0.5
+                + self.cfg.training.log_grad_norm_std_factor * (self.log_grad_norm_std / n) ** 0.5
             ):
                 mean_str = self.log_grad_norm_mean / n
                 std_str = (self.log_grad_norm_std / n) ** 0.5

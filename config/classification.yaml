@@ -10,14 +10,16 @@ data:
   spurion_scale: 1
   max_particles: null
   momentum_float64: false
-  train_test: [0.8,0.2]
+  train_val_test: [0.8,0.1,0.1]
   data_path: ???
+  train_data_path: null
+  val_data_path: null
   test_data_path: null
 
 evaluation:
   batchsize: 512
   save_roc: false
-  eval_set: [val]
+  eval_set: [val, test]
   save_predictions: true
 
 plotting:

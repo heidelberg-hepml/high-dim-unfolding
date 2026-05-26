@@ -86,16 +86,13 @@ class TopTaggingDataset(TaggingDataset):
 
 
 class ClassificationDataset(TaggingDataset):
-    _cached_splits = None
-    _cache_key = None
-
     def load_data(
         self,
         filename,
         mode,
         network_float64=False,
         momentum_float64=True,
-        train_test=(0.8, 0.2),
+        train_val_test=(0.8, 0.1, 0.1),
         split_seed=0,
     ):
         """
@@ -104,37 +101,27 @@ class ClassificationDataset(TaggingDataset):
         filename : str
             Base path where torch .pt files live. Files are expected at
             <filename>/truth.pt and <filename>/samples.pt.
-        mode : {"train", "test"}
-            Purpose of the dataset. Splits are created once and cached.
-        train_test : tuple[float, float]
-            Fractions for train/test split (must sum to <= 1).
+        mode : {"train", "val", "test"}
+            Which split to load.
+        train_val_test : tuple[float, float, float]
+            Fractions for train/val/test split (must sum to <= 1).
         split_seed : int
             RNG seed for deterministic shuffling before splitting.
         """
-
         label_paths = self._parse_filenames(filename)
+        splits = self._build_splits(
+            label_paths=label_paths,
+            split=train_val_test,
+            split_seed=split_seed,
+            network_float64=network_float64,
+            momentum_float64=momentum_float64,
+        )
+        if mode not in splits:
+            raise ValueError(f"Unknown mode {mode}, expected one of {list(splits)}")
+        self.data_list = list(splits[mode])
 
-        # cache splits so train/val/test get consistent subsets
-        if (
-            ClassificationDataset._cached_splits is None
-            or ClassificationDataset._cache_key != label_paths
-        ):
-            ClassificationDataset._cached_splits = self._build_splits(
-                label_paths=label_paths,
-                split=train_test,
-                split_seed=split_seed,
-                network_float64=network_float64,
-                momentum_float64=momentum_float64,
-            )
-            ClassificationDataset._cache_key = label_paths
-
-        if mode not in ClassificationDataset._cached_splits:
-            raise ValueError(
-                f"Unknown mode {mode}, expected one of {list(ClassificationDataset._cached_splits)}"
-            )
-
-        # copy list wrapper so consumers don't accidentally modify the cache
-        self.data_list = list(ClassificationDataset._cached_splits[mode])
+    def load_from_list(self, data_list):
+        self.data_list = list(data_list)
 
     @staticmethod
     def _parse_filenames(filename):
@@ -186,8 +173,10 @@ class ClassificationDataset(TaggingDataset):
         rng.shuffle(graphs)
 
         train_end = int(split[0] * len(graphs))
+        val_end = train_end + int(split[1] * len(graphs))
         splits = {
             "train": graphs[:train_end],
-            "test": graphs[train_end:],
+            "val": graphs[train_end:val_end],
+            "test": graphs[val_end:],
         }
         return splits

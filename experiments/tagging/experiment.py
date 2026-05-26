@@ -371,91 +371,95 @@ class ClassificationExperiment(TaggingExperiment):
 
     def init_data(self):
         data_path = self.cfg.data.data_path
-        test_data_path = getattr(self.cfg.data, "test_data_path", None)
-        LOGGER.info(f"Creating {ClassificationDataset.__name__} from base path {data_path}")
+        train_path = getattr(self.cfg.data, "train_data_path", None) or data_path
+        val_path = getattr(self.cfg.data, "val_data_path", None) or data_path
+        test_path = getattr(self.cfg.data, "test_data_path", None) or data_path
+
+        LOGGER.info(
+            f"Creating {ClassificationDataset.__name__}: "
+            f"train={train_path}, val={val_path}, test={test_path}"
+        )
         t0 = time.time()
-        if self.cfg.data.test_data_path is not None:
-            self.data_test = ClassificationDataset()
-            self.data_train = None
-            self.data_val = None
-        else:
-            self.data_train = ClassificationDataset()
-            self.data_val = ClassificationDataset()
-            self.data_test = None
-        kwargs = dict(
+
+        base_kwargs = dict(
             network_float64=self.cfg.use_float64,
             momentum_float64=self.cfg.data.momentum_float64,
-            train_test=self.cfg.data.train_test,
+            train_val_test=tuple(self.cfg.data.train_val_test),
+            split_seed=getattr(self.cfg.data, "split_seed", 0),
         )
-        if hasattr(self.cfg.data, "split_seed"):
-            kwargs["split_seed"] = self.cfg.data.split_seed
 
-        if self.cfg.data.test_data_path is not None:
-            self.data_test.load_data(test_data_path, "test", **kwargs)
+        # Group modes by path so each unique file is loaded only once.
+        # A path used exclusively for one split gets all its data assigned to
+        # that split; a path shared by multiple splits uses the configured ratio.
+        _all_data = {
+            "train": (1.0, 0.0, 0.0),
+            "val": (0.0, 1.0, 0.0),
+            "test": (0.0, 0.0, 1.0),
+        }
+        path_to_modes: dict = {}
+        for mode, path in [("train", train_path), ("val", val_path), ("test", test_path)]:
+            path_to_modes.setdefault(path, []).append(mode)
 
-        else:
-            self.data_train.load_data(data_path, "train", **kwargs)
-            self.data_val.load_data(data_path, "test", **kwargs)
-
-        if test_data_path:
-            LOGGER.info(
-                f"Using separate classification test dataset from {test_data_path} "
-                f"(excluded from train/validation split)"
+        split_results = {}
+        for path, modes in path_to_modes.items():
+            ratio = base_kwargs["train_val_test"] if len(modes) > 1 else _all_data[modes[0]]
+            label_paths = ClassificationDataset._parse_filenames(path)
+            splits = ClassificationDataset._build_splits(
+                label_paths=label_paths,
+                split=ratio,
+                split_seed=base_kwargs["split_seed"],
+                network_float64=base_kwargs["network_float64"],
+                momentum_float64=base_kwargs["momentum_float64"],
             )
-            ClassificationDataset._cached_splits = None
-            ClassificationDataset._cache_key = None
-            self.data_test = ClassificationDataset()
-            test_kwargs = dict(kwargs)
-            test_kwargs["train_test"] = (0.0, 1.0)
-            self.data_test.load_data(test_data_path, "test", **test_kwargs)
+            for mode in modes:
+                split_results[mode] = splits[mode]
+
+        self.data_train = ClassificationDataset()
+        self.data_train.load_from_list(split_results["train"])
+        self.data_val = ClassificationDataset()
+        self.data_val.load_from_list(split_results["val"])
+        self.data_test = ClassificationDataset()
+        self.data_test.load_from_list(split_results["test"])
+
         dt = time.time() - t0
         LOGGER.info(f"Finished creating datasets after {dt:.2f} s = {dt / 60:.2f} min")
 
     def _init_dataloader(self):
         trn_sampler = torch.utils.data.DistributedSampler(
-            self.data_train,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=True,
+            self.data_train, num_replicas=self.world_size, rank=self.rank, shuffle=True
+        )
+        tst_sampler = torch.utils.data.DistributedSampler(
+            self.data_test, num_replicas=self.world_size, rank=self.rank, shuffle=False
         )
         val_sampler = torch.utils.data.DistributedSampler(
-            self.data_val,
-            num_replicas=self.world_size,
-            rank=self.rank,
-            shuffle=False,
+            self.data_val, num_replicas=self.world_size, rank=self.rank, shuffle=False
         )
-
-        if self.cfg.data.test_data_path is not None:
-            self.test_loader = DataLoader(
-                dataset=self.data_test,
-                batch_size=self.cfg.evaluation.batchsize // self.world_size,
-                shuffle=False,
-                follow_batch=["x_gen", "x_det"],
-            )
-
-            self.train_loader = None
-            self.val_loader = None
-        else:
-            self.train_loader = DataLoader(
-                dataset=self.data_train,
-                batch_size=self.cfg.training.batchsize // self.world_size,
-                sampler=trn_sampler,
-                follow_batch=["x_gen", "x_det"],
-            )
-            self.val_loader = DataLoader(
-                dataset=self.data_val,
-                batch_size=self.cfg.evaluation.batchsize // self.world_size,
-                sampler=val_sampler,
-                follow_batch=["x_gen", "x_det"],
-            )
-            self.test_loader = None
-
+        fb = ["x_gen", "x_det"]
+        self.train_loader = DataLoader(
+            dataset=self.data_train,
+            batch_size=self.cfg.training.batchsize // self.world_size,
+            sampler=trn_sampler,
+            follow_batch=fb,
+        )
+        self.test_loader = DataLoader(
+            dataset=self.data_test,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=tst_sampler,
+            follow_batch=fb,
+        )
+        self.val_loader = DataLoader(
+            dataset=self.data_val,
+            batch_size=self.cfg.evaluation.batchsize // self.world_size,
+            sampler=val_sampler,
+            follow_batch=fb,
+        )
         LOGGER.info(
             f"Constructed dataloaders with "
-            f"train_batches={len(self.train_loader)}, val_batches={len(self.val_loader)}, "
-            f"batch_size={self.cfg.training.batchsize} (training), {self.cfg.evaluation.batchsize} (evaluation)"
+            f"train_batches={len(self.train_loader)}, test_batches={len(self.test_loader)}, "
+            f"val_batches={len(self.val_loader)}, "
+            f"batch_size={self.cfg.training.batchsize} (training), "
+            f"{self.cfg.evaluation.batchsize} (evaluation)"
         )
-
         self.init_standardization()
 
     def _extract_batch(self, batch):
@@ -582,35 +586,3 @@ class ClassificationExperiment(TaggingExperiment):
                 f" & {metrics['rej03']:.0f} & {metrics['rej05']:.0f} & {metrics['rej08']:.0f} \\\\"
             )
         return metrics
-
-    def evaluate(self):
-        if not self.cfg.train and self.cfg.data.test_data_path is not None:
-            if self.ema is not None:
-                with self.ema.average_parameters():
-                    self.results["test"] = self._evaluate_single(
-                        self.test_loader, "test_ema", mode="eval"
-                    )
-
-                self._evaluate_single(self.test_loader, "test", mode="eval")
-
-            else:
-                self.results["test"] = self._evaluate_single(self.test_loader, "test", mode="eval")
-        else:
-            self.results = {}
-            loader_dict = {
-                "train": self.train_loader,
-                "val": self.val_loader,
-            }
-            for set_label in self.cfg.evaluation.eval_set:
-                if self.ema is not None:
-                    with self.ema.average_parameters():
-                        self.results[set_label] = self._evaluate_single(
-                            loader_dict[set_label], f"{set_label}_ema", mode="eval"
-                        )
-
-                    self._evaluate_single(loader_dict[set_label], set_label, mode="eval")
-
-                else:
-                    self.results[set_label] = self._evaluate_single(
-                        loader_dict[set_label], set_label, mode="eval"
-                    )

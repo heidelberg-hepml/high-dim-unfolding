@@ -193,7 +193,7 @@ def sd_mass(constituents, batch_idx, other_batch_idx=None, R0=R0SoftDrop, **kwar
     log_rhos = []
     for i in range(len(batch_ptr) - 1):
         event = constituents[batch_ptr[i] : batch_ptr[i + 1]]
-        sd_fourm = np.array(apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1)[0])
+        sd_fourm = np.array(apply_soft_drop(event[..., [1, 2, 3, 0]], R0=R0, beta=0.0, zcut=0.1))
         mass2 = sd_fourm[3] ** 2 - np.sum(sd_fourm[..., :3] ** 2)
         pt2 = np.sum(np.sum(event[..., 1:3], axis=0) ** 2)
         log_rho = np.log(np.clip(mass2 / pt2, a_min=1e-10, a_max=None))
