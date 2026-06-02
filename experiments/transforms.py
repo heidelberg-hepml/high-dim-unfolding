@@ -364,6 +364,43 @@ class M2_to_ClampedM2(BaseTransform):
         return torch.zeros_like(x[..., 0])
 
 
+class M2_to_ClampedM(BaseTransform):
+    def __init__(self, m2_min=1e-2, m2_pos=3):
+        super().__init__()
+        self.m2_min = torch.tensor(m2_min)
+        self.m2_pos = torch.tensor(m2_pos)
+
+    def get_dm2(self, m2):
+        return torch.clamp(m2 - self.m2_min.to(m2.device), min=EPS2)
+
+    def _forward(self, x, **kwargs):
+        m2 = x[..., self.m2_pos]
+        dm2 = self.get_dm2(m2)
+        y = x.clone()
+        y[..., self.m2_pos] = dm2.sqrt()
+        return y
+
+    def _inverse(self, y, **kwargs):
+        dm2 = y[..., self.m2_pos]
+        dm2 = torch.clamp(dm2, min=EPS2)
+        m2 = dm2 + self.m2_min.to(dm2.device)
+        y = y.clone()
+        y[..., self.m2_pos] = m2.sqrt()
+        return y
+
+    def velocity_forward(self, v, x, y, **kwargs):
+        return v
+
+    def velocity_inverse(self, v, y, x, **kwargs):
+        return v
+
+    def logdetjac_forward(self, x, y, **kwargs):
+        return torch.zeros_like(x[..., 0])
+
+    def logdetjac_inverse(self, x, y, **kwargs):
+        return torch.zeros_like(x[..., 0])
+
+
 class M2_to_LogM2(BaseTransform):
     def _forward(self, xm2, **kwargs):
         x1, x2, x3, m2 = torch.unbind(xm2, dim=-1)

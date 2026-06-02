@@ -1,5 +1,5 @@
 iterations: 200000
-batchsize: 512
+batchsize: 8192
 
 optimizer: Lion
 

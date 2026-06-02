@@ -194,6 +194,19 @@ class PtPhiEtaM2(BaseCoordinates):
         ]
 
 
+class PtPhiEtaM(BaseCoordinates):
+    def __init__(self, pt_min, **kwargs):
+        super().__init__()
+        self.contains_phi = True
+        self.contains_mass = True
+        self.transforms = [
+            tr.EPPP_to_PtPhiEtaE(),
+            tr.PtPhiEtaE_to_PtPhiEtaM2(),
+            tr.M2_to_ClampedM(),
+            tr.Pt_to_ClampedPt(pt_min),
+        ]
+
+
 class StandardPtPhiEtaM2(BaseCoordinates):
     def __init__(self, pt_min, fixed_dims=[], scaling=None, **kwargs):
         super().__init__()
