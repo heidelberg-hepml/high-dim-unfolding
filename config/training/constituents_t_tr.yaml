@@ -1,5 +1,6 @@
 iterations: 200000
-batchsize: 512
+scheduler_warmup_steps: 6000
+batchsize: 1024
 
 optimizer: Lion
 
