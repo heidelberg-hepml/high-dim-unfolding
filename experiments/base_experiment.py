@@ -397,6 +397,11 @@ class BaseExperiment:
             self.cfg.training.validate_every_n_steps = min(
                 self.cfg.training.validate_every_n_steps, validate_its_min
             )
+
+        warmup_steps = self.cfg.training.scheduler_warmup_steps
+        total_steps = int(self.cfg.training.iterations * self.cfg.training.scheduler_scale)
+        main_steps = total_steps - warmup_steps
+
         if self.cfg.training.scheduler is None:
             self.scheduler = None  # constant lr
         elif self.cfg.training.scheduler == "OneCycleLR":
@@ -405,18 +410,18 @@ class BaseExperiment:
                 max_lr=self.cfg.training.lr,
                 pct_start=self.cfg.training.onecycle_pct_start,
                 div_factor=self.cfg.training.onecycle_div_factor,
-                total_steps=int(self.cfg.training.iterations * self.cfg.training.scheduler_scale),
+                total_steps=total_steps,
             )
         elif self.cfg.training.scheduler == "CosineAnnealingLR":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
                 self.optimizer,
-                T_max=int(self.cfg.training.iterations * self.cfg.training.scheduler_scale),
+                T_max=main_steps,
                 eta_min=self.cfg.training.cosanneal_eta_min,
             )
         elif self.cfg.training.scheduler == "CosineAnnealingWarmRestarts":
             self.scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
                 self.optimizer,
-                T_0=int((self.cfg.training.iterations * self.cfg.training.scheduler_scale) / 2),
+                T_0=main_steps // 2,
                 eta_min=self.cfg.training.cosanneal_eta_min,
             )
         elif self.cfg.training.scheduler == "ReduceLROnPlateau":
@@ -428,6 +433,23 @@ class BaseExperiment:
         else:
             raise ValueError(
                 f"Learning rate scheduler {self.cfg.training.scheduler} not implemented"
+            )
+
+        if (
+            warmup_steps > 0
+            and self.scheduler is not None
+            and self.cfg.training.scheduler != "ReduceLROnPlateau"
+        ):
+            warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
+                self.optimizer,
+                start_factor=0.1,
+                end_factor=1.0,
+                total_iters=warmup_steps,
+            )
+            self.scheduler = torch.optim.lr_scheduler.SequentialLR(
+                self.optimizer,
+                schedulers=[warmup_scheduler, self.scheduler],
+                milestones=[warmup_steps],
             )
 
         LOGGER.debug(f"Using learning rate scheduler {self.cfg.training.scheduler}")

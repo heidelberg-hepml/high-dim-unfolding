@@ -1,4 +1,5 @@
 import torch
+from lgatr import embed_vector, extract_scalar
 from lloca.framesnet.frames import Frames
 from lloca.framesnet.nonequi_frames import IdentityFrames
 from lloca.reps.tensorreps import TensorReps
@@ -13,7 +14,6 @@ from torch_geometric.utils import scatter
 
 from experiments.misc import get_attention_mask
 from experiments.tagging.embedding import get_tagging_features
-from lgatr import embed_vector, extract_scalar
 
 
 class TaggerWrapper(nn.Module):
