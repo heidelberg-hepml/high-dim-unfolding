@@ -498,7 +498,7 @@ class StandardJetScaledLogPtPhiEtaM2(BaseCoordinates):
             tr.Pt_to_ClampedPt(pt_min),
             tr.Pt_to_LogPt(),
             tr.LogPtPhiEta_to_JetScale(),
-            tr.StandardNormal(fixed_dims, scaling, contains_phi=True),
+            tr.StandardNormal(fixed_dims, scaling, contains_phi=False),
         ]
 
 

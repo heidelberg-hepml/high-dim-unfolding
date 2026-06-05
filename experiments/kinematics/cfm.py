@@ -72,7 +72,7 @@ class CFM(nn.Module):
                     self.const_coordinates.phi_dist.sample(x0.shape[:-1])
                     / self.const_coordinates.phi_std
                 )
-            elif "JetScaled" not in self.cfm.const_coordinates:
+            elif "JetScaled" in self.cfm.const_coordinates:
                 sample[..., 1] = (
                     torch.rand(
                         x0.shape[:-1],
